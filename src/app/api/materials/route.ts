@@ -1,0 +1,64 @@
+import { z } from "zod";
+import { requireAuth } from "@/server/auth";
+import {
+  importAuthorizedPassage,
+  importLecture,
+  listMaterials,
+  registerPack,
+  sourceErrorResponse,
+  MAX_FILE,
+} from "@/server/sources";
+export const runtime = "nodejs";
+export const maxDuration = 60;
+export async function GET(req: Request) {
+  try {
+    return Response.json(await listMaterials(await requireAuth(req)));
+  } catch (e) {
+    return sourceErrorResponse(e, req.headers.get("accept-language") || "ar");
+  }
+}
+export async function POST(req: Request) {
+  try {
+    const ctx = await requireAuth(req, ["instructor"]);
+    if (Number(req.headers.get("content-length") || 0) > MAX_FILE + 10000)
+      return Response.json({ error: "file_size" }, { status: 413 });
+    if (req.headers.get("content-type")?.includes("multipart/form-data")) {
+      const form = await req.formData();
+      const file = form.get("file");
+      if (!(file instanceof File))
+        return Response.json({ error: "invalid_file" }, { status: 400 });
+      return Response.json(
+        await importLecture(
+          ctx,
+          file.name,
+          new Uint8Array(await file.arrayBuffer()),
+          { allowNewVersion: form.get("allowNewVersion") === "true" },
+        ),
+      );
+    }
+    const body = await req.json();
+    if (body.action === "authorized-passage") {
+      const input = z
+        .object({
+          sourceKey: z.enum(["GFG-UMBRELLA", "CUSTOM-UMBRELLA"]),
+          title: z.string().min(1).max(200),
+          text: z.string().min(20).max(30000),
+          section: z.string().min(1).max(100),
+          rightsConfirmed: z.literal(true),
+          rightsReference: z.string().min(5).max(500),
+          url: z
+            .url()
+            .refine((v) => v.startsWith("https://"))
+            .optional(),
+        })
+        .parse(body);
+      return Response.json(await importAuthorizedPassage(ctx, input));
+    }
+    if (body.action !== "register-pack")
+      return Response.json({ error: "invalid_action" }, { status: 400 });
+    await registerPack(ctx);
+    return Response.json(await listMaterials(ctx));
+  } catch (e) {
+    return sourceErrorResponse(e, req.headers.get("accept-language") || "ar");
+  }
+}

@@ -1,0 +1,13 @@
+# Only deploy application code and public brand assets, never local provider secrets or source bytes.
+.git
+node_modules
+.next
+.tilwa-private
+.env
+.env.*
+Tilwa_Pilot_Inputs.zip
+**/Lec *-ML.pdf
+test-results
+playwright-report
+docs/evidence
+design/references
