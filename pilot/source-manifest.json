@@ -1,0 +1,100 @@
+{
+  "manifest_version": 1,
+  "course": "CET351",
+  "source_folder": "https://drive.google.com/drive/folders/1nJjEsAEBFeIR38snSSdiGzdRQ8jQdHCB",
+  "sources": [
+    {
+      "source_key": "CET351-L1",
+      "role": "instructor",
+      "filename": "Lec 1-ML.pdf",
+      "title": "Introduction and ML paradigms",
+      "drive_url": "https://drive.google.com/file/d/1MU_jc9074eaCOdEDhot4mmjFJZjJZ62C/view?usp=drivesdk",
+      "provider_modified": "2025-10-11T22:31:53.000Z",
+      "sha256": "44b6fe4dd0ee5648707ec92ceb14417e43683809b9f54818606938c658ab6789",
+      "bytes": 2133813,
+      "physical_pages": 18,
+      "review_note": "Study types, examples and distinctions; the grading slide describes the historical offering."
+    },
+    {
+      "source_key": "CET351-L2",
+      "role": "instructor",
+      "filename": "Lec 2-ML.pdf",
+      "title": "Learning modes, data and generalization",
+      "drive_url": "https://drive.google.com/file/d/1QA6Ht3mZmh_GUW3IMvrFk7b_6KpAcjIp/view?usp=drivesdk",
+      "provider_modified": "2025-11-04T11:46:19.000Z",
+      "sha256": "b40bedc19946ed38a9a13662a3ce520134020b529d3b5758ab2b2d4a96af4773",
+      "bytes": 2964013,
+      "physical_pages": 24,
+      "review_note": "Batch/online learning, feature quality and overfit/underfit."
+    },
+    {
+      "source_key": "CET351-L3",
+      "role": "instructor",
+      "filename": "Lec 3-ML.pdf",
+      "title": "Training, testing and cross-validation",
+      "drive_url": "https://drive.google.com/file/d/1plNW-fMD_Iy_Vou253cSHyFcEOM8f6hS/view?usp=drivesdk",
+      "provider_modified": "2025-11-04T08:25:25.000Z",
+      "sha256": "657c18769ae11e2e53b06d9e417555e688f0fe5fa5005266e365b78af6483d4f",
+      "bytes": 1328632,
+      "physical_pages": 18,
+      "review_note": "Initial release scope, especially separation of training, validation and independent evaluation."
+    },
+    {
+      "source_key": "CET351-L4",
+      "role": "instructor",
+      "filename": "Lec 4-ML.pdf",
+      "title": "Imbalance, model evaluation and classification",
+      "drive_url": "https://drive.google.com/file/d/1glmjzw6bmBvycH78sHp6xE9HXeWm16Z-/view?usp=drivesdk",
+      "provider_modified": "2025-11-04T08:14:56.000Z",
+      "sha256": "ac0a7d6913e04f4ff4e85fe6215b66fc5fd300559e3587deec42444295853391",
+      "bytes": 1762148,
+      "physical_pages": 25,
+      "review_note": "Initial release scope, especially pages 13–20. Hold page 16 from scored use pending correction."
+    },
+    {
+      "source_key": "CET351-L5",
+      "role": "instructor",
+      "filename": "Lec 5-ML.pdf",
+      "title": "KNN and Naïve Bayes",
+      "drive_url": "https://drive.google.com/file/d/1Z8Jr3Dv4kCaVBnzoA4M_6AcXK3XUcXZM/view?usp=drivesdk",
+      "provider_modified": "2025-11-04T07:46:32.000Z",
+      "sha256": "d06b2ee66a18f745fefbd29c1b262a4ab475a36b83c7578e69768373aa66b2e4",
+      "bytes": 2054323,
+      "physical_pages": 26,
+      "review_note": "Inspect the worked Bayes tables on pages 18 and 21–23 before using any derived key."
+    },
+    {
+      "source_key": "CET351-L6",
+      "role": "instructor",
+      "filename": "Lec 6-ML.pdf",
+      "title": "Decision trees and random forests",
+      "drive_url": "https://drive.google.com/file/d/1gW4H4UOjQi_j4CxFeJaMDJls3hzPyYgg/view?usp=drivesdk",
+      "provider_modified": "2025-12-09T07:57:21.000Z",
+      "sha256": "343822dbb89b5bc9dbc0ccc18461221708563fefb150c25b30a57a4e86e0eb75",
+      "bytes": 1308765,
+      "physical_pages": 26,
+      "review_note": "Entropy, information gain and voting; review formula and figure locators."
+    },
+    {
+      "source_key": "GFG-UMBRELLA",
+      "role": "umbrella",
+      "url": "https://www.geeksforgeeks.org/machine-learning/ai-ml-and-data-science-tutorial-learn-ai-ml-and-data-science/",
+      "initial_mode": "reference_link",
+      "ingestion_rule": "Index or send specifically authorized content only. Register link separately from any extracted evidence."
+    },
+    {
+      "source_key": "TILWA-PILOT-FOUNDATIONS",
+      "role": "umbrella",
+      "path": "pilot/umbrella/tilwa-ml-foundations.md",
+      "sha256": "ae299ca9ad8e03070f856d27091d4008303fee6601264597756bab4b09404ad6",
+      "origin": "Original bilingual supplement supplied specifically for the pilot; distinct from GeeksforGeeks.",
+      "section_ids": [
+        "U1",
+        "U2",
+        "U3",
+        "U4",
+        "U5"
+      ]
+    }
+  ]
+}

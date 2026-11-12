@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.vercel/
+.next/
+node_modules/
+.tilwa-private/
+Tilwa_Pilot_Inputs.zip
+**/Lec *-ML.pdf
+playwright-report/
+test-results/
+
