@@ -532,8 +532,9 @@ async function main() {
   assert.equal(accepted.attempt.fixtureItem, false);
   assert.equal(accepted.attempt.assisted, false);
   const retry = await req(student, "/api/learning", attemptBody);
-  assert(
-    JSON.stringify(retry) === JSON.stringify(accepted),
+  assert.deepEqual(
+    retry,
+    accepted,
     "Retries must return the same accepted result without duplicate evidence.",
   );
   checkpoint.attemptId = accepted.attempt.id;

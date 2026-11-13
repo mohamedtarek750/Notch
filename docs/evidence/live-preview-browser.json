@@ -1,0 +1,73 @@
+{
+  "mode": "LIVE Vercel Preview browser + Neon + Gemini",
+  "target": "https://tilwa-6twb3yvyj-mohamedtarek750s-projects.vercel.app",
+  "model": "gemini-3.5-flash-lite",
+  "checks": [
+    {
+      "name": "student-desktop-ar-rtl",
+      "status": "passed",
+      "width": 1305
+    },
+    {
+      "name": "unsupported-course-claim-zero-generation",
+      "status": "passed",
+      "details": {
+        "http": 200,
+        "disposition": "insufficient_evidence",
+        "generationCalls": 0
+      }
+    },
+    {
+      "name": "bare-arabic-recall-ui-answer-and-open-source",
+      "status": "passed",
+      "generationCalls": 1,
+      "tokens": 1123,
+      "evidence": [
+        {
+          "source": "CET351-L4",
+          "page": 18,
+          "section": null
+        },
+        {
+          "source": "CET351-L4",
+          "page": 19,
+          "section": null
+        },
+        {
+          "source": "TILWA-PILOT-FOUNDATIONS",
+          "page": null,
+          "section": "U2"
+        }
+      ]
+    },
+    {
+      "name": "new-browser-neon-persistence-mobile-menu-en-ltr",
+      "status": "passed",
+      "width": 390,
+      "attempts": 1,
+      "progress": 1,
+      "layout": {
+        "viewport": 390,
+        "document": 390,
+        "body": 390,
+        "escapeClosesMenu": true
+      }
+    },
+    {
+      "name": "assigned-advisor-longitudinal-evidence",
+      "status": "passed"
+    },
+    {
+      "name": "temporary-test-bypass-revoked-and-owner-access-retained",
+      "status": "passed",
+      "temporaryBypassRevoked": true,
+      "ordinaryPreviewHttpStatus": 302,
+      "deploymentProtectionRetained": true,
+      "vercelOwnerAuthenticationRetained": true,
+      "at": "2026-11-13T14:02:26.510Z"
+    }
+  ],
+  "at": "2026-11-13T13:59:18.554Z",
+  "resumedAt": "2026-11-13T14:02:02.951Z",
+  "status": "passed"
+}
