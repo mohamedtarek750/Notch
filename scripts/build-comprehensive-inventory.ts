@@ -520,6 +520,70 @@ const sources = Object.entries(knownCounts).map(
 const concepts = [...conceptMap.values()].sort((a, b) =>
   a.key.localeCompare(b.key),
 );
+// Match the database's concept identity normalization exactly. These reviewed
+// owners disambiguate loose aliases without merging distinct learning concepts.
+const normalizeAlias = (value: string) => value
+  .normalize("NFKC")
+  .toLowerCase()
+  .replace(/[\u064B-\u065F\u0670]/g, "")
+  .replace(/[^\p{L}\p{N}]+/gu, " ")
+  .trim();
+const aliasOwners: Record<string, string> = {
+  "data preprocessing": "data-preprocessing",
+  normalization: "feature-scaling",
+  "feature engineering": "feature-engineering",
+  "k fold cv": "k-fold-cross-validation",
+  "ensemble learning": "ensemble-learning",
+  "ensemble methods": "ensemble-learning",
+  "train test split": "train-test-split-implementation",
+  "majority class": "majority-minority-classes",
+};
+function aliasCollisions() {
+  const owners = new Map<string, Set<string>>();
+  for (const concept of concepts) for (const alias of [concept.label.ar, concept.label.en, ...concept.aliases]) {
+    const normalized = normalizeAlias(alias);
+    owners.set(normalized, new Set([...(owners.get(normalized) ?? []), concept.key]));
+  }
+  return [...owners].filter(([, keys]) => keys.size > 1).map(([normalized, keys]) => ({ normalized, conceptKeys: [...keys].sort() }));
+}
+const aliasCollisionsBefore = aliasCollisions();
+const removedAliases: { conceptKey: string; alias: string; normalized: string; canonicalOwner: string }[] = [];
+for (const concept of concepts) {
+  for (const label of [concept.label.ar, concept.label.en]) {
+    const owner = aliasOwners[normalizeAlias(label)];
+    if (owner && owner !== concept.key) throw new Error(`A concept label conflicts with reviewed alias ownership: ${concept.key}`);
+  }
+  concept.aliases = concept.aliases.filter((alias) => {
+    const normalized = normalizeAlias(alias);
+    const owner = aliasOwners[normalized];
+    if (!owner || owner === concept.key) return true;
+    removedAliases.push({ conceptKey: concept.key, alias, normalized, canonicalOwner: owner });
+    return false;
+  });
+}
+const aliasCollisionsAfter = aliasCollisions();
+if (aliasCollisionsAfter.length) throw new Error(`Unresolved normalized concept aliases: ${JSON.stringify(aliasCollisionsAfter)}`);
+type PriorConcept = { id: string; data: { label: Bilingual; aliases?: string[] } };
+let priorConcepts: PriorConcept[] = [];
+try { priorConcepts = await readJson<PriorConcept[]>("prior-concepts.json"); }
+catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+const priorAliasAudit = priorConcepts.map((prior) => {
+  const aliases = unique([prior.data.label.ar, prior.data.label.en, ...(prior.data.aliases ?? [])].map(normalizeAlias));
+  const matches = concepts.filter((concept) => [concept.label.ar, concept.label.en, ...concept.aliases].some((alias) => aliases.includes(normalizeAlias(alias))));
+  if (matches.length !== 1 || matches[0].retainedConceptId !== prior.id) throw new Error(`Prior concept alias identity is ambiguous or missing: ${prior.id}`);
+  const matched = matches[0];
+  const current = new Set([matched.label.ar, matched.label.en, ...matched.aliases].map(normalizeAlias));
+  if (aliases.some((alias) => !current.has(alias))) throw new Error(`Prior alias lost for ${prior.id}`);
+  return { id: prior.id, conceptKey: matched.key, normalizedAliases: aliases, allAliasesPreserved: true };
+});
+const aliasRevision = {
+  normalization: "NFKC; lowercase; remove Arabic diacritics U+064B–065F/U+0670; replace non-Unicode letters/numbers with spaces; trim (identical to server knowledge.normalize)",
+  collisionsBefore: aliasCollisionsBefore,
+  removedAliases,
+  collisionsAfter: aliasCollisionsAfter,
+  priorAliasAudit,
+  policy: "Only loose aliases were removed from non-owning concepts; concept keys, labels, summaries, locators, relations and prior identities are unchanged.",
+};
 const count = (values: string[]) =>
   Object.fromEntries(
     unique(values)
@@ -561,6 +625,7 @@ const report = {
   fixes,
   issues,
   sourceReviewPlanPresent: Boolean(plan),
+  aliasRevision,
 };
 const output = {
   schemaVersion: 1,
@@ -568,7 +633,7 @@ const output = {
   scope: "course",
   reviewStatus: "merged_review_inventory_not_database_approval",
   provenance: {
-    inputs,
+    inputs: [...inputs].sort((a, b) => a.filename.localeCompare(b.filename)),
     summaryAuthorship:
       "Agent-authored bilingual synthesis of reviewed lecture inventories; no Gemini generation for these summaries and no institutional human sign-off.",
     evidencePolicy:
@@ -599,5 +664,6 @@ console.log(
     fixes: fixes.length,
     issues: issues.length,
     sourceReviewPlanPresent: Boolean(plan),
+  aliasRevision,
   }),
 );

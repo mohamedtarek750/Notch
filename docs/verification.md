@@ -1,5 +1,9 @@
 # Verification / نتائج التحقق
 
+**Comprehensive map extension:** 225/225 concepts paired with approved lecture and Umbrella locators, 259 relationships, 137/137 reviewed pages, 103/103 teaching/figure pages mapped, and 45 original bilingual supplementary sections. Real Neon publication preserved all 14 existing learner records unchanged. [Publication evidence](evidence/comprehensive-map.json). Six real Gemini advisories succeeded from seven attempts; the rejected output was never published, and the retry succeeded. Successful calls used 11,351 tokens; failed-call usage is unknown. All seven traces show retrieval before generation, with four bounded evidence chunks per call. [Provider traces](evidence/comprehensive-gemini-traces.json). **128 offline tests passed**, with a further 46-test publication regression; these use local PostgreSQL and injected model fixtures. [Every offline result](evidence/comprehensive-offline-tests.json). See [complete map scope and replay](comprehensive-map.md).
+
+The table below records the **earlier initial pilot journey**, retained as historical acceptance evidence; its two-concept graph and U1–U5 scope have been superseded by the comprehensive release above.
+
 Current results: **13 November 2026**. Local automated tests, real provider calls and Preview readiness are reported separately. All learner/staff records are synthetic.
 
 | Check                                   | Result                       | Evidence and scope                                                                                                                                                                                                                  |
@@ -24,8 +28,8 @@ Current results: **13 November 2026**. Local automated tests, real provider call
 - **Named GFG reference:** registered as link/metadata. **No GFG article text has been used.** The manual authorized-passage flow is tested with a labelled synthetic passage.
 - **Original Tilwa supplement:** actual repository content imported separately, with U1–U5 locators. It is not relabelled GFG.
 - **Original lectures:** six authentic Drive files verified and imported; all six subsequently uploaded PDFs are byte-for-byte identical ([uploaded-file verification](evidence/uploaded-sources.json)). Private PDFs and rendered lecture pages remain outside Git/public assets; the committed evidence contains integrity metadata only.
-- **Review authority:** L4 pp.18–19 and supplement U1–U5 were approved through the demo instructor account after agent review. This is a pilot content review, **not institutional or supervisor sign-off**. Other pending pages are not approved model evidence.
-- **Quarantine:** L4 p.16 says 60 healthy/40 patients while its cells imply 50/50. It remains quarantined. L5 pp.18,21–23 also remain quarantined pending complete academic correction/review.
+- **Review authority:** L4 pp.18–19 and supplement U1–U5 were approved through the demo instructor account after agent review. This is a pilot content review, **not institutional or supervisor sign-off**. This describes the initial review; the current comprehensive page ledger is documented above.
+- **Quarantine:** L4 p.16 says 60 healthy/40 patients while its cells imply 50/50. It remains quarantined. In the initial release L5 pp.18,21–23 were quarantined. They now have reviewed successor extracts based on the fully recomputed table; the originals remain unchanged.
 - **Pinned model:** `gemini-3.5-flash-lite` produced the verified real tutor response and teaching/graph drafts. `gemini-2.5-flash` returned 404 for this project. Two bounded graph calls to `gemini-3.8-flash` timed out; that model has no successful teaching claim here.
 
 The exact Arabic probe explains that 6 detected frauds out of 10 actual frauds gives 60% Recall: [redacted probe](evidence/live-tutor-probe.json). The separate [live Preview acceptance](evidence/live-smoke.json) passed three real tutor generations totaling **3,877 tokens**, including the corresponding ≈23.1% Precision explanation. A checkpointed rerun verified the remaining steps without repeating successful model calls. The separate deployed-browser test made one further real Arabic call (**1,123 tokens**) and opened its original L4 citation. Fresh practice created exactly one attempt and one answer event, even after retry. [All 110 offline test names/results](evidence/offline-tests-2026-11-13.json) and [actual source review/publication browser results](evidence/neon-browser-source-review.json) remain separate evidence.
@@ -36,7 +40,7 @@ The seven local production browser journeys cover independent calculation/metric
 
 Security tests cover non-owner RLS, two-tenant isolation, revoked membership/enrollment, unassigned advisors, protected exams, current source versions and rights. Pending sources cannot reach generation. Denials/database outages cause zero generation calls; authorization is checked again before and after provider generation. Historical citations, graph mappings, SIS revisions and user-scoped memory changes preserve longitudinal learning evidence.
 
-Structured references and arithmetic validation do not prove full semantic entailment. The academic checks above cover the stated L4 example; broader multilingual adversarial evaluation and human academic review remain necessary.
+Structured references and arithmetic validation do not prove full semantic entailment. The current agent review covers all six lecture inventories and the stated numerical corrections. Broader multilingual adversarial evaluation and institutional human academic review remain separate work.
 
 ## Rerun / إعادة الاختبار
 

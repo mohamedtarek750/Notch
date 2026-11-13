@@ -753,11 +753,14 @@ export async function publishKnowledge(ctx: AuthContext) {
         await readCurrentEvidence(tx, ctx.tenantId),
       );
     const releaseId = randomUUID();
-    for (const c of graph.concepts)
-      await tx.query(
-        "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'concept',$3,$4,$5) ON CONFLICT(tenant_id,id) DO UPDATE SET data=excluded.data,updated_at=now()",
-        [ctx.tenantId, c.id, COURSE, null, JSON.stringify(c)],
-      );
+    // One scoped statement keeps complete maps within the serverless time budget.
+    await tx.query(
+      `INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data)
+       SELECT $1,node->>'id','concept',$2,NULL,node
+       FROM jsonb_array_elements($3::jsonb) AS node
+       ON CONFLICT(tenant_id,id) DO UPDATE SET data=excluded.data,updated_at=now()`,
+      [ctx.tenantId, COURSE, JSON.stringify(graph.concepts)],
+    );
     await tx.query(
       "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'graph_release',$3,$4,$5)",
       [

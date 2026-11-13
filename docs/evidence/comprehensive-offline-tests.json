@@ -597,5 +597,10 @@
         }
       ]
     }
-  ]
+  ],
+  "finalPublicationRegression": {
+    "passed": 46,
+    "failed": 0,
+    "scope": "comprehensive-map, ai-knowledge and runtime-security rerun after bulk publication upsert; real local PostgreSQL, no provider"
+  }
 }

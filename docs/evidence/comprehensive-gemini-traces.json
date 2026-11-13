@@ -1,0 +1,75 @@
+{
+  "mode": "real Neon and Gemini, guarded per-lecture advisories",
+  "attempts": 7,
+  "successful": 6,
+  "rejectedOutputs": 1,
+  "successfulTokens": 11351,
+  "failedAttemptUsage": "Not returned by failed attempt; recorded zero is not a claim of zero provider usage.",
+  "allRetrievalBeforeGeneration": true,
+  "allMinimumPairedContext": true,
+  "calls": [
+    {
+      "id": "076e543b-5bb3-48eb-9b2e-16a4a0471b1d",
+      "outcome": "pending_review",
+      "tokens": 1978,
+      "retrieved_at": "2026-11-13T15:29:14.525Z",
+      "generated_at": "2026-11-13T15:29:15.802Z",
+      "model_id": "gemini-3.5-flash-lite",
+      "evidence_count": 4
+    },
+    {
+      "id": "df470557-8d35-4dd0-855d-bdcda17a6eda",
+      "outcome": "pending_review",
+      "tokens": 2195,
+      "retrieved_at": "2026-11-13T15:29:27.462Z",
+      "generated_at": "2026-11-13T15:29:28.739Z",
+      "model_id": "gemini-3.5-flash-lite",
+      "evidence_count": 4
+    },
+    {
+      "id": "328920b1-02e4-4054-99a0-f8785c63c8ca",
+      "outcome": "pending_review",
+      "tokens": 2027,
+      "retrieved_at": "2026-11-13T15:29:40.483Z",
+      "generated_at": "2026-11-13T15:29:41.755Z",
+      "model_id": "gemini-3.5-flash-lite",
+      "evidence_count": 4
+    },
+    {
+      "id": "83618bed-e5c6-4e9d-8e75-1ff8796ac2c3",
+      "outcome": "pending_review",
+      "tokens": 1584,
+      "retrieved_at": "2026-11-13T15:29:53.688Z",
+      "generated_at": "2026-11-13T15:29:54.963Z",
+      "model_id": "gemini-3.5-flash-lite",
+      "evidence_count": 4
+    },
+    {
+      "id": "77302deb-c08c-421a-a97b-ce82f927969c",
+      "outcome": "invalid_output",
+      "tokens": 0,
+      "retrieved_at": "2026-11-13T15:30:06.112Z",
+      "generated_at": "2026-11-13T15:30:07.385Z",
+      "model_id": "gemini-3.5-flash-lite",
+      "evidence_count": 4
+    },
+    {
+      "id": "2bf43ebb-3de9-45c1-88d7-e6de9ad07620",
+      "outcome": "pending_review",
+      "tokens": 1896,
+      "retrieved_at": "2026-11-13T15:30:16.825Z",
+      "generated_at": "2026-11-13T15:30:18.103Z",
+      "model_id": "gemini-3.5-flash-lite",
+      "evidence_count": 4
+    },
+    {
+      "id": "52b4254e-c0e0-4561-87c6-91a7aa27502f",
+      "outcome": "pending_review",
+      "tokens": 1671,
+      "retrieved_at": "2026-11-13T15:31:27.738Z",
+      "generated_at": "2026-11-13T15:31:29.718Z",
+      "model_id": "gemini-3.5-flash-lite",
+      "evidence_count": 4
+    }
+  ]
+}
