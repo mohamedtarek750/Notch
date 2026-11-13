@@ -2,15 +2,19 @@
 
 **Know your path · اعرف طريقك**
 
+**التجربة المنشورة / Hosted pilot:** [https://tilwa.vercel.app](https://tilwa.vercel.app) — افتح الرابط مباشرة، وأدخل رمز مساحة التجربة الموجودة، ثم اختر **مدرّس** أو **طالب** أو **مرشد أكاديمي**. لا يلزم تسجيل دخول Vercel؛ رمز المساحة هو الدعوة إلى الحسابات الاصطناعية. احصل عليه من الملف الخاص `.tilwa-private/demo-workspace-code` ولا تنشره.
+
 تجربة تعليمية جامعية كاملة الطبقات بـNext.js وTypeScript، مع PostgreSQL، مصادر خاصة، وصلاحيات فعلية للطالب والمدرّس والمرشد. Gemini يعمل من السيرفر بعد التحقق من الصلاحيات واسترجاع الدليل المعتمد. بيانات الأشخاص والمؤسسة والسجل السابق اصطناعية ومعلّمة داخل التطبيق.
 
 A bilingual university pilot with authenticated, tenant-scoped learning, private source ingestion/review, objective-level formative evidence, advising and replaceable SIS integration. The original logo, Arabic fonts and dashboard illustration/styles come from the supplied design references.
 
-**Comprehensive map — 13 November 2026:** **225 concepts, 259 relationships and all 137 lecture pages** are reviewed and published in real Neon. Every concept has an approved lecture locator and an original Umbrella section (45 sections). All 14 existing learner records remain unchanged. Six bounded Gemini advisories succeeded; one invalid response was rejected before a successful retry. The complete map is the separately reviewed source inventory. **128/128 offline tests**, the final 46-test publication regression, TypeScript and production build passed. See [map details and rerun commands](docs/comprehensive-map.md), [real database evidence](docs/evidence/comprehensive-map.json), and [actual Gemini traces](docs/evidence/comprehensive-gemini-traces.json). The previously verified full student/instructor/advisor journey remains documented in [measured verification](docs/verification.md).
+**Current acceptance — 13 November 2026:** **148/148 offline tests**, TypeScript and production build passed. Before canonical promotion, the exact deployed build passed **14/14 real HTTP/Neon checks**, including one real Gemini Recall answer (**2,023 tokens**), and **7/7 map browser checks**. The canonical domain then passed **13/13 requested HTTP/Neon checks** and **9/9 browser checks**; the repeat Gemini check was deliberately skipped, with zero further model calls. All **15 pre-existing learner-history records** and seven sources remained unchanged; two expected tutor-memory records were added by the two staged probes. [Measured results and boundaries](docs/verification.md) · [Deployment receipt](docs/evidence/hosted-pilot-deployment.json).
 
-**Vercel Preview:** [Open Tilwa](https://tilwa-git-feat-tilwa-pilot-v1-mohamedtarek750s-projects.vercel.app) — **live acceptance passed** against real Neon and Gemini in Arabic, English and mixed language. Vercel retains its existing login protection. Fresh practice, sign-out persistence, protected exams and assigned-advisor isolation passed on this deployment.
+**Comprehensive map:** **225 concepts, 259 relationships and all 137 lecture pages** are reviewed and published in real Neon. Every concept has an approved lecture locator and an original Umbrella section (45 sections). Six bounded Gemini advisories succeeded; one invalid response was rejected before a successful retry. The complete map is the separately reviewed source inventory. See [map details and rerun commands](docs/comprehensive-map.md), [real database evidence](docs/evidence/comprehensive-map.json), and [actual Gemini traces](docs/evidence/comprehensive-gemini-traces.json). The earlier complete student/instructor/advisor journey remains documented separately in [measured verification](docs/verification.md).
 
-**الخريطة الكاملة:** [HTML ثنائي اللغة](docs/exports/Tilwa-CET351-approved-map.html) · [CSV](docs/exports/Tilwa-CET351-approved-map.csv) · [JSON](docs/exports/Tilwa-CET351-approved-map.json). آخر اختبار فعلي للخريطة على Vercel نجح **7/7**؛ [الرابط المختبَر](https://tilwa-4wpxs7zqs-mohamedtarek750s-projects.vercel.app) و[النتيجة](docs/evidence/comprehensive-preview-browser.json). افتح «خريطة المفاهيم» بنفس مساحة الديمو المراجعة.
+**Earlier Vercel Preview acceptance:** [Open Preview](https://tilwa-git-feat-tilwa-pilot-v1-mohamedtarek750s-projects.vercel.app) — **live acceptance passed** against real Neon and Gemini in Arabic, English and mixed language. Vercel retains its existing login protection. Fresh practice, sign-out persistence, protected exams and assigned-advisor isolation passed on this deployment.
+
+**الخريطة الكاملة:** [HTML ثنائي اللغة](docs/exports/Tilwa-CET351-approved-map.html) · [CSV](docs/exports/Tilwa-CET351-approved-map.csv) · [JSON](docs/exports/Tilwa-CET351-approved-map.json). نجحت اختبارات المتصفح على [النطاق النهائي](https://tilwa.vercel.app) **9/9**: اختباران للدخول وسبعة للخريطة والمصادر والتصدير والموبايل؛ [النتيجة الفعلية](docs/evidence/hosted-pilot-production-browser.json). افتح «خريطة المفاهيم» بنفس مساحة الديمو المراجعة.
 
 ## Run locally / التشغيل المحلي
 
@@ -27,8 +31,8 @@ Open the running application using your development environment's browser. The o
 
 ### أسرع تجربة للأدوار
 
-1. افتح رابط Preview بعد تسجيل الدخول إلى Vercel، ثم أدخل رمز مساحة الديمو المحفوظ محليًا في `.tilwa-private/demo-workspace-code` دون مشاركته علنًا. اختر **مدرّس**: المحاضرات الست والملحق مستوردة بالفعل. افتح مراجعة المصادر والمقترحات، راجع الخريطة والجلسة والسؤال العربي/الإنجليزي، ثم اعتمد المحتوى وانشره. الخريطة والجلسة والسؤال الجديد المعدّل بنتيجة **70%** تمت مراجعتها واعتمادها ونشرها من الواجهة. يمكنك توليد مقترح جديد ومراجعته بنفس المسار. في مساحة جديدة، ابدأ بـ**استيراد حزمة CET351** ورفع الملفات واحدة تلو الأخرى.
-2. سجّل الخروج واختر **طالب** بنفس رمز المساحة. بعد نشر الجلسة، افتحها واسأل «ليه الـRecall هنا 60%؟». افتح مصدر L4 ص18–19، ثم حل سؤال التدريب الجديد. حسابات Preview تحفظ البيانات في Neon؛ التشغيل المحلي الصريح يستخدم PostgreSQL/PGlite.
+1. افتح [تِلوا](https://tilwa.vercel.app)، ثم أدخل رمز مساحة الديمو المحفوظ محليًا في `.tilwa-private/demo-workspace-code` دون مشاركته علنًا. اختر **مدرّس**: المحاضرات الست والملحق مستوردة ومراجعة بالفعل. افتح المصادر والخريطة الكاملة، ثم الجلسة والسؤال العربي/الإنجليزي. الخريطة والجلسة والسؤال الجديد المعدّل بنتيجة **70%** معتمدة ومنشورة. يمكنك توليد مقترح جديد ومراجعته قبل اعتماده؛ الدخول الحالي لا ينشئ مساحة أو يعيد تهيئة البيانات.
+2. سجّل الخروج واختر **طالب** بنفس المساحة؛ يحتفظ المتصفح برمزها. افتح الجلسة المعتمدة واسأل «ليه الـRecall هنا 60%؟». افتح مصدر L4 ص18–19، ثم حل سؤال التدريب الجديد. التجربة المنشورة وPreview يحفظان البيانات في Neon؛ التشغيل المحلي الصريح يستخدم PostgreSQL/PGlite.
 3. من التفضيلات احتفظ برمز المساحة للعودة من متصفح آخر؛ هو رمز وصول لحسابات الديمو الثلاثة. سجل الخروج ثم ادخل بنفس الرمز للتحقق من التقدّم.
 4. اختر **مرشد أكاديمي** لمراجعة دليل الطالب المعيّن والتوصية وRubric أعماله. حساب المدرّس يستطيع متابعة الجودة والتدخلات ومراجعة الإجابات المفتوحة.
 
@@ -36,7 +40,7 @@ In the default local/Preview sandbox, a fresh visitor can receive a separate syn
 
 في التجربة المحلية وPreview الافتراضي، يمكن إنشاء مساحة اصطناعية منفصلة للزائر الجديد. أما تجربة الإنتاج بالدعوة فتتطلب الإعدادات الثلاثة المذكورة ورمز مساحة اصطناعية موجودة مسبقًا؛ ولا تنشئ مساحة جديدة للزائر. اختيار الطالب أو المدرّس أو المرشد هنا يخص حسابات الديمو الاصطناعية، وليس تسجيل دخول رسميًا لحسابات جامعة.
 
-Signed HttpOnly cookies identify sessions; client role headers/query params confer no authority. The workspace code is a bearer credential for all three synthetic demo roles. Server membership, course, advisor-assignment and protected-exam checks still apply. Institutional access needs verified identity-to-membership mapping, such as SSO, with those authorization and RLS controls retained. See [invite-only configuration and hosted acceptance](docs/hosted-pilot-verification.md); the configuration instructions alone do not establish a successful Production deployment.
+Signed HttpOnly cookies identify sessions; client role headers/query params confer no authority. The workspace code is a bearer credential for all three synthetic demo roles. Server membership, course, advisor-assignment and protected-exam checks still apply. Institutional access needs verified identity-to-membership mapping, such as SSO, with those authorization and RLS controls retained. See [invite-only configuration and hosted acceptance](docs/hosted-pilot-verification.md) for the recorded deployment and checks.
 
 ## Neon, Gemini and Vercel / الإعداد والنشر
 

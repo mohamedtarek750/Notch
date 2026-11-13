@@ -1,5 +1,7 @@
 # Invite-only hosted pilot / تجربة مستضافة بالدعوة
 
+**Deployed 13 November 2026:** [https://tilwa.vercel.app](https://tilwa.vercel.app). Open the site directly and enter the private code for the existing synthetic workspace, then choose a demo role. The same build passed staged acceptance and was promoted without rebuilding. [Deployment receipt](evidence/hosted-pilot-deployment.json) · [Staged 14-check acceptance](evidence/hosted-pilot-staged.json) · [Canonical 13-check acceptance](evidence/hosted-pilot-production.json) · [Canonical 9-check browser acceptance](evidence/hosted-pilot-production-browser.json) · [Measured verification and limits](verification.md). The canonical run deliberately skipped another Gemini call after the staged real-model pass.
+
 The application denies demo sign-in on a Vercel Production host by default. The synthetic pilot exception requires **all three server-side settings**, scoped to the intended deployment:
 
 ```dotenv
@@ -16,7 +18,7 @@ Invite-only entry requires a valid recovery code for an **existing synthetic wor
 
 تتطلب تجربة الإنتاج الإعدادات الثلاثة أعلاه ورمز مساحة اصطناعية موجودة مسبقًا. لا تنشئ مساحة للزائر دون دعوة، وتسمح بالعودة عبر رمز المساحة أو ملف الارتباط المحفوظ. اختيار دور الطالب أو المدرّس أو المرشد يخص حسابات وبيانات متعلمين اصطناعية؛ ولا يحل محل هوية الجامعة أو تسجيل الدخول الموحد. تظل صلاحيات العضوية والمقرر والطالب المعيّن ووضع الامتحان مطبقة على السيرفر.
 
-The role selector is for this synthetic pilot, not institutional authentication. Membership, course permissions, advisor assignments, protected-exam policy and tenant RLS remain enforced. Institutional access requires verified identity-to-membership integration. This document describes configuration and checks; it does **not** report a completed Production deployment.
+The role selector is for this synthetic pilot, not institutional authentication. Membership, course permissions, advisor assignments, protected-exam policy and tenant RLS remain enforced. Institutional access requires verified identity-to-membership integration. The evidence linked above records this deployment; the settings here describe how its access mode is configured.
 
 ## Hosted acceptance / التحقق من التجربة المستضافة
 

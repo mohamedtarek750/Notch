@@ -1,5 +1,25 @@
 # Verification / نتائج التحقق
 
+## Current hosted pilot — 13 November 2026 / التجربة المنشورة الحالية
+
+**[https://tilwa.vercel.app](https://tilwa.vercel.app) is live** with invite-only access to an existing synthetic workspace. The root page is publicly reachable without Vercel login; data access requires its private workspace code. Build `a8f229e6e30015a5049cf26a490362633f9f4d9b` was accepted on a staged Production deployment and promoted **without rebuilding**. [Deployment receipt](evidence/hosted-pilot-deployment.json).
+
+| Check | Result | Evidence and actual boundary |
+| --- | --- | --- |
+| Current automated suite | **148/148 PASS** | Local PostgreSQL/PGlite and injected provider fixtures; **offline**, not live Neon/Gemini. [Every result](evidence/hosted-pilot-offline-tests.json) |
+| TypeScript / production build | **PASS** | Node.js 24.x; recorded with the offline test evidence |
+| Staged Production HTTP / Neon | **14/14 PASS** | Three invited roles, invitation refusal without tenant creation, role permissions, all 149 approved locators, advisor evidence and persisted progress; one real tutor call. [Report](evidence/hosted-pilot-staged.json) |
+| Staged Production map browser | **7/7 PASS** | Real Chromium/Neon: all 225 concepts and 259 relationships, six lecture filters, AR/EN source jumps, accessible list, 390px RTL/LTR and exports; **zero model calls**. [Report](evidence/hosted-pilot-staged-browser.json) |
+| Canonical-domain HTTP / Neon | **13/13 requested checks PASS** | One live-Gemini check intentionally **SKIPPED** after promotion of the already accepted build; **zero model calls**. [Report](evidence/hosted-pilot-production.json) |
+| Canonical-domain browser | **9/9 PASS** | Two AR/EN invitation-login checks and seven full-map/source/export/mobile checks using real Chromium and Neon; **zero model calls**, zero learning attempts and no runtime errors. [Report](evidence/hosted-pilot-production-browser.json) |
+| Existing history and sources | **PASS** | All **15 existing records unchanged**, no missing records, all **7 sources unchanged**. Two expected `tutor_memory` records were added by the staged probes; auth sessions/model traces are outside this snapshot. [Read-only Neon comparison](evidence/hosted-pilot-history.json) |
+
+The completed staged tutor check used **one real `gemini-3.5-flash-lite` call and 2,023 tokens**, answering the Arabic Recall question with openable **L4 p.19 and Umbrella U29** citations. A persisted Neon trace and a pre-call source snapshot verified retrieval before generation; progress remained unchanged. An earlier, superseded staged check was interrupted during credential cleanup: its provider call completed with **2,002 tokens**, but full HTTP answer/citation acceptance was not captured. It is recorded as **interrupted, not passed**, and explains the other added tutor-memory record. [Superseded-stage record](evidence/hosted-pilot-superseded-stage.json). These two calls are separate from the historical Preview calls below.
+
+اختبار النطاق النهائي لم يُعِد استدعاء Gemini بعد ترقية البناء نفسه. النتيجة الفعلية للنموذج جاءت من الاختبار المرحلي المكتمل، بينما فحص النطاق النهائي تحقّق من الدخول والصلاحيات والمصادر واستمرار التقدّم. هذه حسابات ديمو اصطناعية وليست ربطًا بهوية جامعة أو SIS حي.
+
+## Earlier comprehensive release and initial acceptance / الإصدار السابق والقبول الأولي
+
 **Comprehensive map extension:** 225/225 concepts paired with approved lecture and Umbrella locators, 259 relationships, 137/137 reviewed pages, 103/103 teaching/figure pages mapped, and 45 original bilingual supplementary sections. Real Neon publication preserved all 14 existing learner records unchanged. [Publication evidence](evidence/comprehensive-map.json). Six real Gemini advisories succeeded from seven attempts; the rejected output was never published, and the retry succeeded. Successful calls used 11,351 tokens; failed-call usage is unknown. All seven traces show retrieval before generation, with four bounded evidence chunks per call. [Provider traces](evidence/comprehensive-gemini-traces.json). **128 offline tests passed**, with a further 46-test publication regression; these use local PostgreSQL and injected model fixtures. [Every offline result](evidence/comprehensive-offline-tests.json). See [complete map scope and replay](comprehensive-map.md).
 
 The final comprehensive map also passed **7/7 real Vercel/Neon browser checks**, including all concepts, six lecture filters, bilingual source jumps, the accessible list, mobile layout and complete HTML/JSON/CSV exports. [Browser evidence and access cleanup](evidence/comprehensive-preview-browser.json). The post-publication real tutor regression returned **6/(6+4)=60%** with L4 pp.18–19 citations, using one Gemini call and 1,635 tokens; [direct guarded-server test](evidence/comprehensive-tutor-regression.json). [Download the full map](exports/Tilwa-CET351-approved-map.html).
@@ -45,6 +65,8 @@ Security tests cover non-owner RLS, two-tenant isolation, revoked membership/enr
 Structured references and arithmetic validation do not prove full semantic entailment. The current agent review covers all six lecture inventories and the stated numerical corrections. Broader multilingual adversarial evaluation and institutional human academic review remain separate work.
 
 ## Rerun / إعادة الاختبار
+
+For the current invite-only hosted deployment, follow [hosted pilot verification](hosted-pilot-verification.md). Its canonical HTTP/Neon check does not call Gemini unless the separate metered flag is explicitly enabled; do not repeat the accepted staged call merely to verify the same promoted build.
 
 Local checks:
 

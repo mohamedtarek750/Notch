@@ -1,0 +1,166 @@
+{
+  "target": "https://tilwa.vercel.app",
+  "deploymentId": "dpl_HTnwsVhFccUfcSzXkicgRr4eJQVv",
+  "testedCommit": "a8f229e",
+  "checkedAt": "2026-11-13T20:28:59.926Z",
+  "status": "passed",
+  "environment": "Canonical Vercel Production, real Neon reviewed synthetic pilot workspace",
+  "scope": "Read-only browser rendering, approved source viewing and export verification; session sign-in and missing-invite refusal checks only.",
+  "testType": "Real Chromium browser and HTTPS/API integration; no mocks",
+  "tlsVerification": true,
+  "geminiCalls": 0,
+  "learningAttemptsCreated": 0,
+  "browserRuntimeErrors": 0,
+  "passedChecks": 9,
+  "totalChecks": 9,
+  "checks": [
+    {
+      "name": "Arabic mobile login: invite-only message, code field before enabled role buttons, localized missing-code refusal, no overflow",
+      "status": "passed"
+    },
+    {
+      "name": "English/LTR login and localized missing-code refusal; prior-language error clears on switch",
+      "status": "passed"
+    },
+    {
+      "name": "All published concepts render without the former twelve-node cap",
+      "status": "passed",
+      "concepts": 225,
+      "edges": 259
+    },
+    {
+      "name": "L1–L6 filters show every matching concept and select a matching detail",
+      "status": "passed"
+    },
+    {
+      "name": "Arabic and English search select a concept with working exact lecture and Umbrella locators",
+      "status": "passed"
+    },
+    {
+      "name": "Accessible table contains the complete published concept map",
+      "status": "passed"
+    },
+    {
+      "name": "English/LTR retains the selected concept and map state",
+      "status": "passed"
+    },
+    {
+      "name": "Arabic mobile map renders at 390px without horizontal viewport overflow",
+      "status": "passed"
+    },
+    {
+      "name": "Filtered UI exports the entire approved map as JSON, CSV and bilingual HTML with absolute source URLs and no private source text/keys",
+      "status": "passed",
+      "approvedConcepts": 225,
+      "approvedRelationships": 259
+    }
+  ],
+  "map": {
+    "releaseId": "939e6558-5036-40d1-8435-4ef7f058a0c5",
+    "concepts": 225,
+    "relationships": 259,
+    "lectures": 6,
+    "reviewedPageRecords": 137,
+    "approvedLectureEvidencePages": 104,
+    "mappedTeachingPages": 103,
+    "coverage": [
+      {
+        "sourceKey": "CET351-L1",
+        "conceptCount": 55,
+        "pageCount": 18,
+        "reviewedPages": 18,
+        "approvedPageCount": 12,
+        "teachingPages": 12,
+        "mappedTeachingPages": 12,
+        "totalPages": 18,
+        "status": "complete"
+      },
+      {
+        "sourceKey": "CET351-L2",
+        "conceptCount": 76,
+        "pageCount": 24,
+        "reviewedPages": 24,
+        "approvedPageCount": 19,
+        "teachingPages": 19,
+        "mappedTeachingPages": 19,
+        "totalPages": 24,
+        "status": "complete"
+      },
+      {
+        "sourceKey": "CET351-L3",
+        "conceptCount": 22,
+        "pageCount": 18,
+        "reviewedPages": 18,
+        "approvedPageCount": 12,
+        "teachingPages": 12,
+        "mappedTeachingPages": 12,
+        "totalPages": 18,
+        "status": "complete"
+      },
+      {
+        "sourceKey": "CET351-L4",
+        "conceptCount": 40,
+        "pageCount": 25,
+        "reviewedPages": 25,
+        "approvedPageCount": 19,
+        "teachingPages": 19,
+        "mappedTeachingPages": 19,
+        "totalPages": 25,
+        "status": "complete"
+      },
+      {
+        "sourceKey": "CET351-L5",
+        "conceptCount": 44,
+        "pageCount": 26,
+        "reviewedPages": 26,
+        "approvedPageCount": 21,
+        "teachingPages": 21,
+        "mappedTeachingPages": 21,
+        "totalPages": 26,
+        "status": "complete"
+      },
+      {
+        "sourceKey": "CET351-L6",
+        "conceptCount": 31,
+        "pageCount": 26,
+        "reviewedPages": 26,
+        "approvedPageCount": 21,
+        "teachingPages": 20,
+        "mappedTeachingPages": 20,
+        "totalPages": 26,
+        "status": "complete"
+      }
+    ],
+    "exportFormats": [
+      "JSON",
+      "CSV",
+      "bilingual HTML"
+    ],
+    "exportSourceOrigin": "https://tilwa.vercel.app",
+    "sourceViewerSamplesOpened": 2
+  },
+  "visualReview": {
+    "inspected": [
+      "Arabic mobile login",
+      "English desktop login",
+      "Arabic desktop map",
+      "Arabic mobile map"
+    ],
+    "captured": [
+      "Arabic desktop login",
+      "English desktop login",
+      "Arabic mobile login",
+      "English mobile login",
+      "Arabic desktop map",
+      "English desktop map",
+      "Arabic mobile map"
+    ],
+    "layout": "Code field appears before the role buttons. Arabic RTL and English LTR remain readable. No horizontal viewport overflow at 390px mobile or 1305px desktop.",
+    "nonBlockingObservation": "The reference font renders the external-link arrow on source locator links as a small fallback glyph; source labels, page/section locators and links remain functional."
+  },
+  "privacy": "This summary excludes access codes, session cookies, private source passages and local credential/artifact paths. Screenshots and full browser artifacts remain private.",
+  "limits": [
+    "Browser source-opening checks sample one approved lecture page and one Umbrella section; they do not open every locator individually.",
+    "This browser run made no Gemini calls and does not substitute for the separate real-provider API acceptance run."
+  ]
+}

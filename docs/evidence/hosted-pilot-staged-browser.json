@@ -1,0 +1,47 @@
+{
+  "mode": "Real browser + Neon, published map only",
+  "at": "2026-11-13T20:27:37.159Z",
+  "checks": [
+    {
+      "name": "All published concepts render without the former twelve-node cap",
+      "status": "passed",
+      "concepts": 225,
+      "edges": 259
+    },
+    {
+      "name": "L1–L6 filters show every matching concept and select a matching detail",
+      "status": "passed"
+    },
+    {
+      "name": "Arabic and English search select a concept with working exact lecture and Umbrella locators",
+      "status": "passed"
+    },
+    {
+      "name": "Accessible table contains the complete published concept map",
+      "status": "passed"
+    },
+    {
+      "name": "English/LTR retains the selected concept and map state",
+      "status": "passed"
+    },
+    {
+      "name": "Arabic mobile map renders at 390px without horizontal viewport overflow",
+      "status": "passed"
+    },
+    {
+      "name": "Filtered UI exports the entire approved map as JSON, CSV and bilingual HTML with absolute source URLs and no private source text/keys",
+      "status": "passed",
+      "approvedConcepts": 225,
+      "approvedRelationships": 259
+    }
+  ],
+  "errors": [],
+  "providerCalls": 0,
+  "releaseId": "939e6558-5036-40d1-8435-4ef7f058a0c5",
+  "concepts": 225,
+  "relationships": 259,
+  "status": "passed",
+  "target": "https://tilwa-4blvdxyy2-mohamedtarek750s-projects.vercel.app",
+  "sourceCommit": "a8f229e6e30015a5049cf26a490362633f9f4d9b",
+  "artifacts": "Screenshots and downloaded source-map exports retained privately; no private source text or credentials included in this report."
+}

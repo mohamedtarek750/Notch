@@ -1,0 +1,18 @@
+{
+  "status": "interrupted",
+  "target": "https://tilwa-p6jkk9e1j-mohamedtarek750s-projects.vercel.app",
+  "sourceCommit": "a8f229e6e30015a5049cf26a490362633f9f4d9b",
+  "reason": "Stopped acceptance to remove unused owner-credential aliases from Production settings before canonical cutover. Provider call raced cancellation; completed HTTP answer/citation acceptance was not captured.",
+  "realProviderTraces": [
+    {
+      "model_id": "gemini-3.5-flash-lite",
+      "outcome": "answered",
+      "tokens": 2002,
+      "retrieved_at": "2026-11-13T20:23:24.637Z",
+      "generated_at": "2026-11-13T20:23:24.660Z",
+      "evidence_count": 4
+    }
+  ],
+  "temporaryTestBypassRevoked": true,
+  "canonicalChanged": false
+}

@@ -1,0 +1,22 @@
+{
+  "at": "2026-11-13T20:27:46.071Z",
+  "verification": "real-neon-read-only-snapshots",
+  "beforeAt": "2026-11-13T20:14:43.685Z",
+  "afterAt": "2026-11-13T20:27:45.854Z",
+  "previousRecords": 15,
+  "retainedUnchanged": 15,
+  "missing": 0,
+  "changed": [],
+  "added": [
+    {
+      "kind": "tutor_memory"
+    },
+    {
+      "kind": "tutor_memory"
+    }
+  ],
+  "currentSources": 7,
+  "sourcesUnchanged": true,
+  "status": "passed",
+  "boundary": "Authentication sessions and model traces are outside the learning-history snapshot; the acceptance runner separately checks the actual model trace. One staged tutor call can add a tutor_memory record."
+}

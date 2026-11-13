@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "mode": "Live Vercel Production; invite-only synthetic pilot",
+  "at": "2026-11-13T20:28:19.425Z",
+  "canonicalUrl": "https://tilwa.vercel.app",
+  "project": {
+    "id": "prj_GeqQnDAyNewFQBJ0CqcBrKroooHI",
+    "name": "tilwa",
+    "framework": "nextjs",
+    "nodeVersion": "24.x",
+    "productionBranchUnchanged": true
+  },
+  "deployment": {
+    "id": "dpl_HTnwsVhFccUfcSzXkicgRr4eJQVv",
+    "url": "https://tilwa-4blvdxyy2-mohamedtarek750s-projects.vercel.app",
+    "sourceCommit": "a8f229e6e30015a5049cf26a490362633f9f4d9b",
+    "target": "production",
+    "readyState": "READY",
+    "stagedBeforeDomainCutover": true,
+    "promotedWithoutRebuild": true,
+    "promotedAt": "2026-11-13T20:28:05.513Z"
+  },
+  "runtime": {
+    "productionEnvironmentKeys": [
+      "DATABASE_URL",
+      "DEMO_MODE",
+      "GEMINI_API_KEY",
+      "GEMINI_MODEL",
+      "LOCAL_DATABASE",
+      "PILOT_ACCESS_MODE",
+      "SESSION_SECRET",
+      "TILWA_ENV"
+    ],
+    "nonownerDatabaseRoleAndForcedRlsVerified": true,
+    "productionGeminiSecretPreserved": true,
+    "unusedIntegrationAliasesRemovedFromProduction": 17,
+    "otherEnvironmentTargetsAndValuesPreserved": true,
+    "migrationsRun": false,
+    "seedsRun": false
+  },
+  "stagedAcceptance": {
+    "status": "passed",
+    "report": "docs/evidence/hosted-pilot-staged.json",
+    "verifiedTutorRequests": 1,
+    "model": "real-gemini-verified"
+  },
+  "rollback": {
+    "previousDeploymentId": "dpl_GWPKpHCVkfZ3DAvib4iKcfDryRj5",
+    "previousSourceCommit": "626d977214279c5f713b8ace31595f9b813f0f66",
+    "previousDeploymentRetained": true
+  },
+  "supersededStage": {
+    "id": "dpl_5bkRPmNkowrci62AD9p8QSsjnd5W",
+    "at": "2026-11-13T20:28:18.104Z",
+    "canonicalUnaffected": true,
+    "previousProductionRollbackRetained": true
+  },
+  "protection": {
+    "projectSsoProtection": {
+      "deploymentType": "all_except_custom_domains"
+    },
+    "existingUserPreviewSharePreserved": true
+  }
+}
