@@ -18,7 +18,8 @@
     "provision:preview": "tsx scripts/provision-preview.ts",
     "deploy:preview": "vercel deploy --yes",
     "format": "prettier --write src scripts tests *.ts README.md docs/*.md",
-    "test:production": "tsx scripts/check-production.ts"
+    "test:production": "tsx scripts/check-production.ts",
+    "deploy:existing": "tsx scripts/deploy-existing.ts"
   },
   "engines": {
     "node": ">=22"

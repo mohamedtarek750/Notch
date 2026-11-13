@@ -1,8 +1,11 @@
 import { db } from "../src/server/db";
 import { migrateDatabase } from "../src/server/migrate";
 async function main() {
-  if (process.env.MIGRATION_DATABASE_URL)
-    process.env.DATABASE_URL = process.env.MIGRATION_DATABASE_URL;
+  const setupConnection =
+    process.env.MIGRATION_DATABASE_URL ||
+    process.env.DATABASE_URL_UNPOOLED ||
+    process.env.POSTGRES_URL_NON_POOLING;
+  if (setupConnection) process.env.DATABASE_URL = setupConnection;
   try {
     const applied = await migrateDatabase();
     console.log(

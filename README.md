@@ -32,7 +32,17 @@ Each fresh visitor receives a separate synthetic workspace. The role selector is
 
 ## Neon, Gemini and Vercel / الإعداد والنشر
 
-The database is designed from scratch in [migrations](migrations). There is no requirement to supply an existing application schema. With authorized account credentials, the [provisioning runner](docs/preview-provisioning.md) creates isolated Neon and Vercel resources, applies the schema, creates a non-owner pooled runtime login and deploys only to Preview.
+The database is designed from scratch in [migrations](migrations). **“Migrations” are the SQL commands that create Tilwa’s tables in an empty database. You do not need to supply an old database, migration files or student records.**
+
+For the existing Neon database and the Vercel project `mohamedtarek750s-projects/tilwa`, use [deploy to existing resources](docs/existing-deployment.md). This path initializes the tables, creates the demo accounts and deploys a Preview in that project. It does not create another Neon or Vercel project and needs no Neon API key.
+
+```bash
+DEPLOY_EXISTING=1 npm run deploy:existing
+```
+
+Supply the existing owner connection as `DATABASE_URL`, the Gemini key and authorized Vercel access through secure settings. The deployment command handles the schema and restricted application connection. Course PDFs are uploaded separately through the instructor interface or the private import command.
+
+The alternative provisioner below is only for creating **new** provider resources. With authorized account credentials, the [provisioning runner](docs/preview-provisioning.md) creates isolated Neon and Vercel resources, applies the schema, creates a non-owner pooled runtime login and deploys only to Preview.
 
 Set `NEON_API_KEY`, `VERCEL_TOKEN`, `GEMINI_API_KEY` securely; never put values in chat or Git. The candidate `GEMINI_MODEL=gemini-2.5-flash` is **not yet verified against a Google project**. Provisioning verifies its actual model ID before deploying. If a cloud proxy supplies credential placeholders, use portable raw secret bindings for deployment or set the Gemini secret directly in Vercel Preview.
 

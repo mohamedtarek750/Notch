@@ -69,6 +69,7 @@ async function driver(): Promise<Driver> {
       const pool = new Pool({
         connectionString: connection.toString(),
         ssl: { rejectUnauthorized: true },
+        enableChannelBinding: true,
         max: 5,
         connectionTimeoutMillis: 10000,
         idleTimeoutMillis: 20000,

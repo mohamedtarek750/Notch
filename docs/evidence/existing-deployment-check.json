@@ -1,0 +1,67 @@
+{
+  "date": "2026-11-13T13:04:54.558Z",
+  "workflow": "Deploy to existing Neon database and Vercel project; no resource creation",
+  "local": {
+    "passed": 98,
+    "failed": 0,
+    "pending": 0,
+    "typecheck": "passed",
+    "productionBuild": "passed",
+    "suites": [
+      {
+        "file": "ai-knowledge.test.ts",
+        "status": "passed",
+        "count": 22
+      },
+      {
+        "file": "auth-db.test.ts",
+        "status": "passed",
+        "count": 12
+      },
+      {
+        "file": "deploy-existing.test.ts",
+        "status": "passed",
+        "count": 9
+      },
+      {
+        "file": "learning.test.ts",
+        "status": "passed",
+        "count": 13
+      },
+      {
+        "file": "provision.test.ts",
+        "status": "passed",
+        "count": 3
+      },
+      {
+        "file": "runtime-security.test.ts",
+        "status": "passed",
+        "count": 13
+      },
+      {
+        "file": "sis.test.ts",
+        "status": "passed",
+        "count": 6
+      },
+      {
+        "file": "sources.test.ts",
+        "status": "passed",
+        "count": 12
+      },
+      {
+        "file": "tutor-memory.test.ts",
+        "status": "passed",
+        "count": 8
+      }
+    ]
+  },
+  "remote": {
+    "databaseInitialization": "blocked; not attempted",
+    "gemini": "blocked; not attempted",
+    "vercelDeployment": "blocked; not attempted",
+    "runtimeBindings": "DATABASE_URL, GEMINI_API_KEY and Vercel credentials unavailable",
+    "network": "Vercel/Neon HTTPS CONNECT denied with 403; PostgreSQL endpoint DNS unavailable",
+    "plugins": "No Neon or Vercel tools exposed to this chat"
+  },
+  "credentialHandling": "No supplied credentials saved to source, logs or deployment receipts"
+}

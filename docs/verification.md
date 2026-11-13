@@ -18,6 +18,16 @@ Run date: **12 November 2026**. This report distinguishes actual local SQL/brows
 | Vercel Preview                           | BLOCKED, not deployed            | `VERCEL_TOKEN`/authorized account access absent. There is no Preview URL yet                                                                             |
 | University SIS                           | NOT CONNECTED                    | Local-demo / external-contract fixtures only; signed adapter contract and preservation tested                                                            |
 
+## Existing project follow-up — 13 November 2026
+
+The user has now created the Neon database and Vercel project. The new `deploy:existing` command reuses them, initializes empty tables and deploys Preview without a Neon API key or duplicate projects. It accepts `DATABASE_URL_UNPOOLED` and `POSTGRES_URL_NON_POOLING`; session-signing configuration is generated or preserved automatically.
+
+**98 local tests passed, 0 failed, 0 skipped; TypeScript and production build passed.** Nine added tests cover existing-resource selection, supplied Neon aliases, read-only database inspection and Preview configuration boundaries. These remain offline tests, not a live provider pass. The seven browser journeys above were last executed on 12 November.
+
+The attempted deployment exited 2 before remote changes: secure credentials are not injected into the running environment, Neon/Vercel tools are not exposed in this chat, and current network policy blocks provider access. Database connection details supplied in chat were not placed in code or logs. No remote tables were created and no deployment URL was obtained.
+
+[Existing-resource setup](existing-deployment.md) · [Measured follow-up result](evidence/existing-deployment-check.json).
+
 ## Seven production browser journeys
 
 1. Calculate Recall correctly, choose a poor metric and retain separate objective evidence in AR/EN.
