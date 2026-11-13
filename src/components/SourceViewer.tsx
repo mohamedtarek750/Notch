@@ -77,11 +77,17 @@ export function SourceViewer({ id }: { id: string }) {
                 </h2>
                 <blockquote dir="auto">{c.text_content}</blockquote>
                 <small>
-                  {t(
-                    "النص الأصلي المستخرج؛ أي ترجمة في الشرح لا تغيّر الأصل.",
-                    "Original extracted passage; lesson translations do not replace the source.",
-                  )}
+                  {data.material.metadata?.extractionRevision
+                    ? t(
+                        "استخراج مراجَع؛ أي تصحيح موضح في النص وملاحظة المراجعة. ملف PDF الأصلي محفوظ دون تغيير.",
+                        "Reviewed extraction; corrections are identified in the passage and review note. The original PDF remains unchanged.",
+                      )
+                    : t(
+                        "النص الأصلي المستخرج؛ أي ترجمة في الشرح لا تغيّر الأصل.",
+                        "Original extracted passage; lesson translations do not replace the source.",
+                      )}
                 </small>
+                {c.review_note && <p dir="auto">{c.review_note}</p>}
               </section>
             ))}
           <footer>
