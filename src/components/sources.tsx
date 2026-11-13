@@ -1076,7 +1076,9 @@ function QuestionBank({
           primary
           disabled={busy || !picked.length}
           onClick={async () => {
-            await act({ action: "generate-bank", conceptIds: picked });
+            // One concept per request keeps each call inside the serverless time limit.
+            for (const conceptId of picked)
+              await act({ action: "generate-bank", conceptIds: [conceptId] });
             P([]);
           }}
         >

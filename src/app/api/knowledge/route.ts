@@ -23,6 +23,7 @@ import {
   saveBankSettings,
 } from "@/server/question-bank";
 import { z } from "zod";
+import { GeminiGateway, indexEmbeddings } from "@/server/ai";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 const input = z.object({
@@ -127,8 +128,14 @@ export async function POST(req: Request) {
       return Response.json(await generateTeaching(ctx));
     if (body.action === "propose")
       return Response.json(await proposeKnowledge(ctx, undefined, body.scope));
-    if (body.action === "publish")
-      return Response.json(await publishKnowledge(ctx));
+    if (body.action === "publish") {
+      const release = await publishKnowledge(ctx);
+      // Best effort: the tutor also tops the index up on demand.
+      const index = await indexEmbeddings(ctx, new GeminiGateway(), 200).catch(
+        () => ({ indexed: 0 }),
+      );
+      return Response.json({ ...release, ...index });
+    }
     if (!body.id || !body.status)
       return Response.json({ error: "invalid_review" }, { status: 400 });
     return Response.json(

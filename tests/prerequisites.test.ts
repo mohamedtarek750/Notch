@@ -39,7 +39,12 @@ import {
   defaultSettings,
 } from "../src/server/question-bank";
 import { reviewProposal } from "../src/server/knowledge";
-import { tutor, tutorInput, isEducational } from "../src/server/ai";
+import {
+  tutor,
+  tutorInput,
+  isEducational,
+  conceptsNamed,
+} from "../src/server/ai";
 import { extractionQuality } from "../src/server/prerequisites";
 import { importCustomLecture } from "../src/server/sources";
 import { syntheticPdf } from "./fixtures/synthetic-pdf";
@@ -142,7 +147,7 @@ const model: ModelGateway = {
           },
           {
             from: "bt",
-            to: "cp",
+            to: "not-a-concept",
             type: "prerequisite",
             evidenceIds: [bayes],
             reason: { ar: "خارج المحاضرة", en: "Dependent outside lecture" },
@@ -720,5 +725,91 @@ describe("question bank settings and generation", () => {
     await expect(
       extractPrerequisites(instructor, model, { lectureSourceKey: "OTHER" }),
     ).rejects.toBeTruthy();
+  });
+});
+
+describe("retrieval by meaning and by concept words", () => {
+  it("matches a concept by its distinctive words in either language", () => {
+    const graph = {
+      concepts: [
+        {
+          id: "nb",
+          label: { ar: "مصنِّف بايز الساذج", en: "Naive Bayes Classifier" },
+          aliases: ["NB"],
+          evidenceIds: [],
+        },
+        {
+          id: "cv",
+          label: { ar: "التحقق المتقاطع", en: "Cross-Validation" },
+          evidenceIds: [],
+        },
+      ],
+      edges: [],
+    };
+    const named = (q: string) => conceptsNamed(q, graph).map((c) => c.id);
+    expect(named("ممكن تشرحلي بايز الساذج بيشتغل ازاي؟")).toEqual(["nb"]);
+    expect(named("how does naive bayes work")).toEqual(["nb"]);
+    expect(named("ما هو التحقق المتقاطع؟")).toEqual(["cv"]);
+    // Generic words alone never name a concept.
+    expect(named("ما أفضل مصنِّف؟")).toEqual([]);
+    expect(named("which classifier is best")).toEqual([]);
+  });
+  it("finds an English page for an Arabic question through the semantic index", async () => {
+    // Deterministic stand-in for an embedding model: NOT Gemini. Texts about clustering
+    // (in either language) share one direction, food another, everything else a third.
+    const about = (t: string) => /k-means|تجميع|العنقدة/i.test(t);
+    const food = (t: string) => /مطعم|restaurant/i.test(t);
+    let payload: any;
+    const model: ModelGateway = {
+      modelId: "deterministic-semantic-replay-NOT-GEMINI",
+      embeddingModelId: "deterministic-embedding-NOT-GEMINI",
+      async embed(texts) {
+        return texts.map((t) =>
+          about(t) ? [1, 0, 0] : food(t) ? [0, 0, 1] : [0, 1, 0],
+        );
+      },
+      async generate(request) {
+        payload = request.payload;
+        return {
+          tokens: 30,
+          value: {
+            disposition: "answered",
+            answer: "شرح من المصدر.",
+            evidenceIds: [payload.authorizedEvidence[0].id],
+            calculations: [],
+          },
+        };
+      },
+    };
+    const lecture = (await listMaterials(instructor)).lectures[0];
+    await approvePendingUmbrella(instructor, lecture.currentVersionId);
+    await publishKnowledge(instructor);
+    // No shared words and no concept named: only meaning connects question and page.
+    const answer = await tutor(
+      student,
+      tutorInput.parse({ question: "كيف تعمل العنقدة؟" }),
+      model,
+    );
+    expect(answer.disposition).toBe("answered");
+    expect(payload.authorizedEvidence[0].text).toContain("k-means");
+    const unrelated = await tutor(
+      student,
+      tutorInput.parse({ question: "ما أفضل مطعم قريب؟" }),
+      model,
+    );
+    expect(unrelated.disposition).toBe("out_of_scope");
+    const lexicalOnly: ModelGateway = {
+      modelId: "deterministic-lexical-replay-NOT-GEMINI",
+      generate: model.generate,
+    };
+    expect(
+      (
+        await tutor(
+          student,
+          tutorInput.parse({ question: "كيف تعمل العنقدة؟" }),
+          lexicalOnly,
+        )
+      ).disposition,
+    ).toBe("out_of_scope");
   });
 });
