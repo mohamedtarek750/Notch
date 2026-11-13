@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { z } from "zod";
 import { db } from "./db";
 import {
   authorizeCourse,
+  authorizeCourseInTransaction,
   type AuthContext,
   type CourseOperation,
 } from "./auth";
@@ -49,6 +51,14 @@ export const sourceMessages: Record<string, [string, string]> = {
   unknown_source: [
     "اختر أحد ملفات المحاضرات الستة المعروفة.",
     "Choose one of the six expected lecture files.",
+  ],
+  stale_source: [
+    "تغيّرت نسخة المصدر؛ افتح النسخة الحالية وأعد المراجعة.",
+    "The source version changed; reopen the current version and review again.",
+  ],
+  invalid_review: [
+    "راجع الصفحات المحددة وحالة اعتماد كل صفحة.",
+    "Check the selected pages and their review decisions.",
   ],
 };
 export function sourceErrorResponse(error: unknown, language = "ar") {
@@ -278,12 +288,20 @@ type NewMaterial = {
   hash: string;
   pages: { text: string; page: number | null; section: string | null }[];
   metadata: Record<string, unknown>;
+  expectedCurrentVersion?: string;
+  authorization?: "write" | "publish";
 };
 async function persistMaterial(ctx: AuthContext, input: NewMaterial) {
   let id: string = randomUUID();
   let changed = 0;
   let deduplicated = false;
   await db.tenant(ctx.tenantId).transaction(async (tx) => {
+    await authorizeCourseInTransaction(
+      ctx,
+      COURSE,
+      input.authorization || "write",
+      tx,
+    );
     await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
       ctx.tenantId + ":source:" + input.sourceKey,
     ]);
@@ -297,6 +315,13 @@ async function persistMaterial(ctx: AuthContext, input: NewMaterial) {
       id = existing.id;
       deduplicated = true;
       return;
+    }
+    if (input.expectedCurrentVersion) {
+      const current = await tx.query(
+        "SELECT id FROM material_versions WHERE tenant_id=$1 AND source_key=$2 AND current_version=true AND id=$3",
+        [ctx.tenantId, input.sourceKey, input.expectedCurrentVersion],
+      );
+      if (current.rows.length !== 1) throw new SourceError("stale_source", 409);
     }
     const old = (
       await tx.query<{
@@ -390,7 +415,16 @@ export async function importSupplement(ctx: AuthContext, text: string) {
       )
   ).rows[0];
   if (prior) return { id: prior.id, deduplicated: true };
-  const sections = text.split(/(?=^## U\d)/m).filter((t) => /^## U\d/.test(t));
+  const sections = text
+    .split(/(?=^## U\d+\b)/m)
+    .filter((t) => /^## U\d+\b/.test(t));
+  const sectionIds = sections.map((t) => t.match(/^## (U\d+)\b/)?.[1]);
+  if (
+    !sections.length ||
+    sections.length > 100 ||
+    new Set(sectionIds).size !== sections.length
+  )
+    throw new SourceError("invalid_review");
   return persistMaterial(ctx, {
     sourceKey: "TILWA-PILOT-FOUNDATIONS",
     title: "Tilwa supplementary foundations / أساسيات مساندة",
@@ -402,9 +436,202 @@ export async function importSupplement(ctx: AuthContext, text: string) {
     pages: sections.map((t) => ({
       text: t.trim(),
       page: null,
-      section: t.match(/^## (U\d)/)?.[1] ?? null,
+      section: t.match(/^## (U\d+)\b/)?.[1] ?? null,
     })),
     metadata: { originalSupplement: true, gfg: false },
+  });
+}
+
+const extractCorrections = z
+  .array(
+    z.object({
+      chunkId: z.string().min(1).max(200),
+      text: z.string().trim().min(20).max(30000),
+      note: z.string().trim().min(10).max(2000),
+    }),
+  )
+  .min(1)
+  .max(100);
+
+/** One immutable extraction revision for a reviewed set of figure transcriptions/corrections.
+ * Original PDF bytes and historical source IDs remain available. Nothing is approved here.
+ */
+export async function reviseMaterialExtracts(
+  ctx: AuthContext,
+  versionId: string,
+  input: unknown,
+) {
+  await staff(ctx, "publish");
+  const corrections = extractCorrections.parse(input);
+  if (new Set(corrections.map((c) => c.chunkId)).size !== corrections.length)
+    throw new SourceError("invalid_review");
+  const scoped = db.tenant(ctx.tenantId);
+  const version = (
+    await scoped.query<
+      Material & { filename: string; mime_type: string; bytes: Buffer }
+    >(
+      "SELECT * FROM material_versions WHERE tenant_id=$1 AND id=$2 AND course_id=$3",
+      [ctx.tenantId, versionId, COURSE],
+    )
+  ).rows[0];
+  if (
+    !version ||
+    !version.bytes ||
+    !version.rights.extract ||
+    !version.rights.displayExcerpt ||
+    !version.rights.sendToModel
+  )
+    throw new SourceError("source_missing", 404);
+  const chunks = (
+    await scoped.query<{
+      id: string;
+      page: number | null;
+      section: string | null;
+      text_content: string;
+    }>(
+      "SELECT id,page,section,text_content FROM evidence_chunks WHERE tenant_id=$1 AND version_id=$2 ORDER BY page NULLS LAST,section",
+      [ctx.tenantId, versionId],
+    )
+  ).rows;
+  if (corrections.some((c) => !chunks.some((row) => row.id === c.chunkId)))
+    throw new SourceError("invalid_review");
+  const sorted = [...corrections].sort((a, b) =>
+    a.chunkId.localeCompare(b.chunkId),
+  );
+  const revision = await persistMaterial(ctx, {
+    sourceKey: version.source_key,
+    title: version.title,
+    role: version.role as "instructor" | "umbrella",
+    filename: version.filename,
+    mime: version.mime_type,
+    bytes: version.bytes,
+    hash: hashBytes(version.hash + JSON.stringify(sorted)),
+    expectedCurrentVersion: version.id,
+    authorization: "publish",
+    pages: chunks.map((c) => ({
+      page: c.page,
+      section: c.section,
+      text: corrections.find((x) => x.chunkId === c.id)?.text || c.text_content,
+    })),
+    metadata: {
+      ...version.metadata,
+      correctedFrom: version.id,
+      originalFileHash: version.metadata.originalFileHash || version.hash,
+      extractionRevision: true,
+      corrections: sorted.map((c) => ({
+        originalChunkId: c.chunkId,
+        note: c.note,
+      })),
+      reviewedBy: ctx.userId,
+    },
+  });
+  if (!revision.deduplicated)
+    await scoped.transaction(async (tx) => {
+      await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
+      const current = await tx.query(
+        "SELECT id FROM material_versions WHERE tenant_id=$1 AND id=$2 AND current_version=true FOR UPDATE",
+        [ctx.tenantId, revision.id],
+      );
+      if (!current.rows.length) throw new SourceError("stale_source", 409);
+      for (const correction of corrections) {
+        const old = chunks.find((c) => c.id === correction.chunkId)!;
+        await tx.query(
+          "UPDATE evidence_chunks SET status='pending',review_note=$3 WHERE tenant_id=$1 AND id=$2",
+          [
+            ctx.tenantId,
+            `${revision.id}-${old.section || old.page}`,
+            `Corrected extract pending review: ${correction.note}`,
+          ],
+        );
+      }
+      await tx.query(
+        "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'source_review',$3,$4,$5)",
+        [
+          ctx.tenantId,
+          randomUUID(),
+          COURSE,
+          ctx.userId,
+          JSON.stringify({
+            action: "batch-extraction-revision",
+            previousVersionId: version.id,
+            versionId: revision.id,
+            correctedChunks: sorted.map((c) => c.chunkId),
+            autoApproved: false,
+          }),
+        ],
+      );
+    });
+  return revision;
+}
+
+const batchReviews = z
+  .array(
+    z.object({
+      chunkId: z.string().min(1).max(200),
+      status: z.enum(["approved", "rejected", "quarantined"]),
+      note: z.string().trim().min(5).max(2000),
+    }),
+  )
+  .min(1)
+  .max(100);
+
+/** Explicit per-chunk review, atomically bound to the current material version. */
+export async function reviewMaterialChunks(
+  ctx: AuthContext,
+  versionId: string,
+  input: unknown,
+) {
+  await staff(ctx, "publish");
+  const decisions = batchReviews.parse(input);
+  if (new Set(decisions.map((c) => c.chunkId)).size !== decisions.length)
+    throw new SourceError("invalid_review");
+  return db.tenant(ctx.tenantId).transaction(async (tx) => {
+    await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
+    const current = await tx.query(
+      "SELECT id FROM material_versions WHERE tenant_id=$1 AND id=$2 AND course_id=$3 AND current_version=true FOR UPDATE",
+      [ctx.tenantId, versionId, COURSE],
+    );
+    if (!current.rows.length) throw new SourceError("stale_source", 409);
+    const chunks = (
+      await tx.query<{ id: string; status: string }>(
+        "SELECT id,status FROM evidence_chunks WHERE tenant_id=$1 AND version_id=$2 FOR UPDATE",
+        [ctx.tenantId, versionId],
+      )
+    ).rows;
+    if (decisions.some((c) => !chunks.some((r) => r.id === c.chunkId)))
+      throw new SourceError("invalid_review");
+    if (
+      decisions.some(
+        (c) =>
+          c.status === "approved" &&
+          chunks.find((r) => r.id === c.chunkId)!.status === "quarantined",
+      )
+    )
+      throw new SourceError("parse_failed");
+    await tx.query(
+      `UPDATE evidence_chunks c SET status=r.status,review_note=r.note,reviewed_by=$4,reviewed_at=now() FROM jsonb_to_recordset($3::jsonb) AS r("chunkId" text,status text,note text) WHERE c.tenant_id=$1 AND c.version_id=$2 AND c.id=r."chunkId"`,
+      [ctx.tenantId, versionId, JSON.stringify(decisions), ctx.userId],
+    );
+    await tx.query(
+      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'source_review',$3,$4,$5)",
+      [
+        ctx.tenantId,
+        randomUUID(),
+        COURSE,
+        ctx.userId,
+        JSON.stringify({
+          action: "explicit-batch-review",
+          versionId,
+          decisions,
+          institutionalSignoff: false,
+        }),
+      ],
+    );
+    return {
+      versionId,
+      reviewed: decisions.length,
+      approved: decisions.filter((c) => c.status === "approved").length,
+    };
   });
 }
 export async function getMaterial(ctx: AuthContext, id: string) {
@@ -469,35 +696,25 @@ export async function reviewPage(
   if (correctedText) {
     // A correction creates a new extraction version; historical source IDs remain immutable.
     const version = (
-      await db
-        .tenant(ctx.tenantId)
-        .query<{
-          id: string;
-          source_key: string;
-          title: string;
-          role: "instructor" | "umbrella";
-          filename: string;
-          mime_type: string;
-          bytes: Buffer;
-          hash: string;
-          metadata: Record<string, unknown>;
-        }>(
-          `SELECT v.* FROM material_versions v JOIN evidence_chunks c ON c.tenant_id=v.tenant_id AND c.version_id=v.id WHERE c.tenant_id=$1 AND c.id=$2`,
-          [ctx.tenantId, id],
-        )
+      await db.tenant(ctx.tenantId).query<{
+        id: string;
+        source_key: string;
+        title: string;
+        role: "instructor" | "umbrella";
+        filename: string;
+        mime_type: string;
+        bytes: Buffer;
+        hash: string;
+        metadata: Record<string, unknown>;
+      }>(`SELECT v.* FROM material_versions v JOIN evidence_chunks c ON c.tenant_id=v.tenant_id AND c.version_id=v.id WHERE c.tenant_id=$1 AND c.id=$2`, [ctx.tenantId, id])
     ).rows[0];
     const all = (
-      await db
-        .tenant(ctx.tenantId)
-        .query<{
-          id: string;
-          page: number | null;
-          section: string | null;
-          text_content: string;
-        }>(
-          "SELECT id,page,section,text_content FROM evidence_chunks WHERE tenant_id=$1 AND version_id=$2 ORDER BY page NULLS LAST,section",
-          [ctx.tenantId, version.id],
-        )
+      await db.tenant(ctx.tenantId).query<{
+        id: string;
+        page: number | null;
+        section: string | null;
+        text_content: string;
+      }>("SELECT id,page,section,text_content FROM evidence_chunks WHERE tenant_id=$1 AND version_id=$2 ORDER BY page NULLS LAST,section", [ctx.tenantId, version.id])
     ).rows;
     const pages = all.map((c) => ({
       text: c.id === id ? correctedText : c.text_content,

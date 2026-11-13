@@ -192,16 +192,27 @@ export async function retrieveEvidence(
   ctx: AuthContext,
   question: string,
   operation: "tutor" | "propose" | "generate" = "tutor",
+  scope?: {
+    lectureSourceKey: string;
+    pages?: number[];
+    umbrellaSections?: string[];
+  },
 ) {
   const staffDraft = operation === "propose";
   // Filter scope, rights, version and review BEFORE lexical ranking. Never retrieve assessment or private records.
   const rows = (
-    await db
-      .tenant(ctx.tenantId)
-      .query<Evidence>(
-        `SELECT c.id,c.version_id,c.page,c.section,c.text_content,c.language,c.status,c.review_note,v.source_key,v.title,v.role,v.hash FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND v.current_version=true AND v.rights->>'sendToModel'='true' AND v.rights->>'displayExcerpt'='true' AND c.status='approved' ${staffDraft ? "" : "AND v.status='published'"} ORDER BY v.source_key,c.page,c.section LIMIT 180`,
-        [ctx.tenantId, COURSE],
-      )
+    await db.tenant(ctx.tenantId).query<Evidence>(
+      `SELECT c.id,c.version_id,c.page,c.section,c.text_content,c.language,c.status,c.review_note,v.source_key,v.title,v.role,v.hash FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND v.current_version=true AND v.rights->>'sendToModel'='true' AND v.rights->>'displayExcerpt'='true' AND c.status='approved' ${staffDraft ? "" : "AND v.status='published'"}
+        AND ($3::text IS NULL OR (v.source_key=$3 AND ($4::int[] IS NULL OR c.page=ANY($4::int[]))) OR (v.role='umbrella' AND ($5::text[] IS NULL OR c.section=ANY($5::text[]))))
+        ORDER BY v.source_key,c.page,c.section LIMIT 600`,
+      [
+        ctx.tenantId,
+        COURSE,
+        scope?.lectureSourceKey ?? null,
+        scope?.pages ?? null,
+        scope?.umbrellaSections ?? null,
+      ],
+    )
   ).rows;
   if (
     operation === "tutor" &&
@@ -229,12 +240,22 @@ export async function retrieveEvidence(
           : 0),
     }))
     .sort((a, b) => b.score - a.score);
-  return (staffDraft ? ranked : ranked.filter((r) => r.score > 0))
-    .slice(0, staffDraft ? 8 : 4)
-    .map((r) => ({
-      ...r.row,
-      text_content: r.row.text_content.slice(0, 4200),
-    }));
+  const selected =
+    scope && staffDraft
+      ? [
+          ...ranked
+            .filter((r) => r.row.source_key === scope.lectureSourceKey)
+            .slice(0, 5),
+          ...ranked.filter((r) => r.row.role === "umbrella").slice(0, 3),
+        ]
+      : (staffDraft ? ranked : ranked.filter((r) => r.score > 0)).slice(
+          0,
+          staffDraft ? 8 : 4,
+        );
+  return selected.map((r) => ({
+    ...r.row,
+    text_content: r.row.text_content.slice(0, 4200),
+  }));
 }
 export function isFollowup(question: string) {
   return /^(?:اشرح(?:ها)? (?:تاني|مرة تانية)|وضح (?:أكتر|اكثر|أكثر)|كمل|explain (?:that |it )?again|tell me more|why|ليه)[؟?.! ]*$/i.test(
@@ -245,6 +266,11 @@ export async function prepareModel(
   ctx: AuthContext,
   operation: "tutor" | "propose" | "generate",
   question: string,
+  scope?: {
+    lectureSourceKey: string;
+    pages?: number[];
+    umbrellaSections?: string[];
+  },
 ) {
   await authorizeCourse(
     ctx,
@@ -296,7 +322,7 @@ export async function prepareModel(
   let evidence =
     followup && !priorQuestion
       ? []
-      : await retrieveEvidence(ctx, effectiveQuestion, operation);
+      : await retrieveEvidence(ctx, effectiveQuestion, operation, scope);
   if (priorIds) evidence = evidence.filter((e) => priorIds!.includes(e.id));
   let remaining = Math.min(
     12000,

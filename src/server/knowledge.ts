@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db } from "./db";
-import { type AuthContext, authorizeCourse } from "./auth";
+import {
+  type AuthContext,
+  authorizeCourse,
+  authorizeCourseInTransaction,
+} from "./auth";
 import { COURSE, SourceError, staff, type Evidence } from "./sources";
 import {
   GeminiGateway,
@@ -10,6 +14,15 @@ import {
   SYSTEM_POLICY,
   type ModelGateway,
 } from "./ai";
+import {
+  bilingualText,
+  comprehensiveInput,
+  referenceLinkSchema,
+  readCurrentEvidence,
+  validateComprehensiveCoverage,
+  type ComprehensiveCoverage,
+  lectureKeys,
+} from "./coverage";
 
 const normalize = (value: string) =>
   value
@@ -66,6 +79,10 @@ export type Graph = {
     label: { ar: string; en: string };
     aliases: string[];
     evidenceIds: string[];
+    summary?: { ar: string; en: string };
+    coverageLevel?: "explained" | "named_only";
+    scope?: "course" | "foundation";
+    referenceLinks?: z.infer<typeof referenceLinkSchema>[];
   }[];
   edges: {
     from: string;
@@ -77,6 +94,10 @@ export type Graph = {
 };
 export function validateGraph(graph: Graph) {
   const ids = new Set(graph.concepts.map((c) => c.id));
+  if (ids.size !== graph.concepts.length)
+    throw new SourceError("duplicate_concept", 422);
+  if (graph.concepts.length > 500 || graph.edges.length > 1500)
+    throw new SourceError("graph_size", 422);
   const seen = new Set<string>();
   const adjacency = new Map<string, string[]>();
   for (const edge of graph.edges) {
@@ -101,6 +122,226 @@ export function validateGraph(graph: Graph) {
   }
   for (const id of ids) visit(id);
   return true;
+}
+
+const reviewedGraphSchema = z.object({
+  concepts: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(120),
+        label: bilingual,
+        aliases: z.array(z.string().min(1).max(150)).max(50),
+        evidenceIds: z.array(z.string().min(1).max(200)).min(1).max(160),
+        summary: bilingualText.optional(),
+        scope: z.enum(["course", "foundation"]).optional(),
+        coverageLevel: z.enum(["explained", "named_only"]).optional(),
+        referenceLinks: z.array(referenceLinkSchema).max(8).optional(),
+      }),
+    )
+    .min(1)
+    .max(500),
+  edges: z
+    .array(
+      edgeSchema.extend({
+        evidenceIds: z.array(z.string().min(1).max(200)).min(1).max(160),
+      }),
+    )
+    .max(1500),
+});
+
+/** Stage a complete instructor-reviewed inventory. This never publishes or changes source approval. */
+export async function stageComprehensiveGraph(
+  ctx: AuthContext,
+  input: unknown,
+) {
+  await staff(ctx, "review");
+  const submitted = comprehensiveInput.parse(input);
+  return db.tenant(ctx.tenantId).transaction(async (tx) => {
+    await authorizeCourseInTransaction(ctx, COURSE, "review", tx);
+    await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      ctx.tenantId + ":knowledge:" + COURSE,
+    ]);
+    const existing = (
+      await tx.query<{
+        id: string;
+        data: Graph["concepts"][number] & { retired?: boolean };
+      }>(
+        "SELECT id,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='concept'",
+        [ctx.tenantId, COURSE],
+      )
+    ).rows;
+    const existingByAlias = new Map<string, typeof existing>();
+    for (const entry of existing)
+      for (const alias of [
+        entry.data.label.ar,
+        entry.data.label.en,
+        ...(entry.data.aliases ?? []),
+      ]) {
+        const key = normalize(alias);
+        const matches = existingByAlias.get(key) ?? [];
+        if (!matches.some((m) => m.id === entry.id)) matches.push(entry);
+        existingByAlias.set(key, matches);
+      }
+    const keys = new Map<string, string>();
+    const seenAliases = new Map<string, string>();
+    const concepts = submitted.concepts.map((node) => {
+      if (keys.has(node.key)) throw new SourceError("duplicate_concept", 422);
+      let aliases = [
+        ...new Set([node.label.ar, node.label.en, ...node.aliases]),
+      ];
+      const matches = [
+        ...new Map(
+          aliases
+            .flatMap((alias) => existingByAlias.get(normalize(alias)) ?? [])
+            .map((entry) => [entry.id, entry]),
+        ).values(),
+      ];
+      const active = matches.filter((e) => !e.data.retired);
+      if (active.length > 1)
+        throw new SourceError("ambiguous_concept_alias", 409);
+      if (!active.length && matches.length)
+        throw new SourceError("retired_concept", 409);
+      if (active[0])
+        aliases = [
+          ...new Set([
+            ...aliases,
+            active[0].data.label.ar,
+            active[0].data.label.en,
+            ...(active[0].data.aliases ?? []),
+          ]),
+        ];
+      const canonical =
+        aliases.find((a) => knownAliases[normalize(a)]) || node.label.en;
+      const id = active[0]?.id || stableConceptId(canonical);
+      for (const alias of aliases) {
+        const key = normalize(alias);
+        if (seenAliases.has(key) && seenAliases.get(key) !== id)
+          throw new SourceError("ambiguous_concept_alias", 409);
+        seenAliases.set(key, id);
+      }
+      keys.set(node.key, id);
+      return {
+        id,
+        label: node.label,
+        aliases,
+        summary: node.summary,
+        scope: node.scope,
+        coverageLevel: node.coverageLevel,
+        evidenceIds: [...new Set(node.evidenceIds)],
+        referenceLinks: node.referenceLinks,
+      };
+    });
+    const graph: Graph = {
+      concepts,
+      edges: submitted.edges.map((edge) => ({
+        ...edge,
+        from: keys.get(edge.from) || edge.from,
+        to: keys.get(edge.to) || edge.to,
+        evidenceIds: [...new Set(edge.evidenceIds)],
+      })),
+    };
+    validateGraph(graph);
+    const evidence = await readCurrentEvidence(tx, ctx.tenantId);
+    const allIds = [
+      ...new Set([
+        ...graph.concepts.flatMap((c) => c.evidenceIds),
+        ...graph.edges.flatMap((e) => e.evidenceIds),
+      ]),
+    ];
+    const coverage: ComprehensiveCoverage = {
+      version: 1,
+      title: submitted.title,
+      reviewBasis: submitted.reviewBasis,
+      pages: submitted.pages.map((p) => ({
+        sourceKey: p.sourceKey,
+        page: p.page,
+        classification: p.classification,
+        note: p.note,
+        conceptIds: p.conceptKeys.map((k) => keys.get(k) || k),
+      })),
+      sourceVersionIds: [
+        ...new Set(
+          evidence
+            .filter((e) => allIds.includes(e.id))
+            .map((e) => e.version_id),
+        ),
+      ],
+      generatedProposalIds: submitted.generatedProposalIds,
+    };
+    validateComprehensiveCoverage(graph, coverage, evidence);
+    if (submitted.generatedProposalIds.length) {
+      const generated = (
+        await tx.query<{ id: string }>(
+          "SELECT id FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='knowledge_proposal' AND id=ANY($3::text[]) AND data->>'modelId' IS NOT NULL AND data->>'status'<>'rejected'",
+          [ctx.tenantId, COURSE, submitted.generatedProposalIds],
+        )
+      ).rows;
+      if (
+        new Set(generated.map((p) => p.id)).size !==
+        new Set(submitted.generatedProposalIds).size
+      )
+        throw new SourceError("invalid_generation_provenance", 422);
+    }
+    const fingerprint = createHash("sha256")
+      .update(JSON.stringify({ graph, coverage }))
+      .digest("hex");
+    const duplicate = (
+      await tx.query<{
+        id: string;
+        data: {
+          status: string;
+          graph: Graph;
+          coverage: ComprehensiveCoverage;
+          evidenceIds: string[];
+          [key: string]: unknown;
+        };
+      }>(
+        "SELECT id,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='knowledge_proposal' AND data->>'fingerprint'=$3 ORDER BY created_at DESC LIMIT 1",
+        [ctx.tenantId, COURSE, fingerprint],
+      )
+    ).rows[0];
+    if (duplicate)
+      return { id: duplicate.id, ...duplicate.data, deduplicated: true };
+    const id = randomUUID();
+    const data = {
+      status: "pending",
+      kind: "comprehensive",
+      graph,
+      coverage,
+      evidenceIds: allIds,
+      fingerprint,
+      policyVersion: (
+        await tx.query<{ version: string }>(
+          "SELECT version FROM policy_versions WHERE active=true LIMIT 1",
+        )
+      ).rows[0].version,
+      preparedBy: ctx.userId,
+      preparedAt: new Date().toISOString(),
+      origin: "reviewed-instructor-inventory",
+      modelId: null,
+    };
+    await tx.query(
+      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'knowledge_proposal',$3,$4,$5)",
+      [ctx.tenantId, id, COURSE, ctx.userId, JSON.stringify(data)],
+    );
+    await tx.query(
+      "INSERT INTO audit_events(tenant_id,id,actor_id,action,entity_id,data) VALUES($1,$2,$3,$4,$5,$6)",
+      [
+        ctx.tenantId,
+        randomUUID(),
+        ctx.userId,
+        "knowledge.comprehensive.staged",
+        id,
+        JSON.stringify({
+          concepts: graph.concepts.length,
+          edges: graph.edges.length,
+          pages: coverage.pages.length,
+          sourceVersionIds: coverage.sourceVersionIds,
+        }),
+      ],
+    );
+    return { id, ...data, deduplicated: false };
+  });
 }
 function grounded(ids: string[], evidence: Evidence[]) {
   if (ids.some((id) => !evidence.some((e) => e.id === id)))
@@ -146,17 +387,35 @@ async function normalizeGraph(
   validateGraph(graph);
   return graph;
 }
+export const proposalScope = z.object({
+  lectureSourceKey: z.enum(lectureKeys),
+  query: z.string().trim().min(2).max(1000),
+  pages: z.array(z.number().int().positive().max(26)).min(1).max(5).optional(),
+  umbrellaSections: z
+    .array(z.string().min(1).max(100))
+    .min(1)
+    .max(12)
+    .optional(),
+});
 export async function proposeKnowledge(
   ctx: AuthContext,
   gateway: ModelGateway = new GeminiGateway(),
+  scopeInput?: z.infer<typeof proposalScope>,
 ) {
   await staff(ctx, "generate");
+  const scope = scopeInput ? proposalScope.parse(scopeInput) : undefined;
   const prepared = await prepareModel(
     ctx,
     "propose",
-    "Recall precision confusion matrix conditional probability classification prerequisites",
+    scope?.query ??
+      "Recall precision confusion matrix conditional probability classification prerequisites",
+    scope,
   );
-  if (!prepared.evidence.length)
+  if (
+    !prepared.evidence.length ||
+    (scope &&
+      !prepared.evidence.some((e) => e.source_key === scope.lectureSourceKey))
+  )
     throw new SourceError("insufficient_evidence", 422);
   const id = randomUUID();
   const base = {
@@ -241,6 +500,7 @@ export async function proposeKnowledge(
       modelId: gateway.modelId,
       policyVersion: prepared.policyVersion,
       generatedAt,
+      ...(scope ? { scope } : {}),
     };
     await db
       .tenant(ctx.tenantId)
@@ -311,60 +571,54 @@ export async function reviewProposal(
   edit?: Graph,
 ) {
   await staff(ctx, "publish");
-  const record = (
-    await db.tenant(ctx.tenantId).query<{
-      data: {
-        status: string;
-        graph?: Graph;
-        evidenceIds: string[];
-        [key: string]: unknown;
-      };
-    }>("SELECT data FROM records WHERE tenant_id=$1 AND id=$2 AND kind='knowledge_proposal' AND course_id=$3", [ctx.tenantId, id, COURSE])
-  ).rows[0];
-  if (!record) throw new SourceError("source_missing", 404);
-  if (record.data.status === "published")
-    throw new SourceError("already_published", 409);
-  const data = {
-    ...record.data,
-    status,
-    reviewedBy: ctx.userId,
-    reviewedAt: new Date().toISOString(),
-  };
-  if (edit) {
-    edit = z
-      .object({
-        concepts: z
-          .array(
-            z.object({
-              id: z.string().min(1),
-              label: bilingual,
-              aliases: z.array(z.string()),
-              evidenceIds: z.array(z.string()).min(1),
-            }),
-          )
-          .max(30),
-        edges: z.array(edgeSchema).max(60),
-      })
-      .parse(edit);
-    validateGraph(edit);
-    if (
-      edit.concepts
-        .flatMap((c) => c.evidenceIds)
-        .concat(edit.edges.flatMap((e) => e.evidenceIds))
-        .some((e) => !record.data.evidenceIds.includes(e))
-    )
-      throw new SourceError("invalid_citation");
-    data.graph = edit;
-  }
-  await db
-    .tenant(ctx.tenantId)
-    .query(
+  return db.tenant(ctx.tenantId).transaction(async (tx) => {
+    await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
+    const record = (
+      await tx.query<{
+        data: {
+          status: string;
+          graph?: Graph;
+          coverage?: ComprehensiveCoverage;
+          evidenceIds: string[];
+          [key: string]: unknown;
+        };
+      }>(
+        "SELECT data FROM records WHERE tenant_id=$1 AND id=$2 AND kind='knowledge_proposal' AND course_id=$3 FOR UPDATE",
+        [ctx.tenantId, id, COURSE],
+      )
+    ).rows[0];
+    if (!record) throw new SourceError("source_missing", 404);
+    if (record.data.status === "published")
+      throw new SourceError("already_published", 409);
+    const data = {
+      ...record.data,
+      status,
+      reviewedBy: ctx.userId,
+      reviewedAt: new Date().toISOString(),
+    };
+    if (edit) {
+      const graph = reviewedGraphSchema.parse(edit);
+      validateGraph(graph);
+      if (
+        [
+          ...graph.concepts.flatMap((c) => c.evidenceIds),
+          ...graph.edges.flatMap((e) => e.evidenceIds),
+        ].some((id) => !record.data.evidenceIds.includes(id))
+      )
+        throw new SourceError("invalid_citation", 422);
+      data.graph = graph;
+    }
+    if (status === "approved" && data.graph && data.coverage)
+      validateComprehensiveCoverage(
+        data.graph,
+        data.coverage,
+        await readCurrentEvidence(tx, ctx.tenantId),
+      );
+    await tx.query(
       "UPDATE records SET data=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2",
       [ctx.tenantId, id, JSON.stringify(data)],
     );
-  await db
-    .tenant(ctx.tenantId)
-    .query(
+    await tx.query(
       "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'knowledge_review',$3,$4,$5)",
       [
         ctx.tenantId,
@@ -379,24 +633,26 @@ export async function reviewProposal(
         }),
       ],
     );
-  return {
-    id,
-    ...data,
-    preview:
-      data.graph?.edges.map((e) => ({
-        prerequisite: e.from,
-        dependent: e.to,
-        type: e.type,
-        effect:
-          e.type === "prerequisite"
-            ? "Adds prerequisite routing after publication"
-            : "Optional relationship; does not gate progress",
-      })) || [],
-  };
+    return {
+      id,
+      ...data,
+      preview:
+        data.graph?.edges.map((e) => ({
+          prerequisite: e.from,
+          dependent: e.to,
+          type: e.type,
+          effect:
+            e.type === "prerequisite"
+              ? "Adds prerequisite routing after publication"
+              : "Optional relationship; does not gate progress",
+        })) || [],
+    };
+  });
 }
 export async function publishKnowledge(ctx: AuthContext) {
   await staff(ctx, "publish");
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
+    await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
     await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
       ctx.tenantId + ":knowledge:" + COURSE,
     ]);
@@ -405,6 +661,7 @@ export async function publishKnowledge(ctx: AuthContext) {
         id: string;
         data: {
           graph?: Graph;
+          coverage?: ComprehensiveCoverage;
           evidenceIds: string[];
           item?: Record<string, unknown>;
           [key: string]: unknown;
@@ -414,6 +671,20 @@ export async function publishKnowledge(ctx: AuthContext) {
         [ctx.tenantId, COURSE],
       )
     ).rows;
+    const comprehensive = proposals.filter((p) => p.data.coverage);
+    if (
+      comprehensive.length > 1 ||
+      (comprehensive.length &&
+        proposals.some((p) => p.data.graph && p.id !== comprehensive[0].id))
+    )
+      throw new SourceError("conflicting_graph_proposals", 409);
+    const full = comprehensive[0];
+    if (full?.data.graph && full.data.coverage)
+      validateComprehensiveCoverage(
+        full.data.graph,
+        full.data.coverage,
+        await readCurrentEvidence(tx, ctx.tenantId),
+      );
     const approved = (
       await tx.query<{ id: string }>(
         `SELECT c.id FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND c.status=$3 AND v.current_version=true AND v.rights->>'sendToModel'='true' AND v.rights->>'displayExcerpt'='true'`,
@@ -431,7 +702,9 @@ export async function publishKnowledge(ctx: AuthContext) {
         throw new SourceError("unreviewed_evidence", 422);
     }
     const prior = (
-      await tx.query<{ data: { graph: Graph } }>(
+      await tx.query<{
+        data: { graph: Graph; coverage?: ComprehensiveCoverage };
+      }>(
         "SELECT data FROM records WHERE tenant_id=$1 AND kind='graph_release' AND course_id=$2 ORDER BY created_at DESC LIMIT 1",
         [ctx.tenantId, COURSE],
       )
@@ -442,12 +715,12 @@ export async function publishKnowledge(ctx: AuthContext) {
         [ctx.tenantId],
       )
     ).rows.map((r) => r.id);
-    const retainedConcepts = (prior?.data.graph.concepts || []).filter((c) =>
-      c.evidenceIds.every((id) => currentApproved.includes(id)),
-    );
+    const retainedConcepts = (
+      full ? [] : prior?.data.graph.concepts || []
+    ).filter((c) => c.evidenceIds.every((id) => currentApproved.includes(id)));
     const graph: Graph = {
       concepts: retainedConcepts,
-      edges: (prior?.data.graph.edges || []).filter(
+      edges: (full ? [] : prior?.data.graph.edges || []).filter(
         (e) =>
           e.evidenceIds.every((id) => currentApproved.includes(id)) &&
           retainedConcepts.some((c) => c.id === e.from) &&
@@ -473,6 +746,12 @@ export async function publishKnowledge(ctx: AuthContext) {
       }
     }
     validateGraph(graph);
+    if (full?.data.coverage)
+      validateComprehensiveCoverage(
+        graph,
+        full.data.coverage,
+        await readCurrentEvidence(tx, ctx.tenantId),
+      );
     const releaseId = randomUUID();
     for (const c of graph.concepts)
       await tx.query(
@@ -492,6 +771,14 @@ export async function publishKnowledge(ctx: AuthContext) {
           publishedAt: new Date().toISOString(),
           proposalIds: proposals.map((p) => p.id),
           fixture: false,
+          ...((full?.data.coverage ?? prior?.data.coverage)
+            ? {
+                coverage: full?.data.coverage ?? prior?.data.coverage,
+                publicationMode: full
+                  ? "comprehensive-replacement"
+                  : "incremental",
+              }
+            : {}),
         }),
       ],
     );

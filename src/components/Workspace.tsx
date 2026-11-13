@@ -34,6 +34,7 @@ import {
   X,
 } from "lucide-react";
 import { FieldArt } from "./FieldArt";
+import { CourseConceptMap } from "./CourseConceptMap";
 import { MaterialsPanel, KnowledgePanel } from "./sources";
 type Lang = "ar" | "en";
 type Role = "student" | "instructor" | "advisor";
@@ -2011,31 +2012,22 @@ function LearningMap({
   t: Translate;
   go: (v: string) => void;
 }) {
-  const [list, SL] = useState(false),
-    [knowledge, SK] = useState<any>(null),
-    [error, SE] = useState("");
-  useEffect(() => {
-    request("/api/knowledge", undefined, lang)
-      .then(SK)
-      .catch((e) => SE(e.message));
-  }, []);
-  const graph = knowledge?.releases?.[0]?.data?.graph;
   return (
     <>
-      <Head
-        title={t("خريطة تعلّمك", "Your learning map")}
-        sub={t(
-          "الحساب والاختيار والتبرير أهداف مستقلة. غير المقاس لا يعني الضعف.",
-          "Calculation, selection and justification are separate objectives. Unassessed does not mean weak.",
-        )}
-      />
-      <Box>
-        <Button onClick={() => SL(!list)}>
-          {list
-            ? t("عرض الخريطة", "Show map")
-            : t("عرض قائمة ميسّرة", "Accessible list view")}
-        </Button>
-        <div className={list ? "objective-list" : "objective-map"}>
+      <CourseConceptMap lang={lang} />
+      <section className="map-learning-objectives">
+        <div className="sectionTop">
+          <h2>
+            {t("أهدافك ودليل تعلّمك", "Your objectives and learning evidence")}
+          </h2>
+          <p>
+            {t(
+              "الحساب والاختيار والتبرير أهداف مستقلة. غير المقاس لا يعني الضعف.",
+              "Calculation, selection and justification are separate objectives. Unassessed does not mean weak.",
+            )}
+          </p>
+        </div>
+        <div className="objective-map">
           {(data.objectives || []).map((o: RowData) => {
             const state = (data.states || []).find(
               (s: RowData) => s.data.objectiveId === o.data.objectiveId,
@@ -2043,10 +2035,10 @@ function LearningMap({
             return (
               <button
                 key={o.id}
-                onClick={() => go("practice")}
                 className="objective-node"
+                onClick={() => go("practice")}
               >
-                <Target size={23} />
+                <Target size={21} />
                 <strong>
                   {localized(o.data.title || o.data.label, lang) || o.id}
                 </strong>
@@ -2054,8 +2046,8 @@ function LearningMap({
                   {stateLabel(state?.status, t)}
                 </span>
                 <small>
-                  {t("الدليل", "Evidence")}: {state?.independentFamilies ?? 0} ·{" "}
-                  {state?.model || "independent-family-baseline-v1"}
+                  {t("الدليل المستقل", "Independent evidence")}:{" "}
+                  {state?.independentFamilies ?? 0}
                 </small>
                 {state?.bkt && (
                   <small>
@@ -2067,60 +2059,7 @@ function LearningMap({
             );
           })}
         </div>
-        <small>
-          {t(
-            "روابط الخريطة المشتركة تحتاج اعتماد المدرّس. لا نعتبر تشابه المفاهيم دليلًا على المتطلبات السابقة.",
-            "Shared graph relationships require instructor review. Concept similarity does not establish a prerequisite.",
-          )}
-        </small>
-      </Box>
-      <Box>
-        <h2>{t("خريطة المقرر المنشورة", "Published course graph")}</h2>
-        {error && <p role="alert">{error}</p>}
-        {!graph ? (
-          <p>
-            {t(
-              "لم ينشر المدرّس خريطة بعد.",
-              "The instructor has not published a graph yet.",
-            )}
-          </p>
-        ) : (
-          <>
-            <div className="chips">
-              {graph.concepts.map((c: any) => (
-                <span key={c.id} className="badge lavender">
-                  {localized(c.label, lang)}
-                </span>
-              ))}
-            </div>
-            <ul className="graph-relationships">
-              {graph.edges.map((e: any, i: number) => (
-                <li key={i}>
-                  <strong>
-                    {localized(
-                      graph.concepts.find((c: any) => c.id === e.from)?.label,
-                      lang,
-                    )}
-                  </strong>{" "}
-                  →{" "}
-                  <strong>
-                    {localized(
-                      graph.concepts.find((c: any) => c.id === e.to)?.label,
-                      lang,
-                    )}
-                  </strong>
-                  <p>{localized(e.reason, lang)}</p>
-                  <small>
-                    {e.type === "prerequisite"
-                      ? t("متطلب سابق → مفهوم تابع", "Prerequisite → dependent")
-                      : t("صلة اختيارية", "Optional relationship")}
-                  </small>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </Box>
+      </section>
     </>
   );
 }

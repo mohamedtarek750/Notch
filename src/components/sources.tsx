@@ -83,8 +83,15 @@ export function MaterialsPanel({
   const open = async (id: string) => {
     const r = await act(() => request(`/api/materials/${id}`, undefined, lang));
     if (r) {
-      SL(r);
-      P(r.chunks?.[0]);
+      const chunks = [...(r.chunks || [])].sort(
+        (a, b) =>
+          (a.page ?? 0) - (b.page ?? 0) ||
+          String(a.section || "").localeCompare(String(b.section || ""), "en", {
+            numeric: true,
+          }),
+      );
+      SL({ ...r, chunks });
+      P(chunks[0]);
       C("");
     }
   };

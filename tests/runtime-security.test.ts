@@ -10,6 +10,7 @@ import {
   getMaterial,
   getMaterialFile,
   reviewPage,
+  sourceManifest,
 } from "../src/server/sources";
 import { publishKnowledge, getKnowledge } from "../src/server/knowledge";
 import { workspace, learningAction } from "../src/server/learning";
@@ -58,9 +59,14 @@ describe("complete module boundary under a non-owner runtime database role", () 
     for (const c of chunks)
       await reviewPage(context(first, "instructor"), c.id, "approved");
     await publishKnowledge(context(first, "instructor"));
-    expect(
-      (await getMaterial(context(first, "student"), sourceId)).chunks,
-    ).toHaveLength(5);
+    const published = (await getMaterial(context(first, "student"), sourceId))
+      .chunks;
+    const expected = sourceManifest.find(
+      (s) => s.source_key === "TILWA-PILOT-FOUNDATIONS",
+    )!.section_ids!;
+    expect(published.map((c) => c.section).sort()).toEqual(
+      [...expected].sort(),
+    );
     await expect(
       getMaterialFile(context(first, "student"), sourceId),
     ).rejects.toMatchObject({ status: 403 });
@@ -376,15 +382,13 @@ describe("reviewed concept governance with historical evidence preservation", ()
       ),
     ).toBe(true);
     const states = (
-      await db
-        .tenant(first.tenantId)
-        .query<{
-          data: {
-            status: string;
-            evidenceInherited: boolean;
-            evidenceIds: string[];
-          };
-        }>("SELECT data FROM records WHERE kind='concept_state'")
+      await db.tenant(first.tenantId).query<{
+        data: {
+          status: string;
+          evidenceInherited: boolean;
+          evidenceIds: string[];
+        };
+      }>("SELECT data FROM records WHERE kind='concept_state'")
     ).rows;
     expect(states).toHaveLength(2);
     for (const s of states) {

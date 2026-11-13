@@ -11,7 +11,20 @@ export function SourceViewer({ id }: { id: string }) {
     const q = new URLSearchParams(location.search);
     P(q.get("page") || q.get("section") || "");
     request(`/api/materials/${id}`, undefined, lang)
-      .then(D)
+      .then((result) => {
+        D({
+          ...result,
+          chunks: [...(result.chunks || [])].sort(
+            (a, b) =>
+              (a.page ?? 0) - (b.page ?? 0) ||
+              String(a.section || "").localeCompare(
+                String(b.section || ""),
+                "en",
+                { numeric: true },
+              ),
+          ),
+        });
+      })
       .catch((e) => E(e.message));
   }, [id]);
   useEffect(() => {
