@@ -335,7 +335,8 @@ describe("database-first AI using actual local PostgreSQL and injected determini
     const result = await tutor(
       student,
       tutorInput.parse({
-        question: "Explain support vector machine hyperplane margin proof",
+        // The expanded handout now names SVMs; this advanced derivation is absent.
+        question: "Explain hyperplane duality KKT derivation",
       }),
       model,
     );

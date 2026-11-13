@@ -100,13 +100,14 @@ describe("explicit source review and immutable batch extraction under non-owner 
         },
       ]),
     ).rejects.toMatchObject({ code: "parse_failed" });
-    const revision = await reviseMaterialExtracts(ctx(a), version, [
+    const corrections = [
       {
         chunkId: old.id,
         text: "Reviewed figure transcription: horizontal axis is sample count, vertical axis is measured error.",
         note: "Figure labels transcribed from the original synthetic diagram.",
       },
-    ]);
+    ];
+    const revision = await reviseMaterialExtracts(ctx(a), version, corrections);
     const current = await getMaterial(ctx(a), revision.id);
     expect(current.chunks.every((c) => c.status === "pending")).toBe(true);
     expect(
@@ -141,6 +142,8 @@ describe("explicit source review and immutable batch extraction under non-owner 
       })),
     );
     expect(result.approved).toBe(3);
+    const retry = await reviseMaterialExtracts(ctx(a), version, corrections);
+    expect(retry).toMatchObject({ id: revision.id, deduplicated: true });
     expect(
       (await getMaterial(ctx(a), revision.id)).chunks.every(
         (c) => c.status === "approved",

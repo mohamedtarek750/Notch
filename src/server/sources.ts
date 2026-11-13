@@ -525,42 +525,43 @@ export async function reviseMaterialExtracts(
       reviewedBy: ctx.userId,
     },
   });
-  if (!revision.deduplicated)
-    await scoped.transaction(async (tx) => {
-      await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
-      const current = await tx.query(
-        "SELECT id FROM material_versions WHERE tenant_id=$1 AND id=$2 AND current_version=true FOR UPDATE",
-        [ctx.tenantId, revision.id],
-      );
-      if (!current.rows.length) throw new SourceError("stale_source", 409);
-      for (const correction of corrections) {
-        const old = chunks.find((c) => c.id === correction.chunkId)!;
-        await tx.query(
-          "UPDATE evidence_chunks SET status='pending',review_note=$3 WHERE tenant_id=$1 AND id=$2",
-          [
-            ctx.tenantId,
-            `${revision.id}-${old.section || old.page}`,
-            `Corrected extract pending review: ${correction.note}`,
-          ],
-        );
-      }
+  // Resume safely if creation committed but the separate review audit was interrupted.
+  // Never reset an explicit review decision on a deduplicated retry.
+  await scoped.transaction(async (tx) => {
+    await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
+    const current = await tx.query(
+      "SELECT id FROM material_versions WHERE tenant_id=$1 AND id=$2 AND current_version=true FOR UPDATE",
+      [ctx.tenantId, revision.id],
+    );
+    if (!current.rows.length) throw new SourceError("stale_source", 409);
+    for (const correction of corrections) {
+      const old = chunks.find((c) => c.id === correction.chunkId)!;
       await tx.query(
-        "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'source_review',$3,$4,$5)",
+        "UPDATE evidence_chunks SET status='pending',review_note=$3 WHERE tenant_id=$1 AND id=$2 AND reviewed_at IS NULL",
         [
           ctx.tenantId,
-          randomUUID(),
-          COURSE,
-          ctx.userId,
-          JSON.stringify({
-            action: "batch-extraction-revision",
-            previousVersionId: version.id,
-            versionId: revision.id,
-            correctedChunks: sorted.map((c) => c.chunkId),
-            autoApproved: false,
-          }),
+          `${revision.id}-${old.section || old.page}`,
+          `Corrected extract pending review: ${correction.note}`,
         ],
       );
-    });
+    }
+    await tx.query(
+      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'source_review',$3,$4,$5) ON CONFLICT(tenant_id,id) DO NOTHING",
+      [
+        ctx.tenantId,
+        `source-revision:${revision.id}`,
+        COURSE,
+        ctx.userId,
+        JSON.stringify({
+          action: "batch-extraction-revision",
+          previousVersionId: version.id,
+          versionId: revision.id,
+          correctedChunks: sorted.map((c) => c.chunkId),
+          autoApproved: false,
+        }),
+      ],
+    );
+  });
   return revision;
 }
 

@@ -15,7 +15,7 @@ import {
   lecturePages,
   type ComprehensiveInput,
 } from "../src/server/coverage";
-import type { ModelGateway } from "../src/server/ai";
+import { retrieveEvidence, type ModelGateway } from "../src/server/ai";
 
 const tenant = randomUUID(),
   other = randomUUID();
@@ -164,6 +164,17 @@ beforeAll(async () => {
 afterAll(() => db.close());
 
 describe("comprehensive course-to-umbrella map against actual local SQL, no provider", () => {
+  it("keeps a relevant permitted umbrella foundation when many lectures match, within four passages", async () => {
+    const evidence = await retrieveEvidence(
+      student,
+      "Explain classification probability",
+    );
+    expect(evidence.length).toBeLessThanOrEqual(4);
+    expect(evidence.some((e) => e.role === "instructor")).toBe(true);
+    expect(evidence.some((e) => e.role === "umbrella")).toBe(true);
+    expect(evidence.every((e) => e.status === "approved")).toBe(true);
+    expect(await retrieveEvidence(student, "seismology astronomy")).toEqual([]);
+  });
   it("rejects students and advisors before staging any shared curriculum", async () => {
     await expect(
       stageComprehensiveGraph(student, input()),

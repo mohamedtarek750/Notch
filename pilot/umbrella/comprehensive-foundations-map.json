@@ -1,0 +1,4351 @@
+{
+  "schemaVersion": 1,
+  "sourceKey": "TILWA-PILOT-FOUNDATIONS",
+  "version": "2.0",
+  "contentPath": "pilot/umbrella/tilwa-ml-foundations.md",
+  "sha256": "315ee669733045af80791213afa1f3a3e590512c9613cb03f82ebc6eaebc8fb0",
+  "sectionIds": [
+    "U1",
+    "U2",
+    "U3",
+    "U4",
+    "U5",
+    "U6",
+    "U7",
+    "U8",
+    "U9",
+    "U10",
+    "U11",
+    "U12",
+    "U13",
+    "U14",
+    "U15",
+    "U16",
+    "U17",
+    "U18",
+    "U19",
+    "U20",
+    "U21",
+    "U22",
+    "U23",
+    "U24",
+    "U25",
+    "U26",
+    "U27",
+    "U28",
+    "U29",
+    "U30",
+    "U31",
+    "U32",
+    "U33",
+    "U34",
+    "U35",
+    "U36",
+    "U37",
+    "U38",
+    "U39",
+    "U40",
+    "U41",
+    "U42",
+    "U43",
+    "U44",
+    "U45"
+  ],
+  "reviewAuthority": "Tilwa academic authoring review; not institutional instructor sign-off. Authenticated source publication is separate.",
+  "provenance": {
+    "origin": "Original bilingual Tilwa supplementary material",
+    "gfg": "GFG-UMBRELLA remains separate reference-link metadata. No article content copied or rights inferred.",
+    "preservedSections": [
+      "U1",
+      "U2",
+      "U3",
+      "U4",
+      "U5"
+    ],
+    "originalSectionsBeforeExpansionSha256": "79aa7da1d1d2bb5408d1efe90be6881687c23b30d460d17c69b1b3bbc88c0fe0",
+    "sourceNumericAnchors": "U29 and U43 independently explain checked lecture counts; no full lecture text is included."
+  },
+  "inventories": [
+    {
+      "name": "review-l1-l2.json",
+      "sha256": "cb34b762277c1ac97cfb7c723135eab2b13d569b2c77f4d8c6bc2faedd067406",
+      "conceptEntries": 114
+    },
+    {
+      "name": "review-l3-l4.json",
+      "sha256": "4a6260cb4ef0a2a35d7a86f9bb12745a38527c0176cbdc424bc03a732544fbdb",
+      "conceptEntries": 59
+    },
+    {
+      "name": "review-l5-l6.json",
+      "sha256": "750e90be85240d43f443ce2116bd04f4918a59ae74214d3d2114105a1910308a",
+      "conceptEntries": 66
+    }
+  ],
+  "coverage": {
+    "rawConceptEntries": 239,
+    "rawConceptKeys": 227,
+    "mappedConceptKeys": 229,
+    "unmappedConceptKeys": [],
+    "sections": 45,
+    "mappedRawConceptKeys": 227,
+    "continuityConceptKeys": 2
+  },
+  "conceptSections": {
+    "accuracy": [
+      "U29",
+      "U44"
+    ],
+    "accuracy-paradox": [
+      "U3",
+      "U25",
+      "U30"
+    ],
+    "anomaly-detection": [
+      "U11"
+    ],
+    "applied-mathematics": [
+      "U6"
+    ],
+    "appropriate-model-fit": [
+      "U19"
+    ],
+    "artificial-intelligence": [
+      "U6"
+    ],
+    "artificial-neural-network": [
+      "U14"
+    ],
+    "association-analysis": [
+      "U11",
+      "U20"
+    ],
+    "autonomous-driving": [
+      "U9"
+    ],
+    "autonomous-systems": [
+      "U6",
+      "U9"
+    ],
+    "batch-learning": [
+      "U15"
+    ],
+    "bayes-theorem": [
+      "U34"
+    ],
+    "bias-variance-tradeoff": [
+      "U19",
+      "U33"
+    ],
+    "binary-classification": [
+      "U10"
+    ],
+    "categorical-frequency-estimation": [
+      "U5",
+      "U34",
+      "U36",
+      "U43"
+    ],
+    "categorical-split": [
+      "U37"
+    ],
+    "class-imbalance": [
+      "U25"
+    ],
+    "class-likelihood": [
+      "U5",
+      "U1",
+      "U34",
+      "U35",
+      "U43"
+    ],
+    "class-prior": [
+      "U1",
+      "U34",
+      "U35",
+      "U43"
+    ],
+    "classification": [
+      "U10",
+      "U20"
+    ],
+    "classification-error-rate": [
+      "U29"
+    ],
+    "clustering": [
+      "U11",
+      "U20"
+    ],
+    "computation-cost": [
+      "U42"
+    ],
+    "computer-science": [
+      "U6"
+    ],
+    "conditional-independence": [
+      "U5",
+      "U35"
+    ],
+    "conditional-probability": [
+      "U5",
+      "U1",
+      "U34"
+    ],
+    "confusion-matrix": [
+      "U1",
+      "U28"
+    ],
+    "consistent-preprocessing": [
+      "U24"
+    ],
+    "continuous-threshold-split": [
+      "U37"
+    ],
+    "cost-sensitive-learning": [
+      "U3",
+      "U26",
+      "U30"
+    ],
+    "cross-validation": [
+      "U23",
+      "U33"
+    ],
+    "curse-of-dimensionality": [
+      "U31"
+    ],
+    "data-cleaning": [
+      "U17",
+      "U24"
+    ],
+    "data-drift": [
+      "U15"
+    ],
+    "data-errors": [
+      "U17"
+    ],
+    "data-metadata": [
+      "U7"
+    ],
+    "data-mining": [
+      "U6"
+    ],
+    "data-preprocessing": [
+      "U18",
+      "U24"
+    ],
+    "data-quality": [
+      "U17"
+    ],
+    "data-records": [
+      "U7"
+    ],
+    "data-sample": [
+      "U17"
+    ],
+    "data-selection-and-merge": [
+      "U18"
+    ],
+    "data-source-formats": [
+      "U7"
+    ],
+    "data-stream": [
+      "U15"
+    ],
+    "data-summarization": [
+      "U20"
+    ],
+    "data-transformation": [
+      "U18",
+      "U24"
+    ],
+    "data-visualization": [
+      "U20"
+    ],
+    "dataset-splitting": [
+      "U21"
+    ],
+    "decision-boundary": [
+      "U10",
+      "U19"
+    ],
+    "decision-threshold-tuning": [
+      "U3",
+      "U30"
+    ],
+    "decision-tree": [
+      "U37"
+    ],
+    "decision-tree-structure": [
+      "U37"
+    ],
+    "deep-learning": [
+      "U6",
+      "U14"
+    ],
+    "denominator-reference-group": [
+      "U1"
+    ],
+    "dependent-variable": [
+      "U7"
+    ],
+    "descriptive-analysis": [
+      "U20"
+    ],
+    "distance-metric": [
+      "U31"
+    ],
+    "document-data": [
+      "U7"
+    ],
+    "elbow-method": [
+      "U33"
+    ],
+    "ensemble-classification": [
+      "U41"
+    ],
+    "ensemble-diversity": [
+      "U41"
+    ],
+    "ensemble-learning": [
+      "U41"
+    ],
+    "entropy": [
+      "U39",
+      "U43"
+    ],
+    "error-analysis": [
+      "U8",
+      "U45"
+    ],
+    "euclidean-distance": [
+      "U31"
+    ],
+    "explicit-rule-programming": [
+      "U8"
+    ],
+    "f1-score": [
+      "U29"
+    ],
+    "false-negative": [
+      "U28"
+    ],
+    "false-positive": [
+      "U28"
+    ],
+    "feature-creation": [
+      "U18"
+    ],
+    "feature-engineering": [
+      "U18"
+    ],
+    "feature-extraction": [
+      "U18"
+    ],
+    "feature-matrix": [
+      "U7",
+      "U22"
+    ],
+    "feature-scaling": [
+      "U18",
+      "U24",
+      "U31",
+      "U42"
+    ],
+    "feature-selection": [
+      "U18"
+    ],
+    "feature-target-alignment": [
+      "U7",
+      "U22"
+    ],
+    "features": [
+      "U7",
+      "U18"
+    ],
+    "featuretools": [
+      "U18"
+    ],
+    "forgetting-old-knowledge": [
+      "U16"
+    ],
+    "fraud-matrix-worked-example": [
+      "U2",
+      "U29",
+      "U43"
+    ],
+    "generalization": [
+      "U19"
+    ],
+    "gini-impurity": [
+      "U38"
+    ],
+    "harmonic-mean-balance": [
+      "U29",
+      "U44"
+    ],
+    "hidden-layer": [
+      "U14"
+    ],
+    "holdout-evaluation": [
+      "U21"
+    ],
+    "human-expert-review": [
+      "U8"
+    ],
+    "hyperparameter-k": [
+      "U33"
+    ],
+    "hyperparameter-tuning": [
+      "U21",
+      "U23"
+    ],
+    "image-recognition": [
+      "U9"
+    ],
+    "incremental-model-update": [
+      "U15"
+    ],
+    "independent-test-evaluation": [
+      "U21",
+      "U23"
+    ],
+    "independent-variable": [
+      "U7"
+    ],
+    "inference": [
+      "U8",
+      "U15"
+    ],
+    "information-gain": [
+      "U40",
+      "U43"
+    ],
+    "input-layer": [
+      "U14"
+    ],
+    "irrelevant-features": [
+      "U18"
+    ],
+    "k-fold-cross-validation": [
+      "U23"
+    ],
+    "knn": [
+      "U32"
+    ],
+    "knn-computational-cost": [
+      "U32"
+    ],
+    "labeled-data": [
+      "U7",
+      "U12"
+    ],
+    "laplace-smoothing": [
+      "U36"
+    ],
+    "lazy-learning": [
+      "U32"
+    ],
+    "leaf-prediction": [
+      "U37"
+    ],
+    "learning-algorithm": [
+      "U6",
+      "U8"
+    ],
+    "learning-rate": [
+      "U4",
+      "U16"
+    ],
+    "logistic-regression": [
+      "U10"
+    ],
+    "machine-learning": [
+      "U6"
+    ],
+    "machine-translation": [
+      "U9"
+    ],
+    "majority-class-bias": [
+      "U3",
+      "U25"
+    ],
+    "majority-minority-classes": [
+      "U25"
+    ],
+    "majority-vote": [
+      "U32",
+      "U42"
+    ],
+    "majority-voting": [
+      "U32",
+      "U42",
+      "U44"
+    ],
+    "manhattan-distance": [
+      "U31"
+    ],
+    "maximum-a-posteriori": [
+      "U35",
+      "U43"
+    ],
+    "measurement-noise": [
+      "U17"
+    ],
+    "medical-diagnosis": [
+      "U9"
+    ],
+    "metric-selection": [
+      "U3",
+      "U30",
+      "U45"
+    ],
+    "mini-batch": [
+      "U16"
+    ],
+    "minority-neighbor-selection": [
+      "U27"
+    ],
+    "ml-workflow": [
+      "U8"
+    ],
+    "model-complexity": [
+      "U19"
+    ],
+    "model-deployment": [
+      "U8"
+    ],
+    "model-evaluation": [
+      "U8",
+      "U29",
+      "U45"
+    ],
+    "model-inspection": [
+      "U8",
+      "U45"
+    ],
+    "model-interpretability": [
+      "U42"
+    ],
+    "model-parameter-fitting": [
+      "U4",
+      "U21",
+      "U44"
+    ],
+    "model-performance-decay": [
+      "U15"
+    ],
+    "model-retraining": [
+      "U15"
+    ],
+    "model-training": [
+      "U8"
+    ],
+    "multiclass-classification": [
+      "U10"
+    ],
+    "multilabel-classification": [
+      "U10"
+    ],
+    "naive-bayes": [
+      "U5",
+      "U35"
+    ],
+    "nearest-neighbor-search": [
+      "U32"
+    ],
+    "neighbor-average": [
+      "U32",
+      "U42"
+    ],
+    "neural-network": [
+      "U14"
+    ],
+    "node-impurity": [
+      "U38",
+      "U39"
+    ],
+    "noise-outliers": [
+      "U17"
+    ],
+    "numpy": [
+      "U18",
+      "U22",
+      "U44"
+    ],
+    "online-fraud-detection": [
+      "U9"
+    ],
+    "online-learning": [
+      "U15",
+      "U16"
+    ],
+    "out-of-core-learning": [
+      "U16"
+    ],
+    "outlier-handling": [
+      "U17"
+    ],
+    "outliers": [
+      "U17"
+    ],
+    "output-layer": [
+      "U14"
+    ],
+    "overfitting": [
+      "U19",
+      "U33"
+    ],
+    "oversampling-duplicate-risk": [
+      "U26"
+    ],
+    "oversampling-ratio": [
+      "U26",
+      "U27"
+    ],
+    "pandas": [
+      "U18"
+    ],
+    "positive-class": [
+      "U1",
+      "U28"
+    ],
+    "posterior-probability": [
+      "U34",
+      "U35",
+      "U43"
+    ],
+    "precision": [
+      "U2",
+      "U1",
+      "U29"
+    ],
+    "precision-and-recall": [
+      "U2"
+    ],
+    "prediction": [
+      "U20"
+    ],
+    "prediction-averaging": [
+      "U42"
+    ],
+    "predictive-analysis": [
+      "U20"
+    ],
+    "problem-framing": [
+      "U8"
+    ],
+    "pseudo-labeling": [
+      "U12"
+    ],
+    "python": [
+      "U22",
+      "U44"
+    ],
+    "random-data-sampling": [
+      "U41"
+    ],
+    "random-feature-selection": [
+      "U41"
+    ],
+    "random-forest": [
+      "U41"
+    ],
+    "random-oversampling": [
+      "U26"
+    ],
+    "random-undersampling": [
+      "U26"
+    ],
+    "recall": [
+      "U2",
+      "U1",
+      "U29"
+    ],
+    "recommender-systems": [
+      "U9"
+    ],
+    "recursive-partitioning": [
+      "U37"
+    ],
+    "regression": [
+      "U10",
+      "U20"
+    ],
+    "reinforcement-learning": [
+      "U13"
+    ],
+    "representation-learning": [
+      "U14"
+    ],
+    "reproducible-random-split": [
+      "U22"
+    ],
+    "resampling": [
+      "U26"
+    ],
+    "rl-action": [
+      "U13"
+    ],
+    "rl-agent": [
+      "U13"
+    ],
+    "rl-environment": [
+      "U13"
+    ],
+    "rl-exploration": [
+      "U13"
+    ],
+    "rl-observation": [
+      "U13"
+    ],
+    "rl-policy": [
+      "U13"
+    ],
+    "rl-reward": [
+      "U13"
+    ],
+    "rl-state": [
+      "U13"
+    ],
+    "sample-representativeness": [
+      "U17"
+    ],
+    "scikit-learn": [
+      "U18",
+      "U22",
+      "U44"
+    ],
+    "selective-data-addition": [
+      "U16"
+    ],
+    "semi-supervised-learning": [
+      "U12"
+    ],
+    "smote": [
+      "U27"
+    ],
+    "software-engineering": [
+      "U6"
+    ],
+    "spam-and-malware-filtering": [
+      "U9"
+    ],
+    "speech-recognition": [
+      "U9"
+    ],
+    "split-fraction": [
+      "U22",
+      "U44"
+    ],
+    "split-selection": [
+      "U38",
+      "U40"
+    ],
+    "sqrt-n-heuristic": [
+      "U33"
+    ],
+    "stability-plasticity": [
+      "U16"
+    ],
+    "statistics": [
+      "U6"
+    ],
+    "stock-market-trading": [
+      "U9"
+    ],
+    "supervised-learning": [
+      "U10"
+    ],
+    "support-vector-machine": [
+      "U10"
+    ],
+    "synthetic-sample-interpolation": [
+      "U27"
+    ],
+    "tabular-summarization": [
+      "U20"
+    ],
+    "target-population": [
+      "U17"
+    ],
+    "target-vector": [
+      "U7",
+      "U22"
+    ],
+    "tensorflow-transform": [
+      "U18"
+    ],
+    "test-data": [
+      "U21"
+    ],
+    "text-classification": [
+      "U9",
+      "U35"
+    ],
+    "time-series-analysis": [
+      "U20"
+    ],
+    "traffic-prediction": [
+      "U9"
+    ],
+    "train-test-split": [
+      "U22",
+      "U44"
+    ],
+    "train-test-split-implementation": [
+      "U22",
+      "U44"
+    ],
+    "train-validation-test-split": [
+      "U21"
+    ],
+    "training-data": [
+      "U21"
+    ],
+    "training-data-quantity": [
+      "U17"
+    ],
+    "training-data-representativeness": [
+      "U17",
+      "U25"
+    ],
+    "training-validation-test-scores": [
+      "U23"
+    ],
+    "tree-stopping-criteria": [
+      "U38"
+    ],
+    "true-negative": [
+      "U28"
+    ],
+    "true-positive": [
+      "U28"
+    ],
+    "underfitting": [
+      "U19",
+      "U33"
+    ],
+    "undersampling-information-loss": [
+      "U26"
+    ],
+    "unlabeled-data": [
+      "U7",
+      "U11",
+      "U12"
+    ],
+    "unseen-data": [
+      "U17"
+    ],
+    "unstructured-data": [
+      "U7"
+    ],
+    "unsupervised-learning": [
+      "U11"
+    ],
+    "validation-data": [
+      "U21"
+    ],
+    "validation-driven-model-selection": [
+      "U21",
+      "U23"
+    ],
+    "validation-overuse-leakage": [
+      "U23",
+      "U24"
+    ],
+    "variance-reduction": [
+      "U38"
+    ],
+    "virtual-personal-assistants": [
+      "U9"
+    ],
+    "voting-ties": [
+      "U32",
+      "U42"
+    ],
+    "weak-learners": [
+      "U41"
+    ],
+    "weighted-entropy": [
+      "U40",
+      "U43"
+    ],
+    "zero-frequency": [
+      "U36"
+    ]
+  },
+  "mappings": [
+    {
+      "key": "accuracy",
+      "sectionIds": [
+        "U29",
+        "U44"
+      ],
+      "label": {
+        "ar": "الدقة الكلية",
+        "en": "Accuracy"
+      }
+    },
+    {
+      "key": "accuracy-paradox",
+      "sectionIds": [
+        "U3",
+        "U25",
+        "U30"
+      ],
+      "label": {
+        "ar": "ارتفاع الدقة المضلل مع الفئات النادرة",
+        "en": "Misleading accuracy under imbalance"
+      }
+    },
+    {
+      "key": "anomaly-detection",
+      "sectionIds": [
+        "U11"
+      ],
+      "label": {
+        "ar": "اكتشاف الشذوذ",
+        "en": "Anomaly detection"
+      }
+    },
+    {
+      "key": "applied-mathematics",
+      "sectionIds": [
+        "U6"
+      ],
+      "label": {
+        "ar": "الرياضيات التطبيقية",
+        "en": "Applied mathematics"
+      }
+    },
+    {
+      "key": "appropriate-model-fit",
+      "sectionIds": [
+        "U19"
+      ],
+      "label": {
+        "ar": "الملاءمة المناسبة للنموذج",
+        "en": "Appropriate model fit"
+      }
+    },
+    {
+      "key": "artificial-intelligence",
+      "sectionIds": [
+        "U6"
+      ],
+      "label": {
+        "ar": "الذكاء الاصطناعي",
+        "en": "Artificial intelligence"
+      }
+    },
+    {
+      "key": "artificial-neural-network",
+      "sectionIds": [
+        "U14"
+      ],
+      "label": {
+        "ar": "الشبكة العصبية الاصطناعية",
+        "en": "Artificial neural network"
+      }
+    },
+    {
+      "key": "association-analysis",
+      "sectionIds": [
+        "U11",
+        "U20"
+      ],
+      "label": {
+        "ar": "تحليل الارتباطات بين العناصر",
+        "en": "Association analysis"
+      }
+    },
+    {
+      "key": "autonomous-driving",
+      "sectionIds": [
+        "U9"
+      ],
+      "label": {
+        "ar": "القيادة الذاتية",
+        "en": "Self-driving cars"
+      }
+    },
+    {
+      "key": "autonomous-systems",
+      "sectionIds": [
+        "U6",
+        "U9"
+      ],
+      "label": {
+        "ar": "الأنظمة المستقلة",
+        "en": "Autonomous systems"
+      }
+    },
+    {
+      "key": "batch-learning",
+      "sectionIds": [
+        "U15"
+      ],
+      "label": {
+        "ar": "التعلّم الدفعي",
+        "en": "Batch learning"
+      }
+    },
+    {
+      "key": "bayes-theorem",
+      "sectionIds": [
+        "U34"
+      ],
+      "label": {
+        "ar": "مبرهنة بايز",
+        "en": "Bayes theorem"
+      }
+    },
+    {
+      "key": "bias-variance-tradeoff",
+      "sectionIds": [
+        "U19",
+        "U33"
+      ],
+      "label": {
+        "ar": "الموازنة بين التحيز والتباين",
+        "en": "Bias-variance tradeoff"
+      }
+    },
+    {
+      "key": "binary-classification",
+      "sectionIds": [
+        "U10"
+      ],
+      "label": {
+        "ar": "التصنيف الثنائي",
+        "en": "Binary classification"
+      }
+    },
+    {
+      "key": "categorical-frequency-estimation",
+      "sectionIds": [
+        "U5",
+        "U34",
+        "U36",
+        "U43"
+      ],
+      "label": {
+        "ar": "تقدير احتمالات الفئات بالتكرارات",
+        "en": "Categorical frequency estimation"
+      }
+    },
+    {
+      "key": "categorical-split",
+      "sectionIds": [
+        "U37"
+      ],
+      "label": {
+        "ar": "التقسيم حسب الفئة",
+        "en": "Categorical-feature split"
+      }
+    },
+    {
+      "key": "class-imbalance",
+      "sectionIds": [
+        "U25"
+      ],
+      "label": {
+        "ar": "اختلال توازن الفئات",
+        "en": "Class imbalance"
+      }
+    },
+    {
+      "key": "class-likelihood",
+      "sectionIds": [
+        "U5",
+        "U1",
+        "U34",
+        "U35",
+        "U43"
+      ],
+      "label": {
+        "ar": "احتمال الخصائص بشرط الفئة",
+        "en": "Class-conditional likelihood"
+      }
+    },
+    {
+      "key": "class-prior",
+      "sectionIds": [
+        "U1",
+        "U34",
+        "U35",
+        "U43"
+      ],
+      "label": {
+        "ar": "الاحتمال القبلي للفئة",
+        "en": "Class prior"
+      }
+    },
+    {
+      "key": "classification",
+      "sectionIds": [
+        "U10",
+        "U20"
+      ],
+      "label": {
+        "ar": "التصنيف",
+        "en": "Classification"
+      }
+    },
+    {
+      "key": "classification-error-rate",
+      "sectionIds": [
+        "U29"
+      ],
+      "label": {
+        "ar": "معدل خطأ التصنيف",
+        "en": "Classification error rate"
+      }
+    },
+    {
+      "key": "clustering",
+      "sectionIds": [
+        "U11",
+        "U20"
+      ],
+      "label": {
+        "ar": "التجميع",
+        "en": "Clustering"
+      }
+    },
+    {
+      "key": "computation-cost",
+      "sectionIds": [
+        "U42"
+      ],
+      "label": {
+        "ar": "التكلفة الحسابية",
+        "en": "Computational cost"
+      }
+    },
+    {
+      "key": "computer-science",
+      "sectionIds": [
+        "U6"
+      ],
+      "label": {
+        "ar": "علوم الحاسب",
+        "en": "Computer science"
+      }
+    },
+    {
+      "key": "conditional-independence",
+      "sectionIds": [
+        "U5",
+        "U35"
+      ],
+      "label": {
+        "ar": "الاستقلال الشرطي",
+        "en": "Conditional independence"
+      }
+    },
+    {
+      "key": "conditional-probability",
+      "sectionIds": [
+        "U5",
+        "U1",
+        "U34"
+      ],
+      "label": {
+        "ar": "الاحتمال الشرطي",
+        "en": "Conditional probability"
+      }
+    },
+    {
+      "key": "confusion-matrix",
+      "sectionIds": [
+        "U1",
+        "U28"
+      ],
+      "label": {
+        "ar": "مصفوفة الالتباس",
+        "en": "Confusion matrix"
+      }
+    },
+    {
+      "key": "consistent-preprocessing",
+      "sectionIds": [
+        "U24"
+      ],
+      "label": {
+        "ar": "اتساق المعالجة المسبقة",
+        "en": "Consistent preprocessing"
+      }
+    },
+    {
+      "key": "continuous-threshold-split",
+      "sectionIds": [
+        "U37"
+      ],
+      "label": {
+        "ar": "تقسيم الخاصية العددية بعتبة",
+        "en": "Continuous-feature threshold split"
+      }
+    },
+    {
+      "key": "cost-sensitive-learning",
+      "sectionIds": [
+        "U3",
+        "U26",
+        "U30"
+      ],
+      "label": {
+        "ar": "التعلم الحساس لتكلفة الخطأ",
+        "en": "Cost-sensitive learning"
+      }
+    },
+    {
+      "key": "cross-validation",
+      "sectionIds": [
+        "U23",
+        "U33"
+      ],
+      "label": {
+        "ar": "التحقق المتقاطع",
+        "en": "Cross-validation"
+      }
+    },
+    {
+      "key": "curse-of-dimensionality",
+      "sectionIds": [
+        "U31"
+      ],
+      "label": {
+        "ar": "لعنة الأبعاد",
+        "en": "Curse of dimensionality"
+      }
+    },
+    {
+      "key": "data-cleaning",
+      "sectionIds": [
+        "U17",
+        "U24"
+      ],
+      "label": {
+        "ar": "تنظيف البيانات",
+        "en": "Data cleaning"
+      }
+    },
+    {
+      "key": "data-drift",
+      "sectionIds": [
+        "U15"
+      ],
+      "label": {
+        "ar": "انجراف البيانات",
+        "en": "Data drift"
+      }
+    },
+    {
+      "key": "data-errors",
+      "sectionIds": [
+        "U17"
+      ],
+      "label": {
+        "ar": "أخطاء البيانات",
+        "en": "Data errors"
+      }
+    },
+    {
+      "key": "data-metadata",
+      "sectionIds": [
+        "U7"
+      ],
+      "label": {
+        "ar": "البيانات الوصفية",
+        "en": "Metadata"
+      }
+    },
+    {
+      "key": "data-mining",
+      "sectionIds": [
+        "U6"
+      ],
+      "label": {
+        "ar": "تنقيب البيانات",
+        "en": "Data mining"
+      }
+    },
+    {
+      "key": "data-preprocessing",
+      "sectionIds": [
+        "U18",
+        "U24"
+      ],
+      "label": {
+        "ar": "المعالجة المسبقة للبيانات",
+        "en": "Data preprocessing"
+      }
+    },
+    {
+      "key": "data-quality",
+      "sectionIds": [
+        "U17"
+      ],
+      "label": {
+        "ar": "جودة البيانات",
+        "en": "Data quality"
+      }
+    },
+    {
+      "key": "data-records",
+      "sectionIds": [
+        "U7"
+      ],
+      "label": {
+        "ar": "سجلات البيانات",
+        "en": "Data records"
+      }
+    },
+    {
+      "key": "data-sample",
+      "sectionIds": [
+        "U17"
+      ],
+      "label": {
+        "ar": "عيّنة البيانات",
+        "en": "Data sample"
+      }
+    },
+    {
+      "key": "data-selection-and-merge",
+      "sectionIds": [
+        "U18"
+      ],
+      "label": {
+        "ar": "اختيار البيانات ودمجها",
+        "en": "Data-source selection and merging"
+      }
+    },
+    {
+      "key": "data-source-formats",
+      "sectionIds": [
+        "U7"
+      ],
+      "label": {
+        "ar": "أشكال مصادر البيانات",
+        "en": "Data-source formats"
+      }
+    },
+    {
+      "key": "data-stream",
+      "sectionIds": [
+        "U15"
+      ],
+      "label": {
+        "ar": "تدفّق البيانات",
+        "en": "Data stream"
+      }
+    },
+    {
+      "key": "data-summarization",
+      "sectionIds": [
+        "U20"
+      ],
+      "label": {
+        "ar": "تلخيص البيانات",
+        "en": "Data summarization"
+      }
+    },
+    {
+      "key": "data-transformation",
+      "sectionIds": [
+        "U18",
+        "U24"
+      ],
+      "label": {
+        "ar": "تحويل البيانات",
+        "en": "Data transformation"
+      }
+    },
+    {
+      "key": "data-visualization",
+      "sectionIds": [
+        "U20"
+      ],
+      "label": {
+        "ar": "تصوّر البيانات",
+        "en": "Data visualization"
+      }
+    },
+    {
+      "key": "dataset-splitting",
+      "sectionIds": [
+        "U21"
+      ],
+      "label": {
+        "ar": "تقسيم مجموعة البيانات",
+        "en": "Dataset splitting"
+      }
+    },
+    {
+      "key": "decision-boundary",
+      "sectionIds": [
+        "U10",
+        "U19"
+      ],
+      "label": {
+        "ar": "حدّ القرار",
+        "en": "Decision boundary"
+      }
+    },
+    {
+      "key": "decision-threshold-tuning",
+      "sectionIds": [
+        "U3",
+        "U30"
+      ],
+      "label": {
+        "ar": "ضبط عتبة القرار",
+        "en": "Decision threshold tuning"
+      }
+    },
+    {
+      "key": "decision-tree",
+      "sectionIds": [
+        "U37"
+      ],
+      "label": {
+        "ar": "شجرة القرار",
+        "en": "Decision tree"
+      }
+    },
+    {
+      "key": "decision-tree-structure",
+      "sectionIds": [
+        "U37"
+      ],
+      "label": {
+        "ar": "بنية شجرة القرار",
+        "en": "Decision-tree structure"
+      }
+    },
+    {
+      "key": "deep-learning",
+      "sectionIds": [
+        "U6",
+        "U14"
+      ],
+      "label": {
+        "ar": "التعلّم العميق",
+        "en": "Deep learning"
+      }
+    },
+    {
+      "key": "denominator-reference-group",
+      "sectionIds": [
+        "U1"
+      ],
+      "label": {
+        "ar": "المجموعة المرجعية للمقام",
+        "en": "Denominator Reference Group"
+      },
+      "continuityConceptId": "concept-018ded04eb8644ee8491",
+      "scope": "Existing navigation/foundation concept; not an additional lecture claim or automatic mastery transfer."
+    },
+    {
+      "key": "dependent-variable",
+      "sectionIds": [
+        "U7"
+      ],
+      "label": {
+        "ar": "المتغيّر التابع",
+        "en": "Dependent variable"
+      }
+    },
+    {
+      "key": "descriptive-analysis",
+      "sectionIds": [
+        "U20"
+      ],
+      "label": {
+        "ar": "التحليل الوصفي",
+        "en": "Descriptive analysis"
+      }
+    },
+    {
+      "key": "distance-metric",
+      "sectionIds": [
+        "U31"
+      ],
+      "label": {
+        "ar": "مقياس المسافة",
+        "en": "Distance metric"
+      }
+    },
+    {
+      "key": "document-data",
+      "sectionIds": [
+        "U7"
+      ],
+      "label": {
+        "ar": "بيانات الوثائق",
+        "en": "Document data"
+      }
+    },
+    {
+      "key": "elbow-method",
+      "sectionIds": [
+        "U33"
+      ],
+      "label": {
+        "ar": "أسلوب الكوع الاسترشادي",
+        "en": "Elbow heuristic"
+      }
+    },
+    {
+      "key": "ensemble-classification",
+      "sectionIds": [
+        "U41"
+      ],
+      "label": {
+        "ar": "التصنيف التجميعي",
+        "en": "Ensemble classification"
+      }
+    },
+    {
+      "key": "ensemble-diversity",
+      "sectionIds": [
+        "U41"
+      ],
+      "label": {
+        "ar": "تنوع نماذج التجميع",
+        "en": "Ensemble diversity"
+      }
+    },
+    {
+      "key": "ensemble-learning",
+      "sectionIds": [
+        "U41"
+      ],
+      "label": {
+        "ar": "التعلّم التجميعي",
+        "en": "Ensemble learning"
+      }
+    },
+    {
+      "key": "entropy",
+      "sectionIds": [
+        "U39",
+        "U43"
+      ],
+      "label": {
+        "ar": "الإنتروبي",
+        "en": "Entropy"
+      }
+    },
+    {
+      "key": "error-analysis",
+      "sectionIds": [
+        "U8",
+        "U45"
+      ],
+      "label": {
+        "ar": "تحليل الأخطاء",
+        "en": "Error analysis"
+      }
+    },
+    {
+      "key": "euclidean-distance",
+      "sectionIds": [
+        "U31"
+      ],
+      "label": {
+        "ar": "المسافة الإقليدية",
+        "en": "Euclidean distance"
+      }
+    },
+    {
+      "key": "explicit-rule-programming",
+      "sectionIds": [
+        "U8"
+      ],
+      "label": {
+        "ar": "البرمجة بقواعد صريحة",
+        "en": "Explicit rule programming"
+      }
+    },
+    {
+      "key": "f1-score",
+      "sectionIds": [
+        "U29"
+      ],
+      "label": {
+        "ar": "درجة F1",
+        "en": "F1 score"
+      }
+    },
+    {
+      "key": "false-negative",
+      "sectionIds": [
+        "U28"
+      ],
+      "label": {
+        "ar": "السلبي الكاذب",
+        "en": "False negative"
+      }
+    },
+    {
+      "key": "false-positive",
+      "sectionIds": [
+        "U28"
+      ],
+      "label": {
+        "ar": "الإيجابي الكاذب",
+        "en": "False positive"
+      }
+    },
+    {
+      "key": "feature-creation",
+      "sectionIds": [
+        "U18"
+      ],
+      "label": {
+        "ar": "إنشاء سمات جديدة",
+        "en": "Creating new features"
+      }
+    },
+    {
+      "key": "feature-engineering",
+      "sectionIds": [
+        "U18"
+      ],
+      "label": {
+        "ar": "هندسة السمات",
+        "en": "Feature engineering"
+      }
+    },
+    {
+      "key": "feature-extraction",
+      "sectionIds": [
+        "U18"
+      ],
+      "label": {
+        "ar": "استخراج السمات",
+        "en": "Feature extraction"
+      }
+    },
+    {
+      "key": "feature-matrix",
+      "sectionIds": [
+        "U7",
+        "U22"
+      ],
+      "label": {
+        "ar": "مصفوفة الخصائص",
+        "en": "Feature matrix"
+      }
+    },
+    {
+      "key": "feature-scaling",
+      "sectionIds": [
+        "U18",
+        "U24",
+        "U31",
+        "U42"
+      ],
+      "label": {
+        "ar": "تحجيم الخصائص",
+        "en": "Feature scaling"
+      }
+    },
+    {
+      "key": "feature-selection",
+      "sectionIds": [
+        "U18"
+      ],
+      "label": {
+        "ar": "اختيار السمات",
+        "en": "Feature selection"
+      }
+    },
+    {
+      "key": "feature-target-alignment",
+      "sectionIds": [
+        "U7",
+        "U22"
+      ],
+      "label": {
+        "ar": "محاذاة الخصائص والقيم المستهدفة",
+        "en": "Feature-target alignment"
+      }
+    },
+    {
+      "key": "features",
+      "sectionIds": [
+        "U7",
+        "U18"
+      ],
+      "label": {
+        "ar": "السمات",
+        "en": "Features"
+      }
+    },
+    {
+      "key": "featuretools",
+      "sectionIds": [
+        "U18"
+      ],
+      "label": {
+        "ar": "أداة فيتشرتولز",
+        "en": "Featuretools"
+      }
+    },
+    {
+      "key": "forgetting-old-knowledge",
+      "sectionIds": [
+        "U16"
+      ],
+      "label": {
+        "ar": "نسيان المعرفة السابقة",
+        "en": "Forgetting previously learned knowledge"
+      }
+    },
+    {
+      "key": "fraud-matrix-worked-example",
+      "sectionIds": [
+        "U2",
+        "U29",
+        "U43"
+      ],
+      "label": {
+        "ar": "مثال مصفوفة الاحتيال المحلول",
+        "en": "Fraud confusion-matrix worked example"
+      }
+    },
+    {
+      "key": "generalization",
+      "sectionIds": [
+        "U19"
+      ],
+      "label": {
+        "ar": "التعميم",
+        "en": "Generalization"
+      }
+    },
+    {
+      "key": "gini-impurity",
+      "sectionIds": [
+        "U38"
+      ],
+      "label": {
+        "ar": "عدم النقاء بمقياس جيني",
+        "en": "Gini impurity"
+      }
+    },
+    {
+      "key": "harmonic-mean-balance",
+      "sectionIds": [
+        "U29",
+        "U44"
+      ],
+      "label": {
+        "ar": "توازن الإحكام والاستدعاء بالمتوسط التوافقي",
+        "en": "Harmonic-mean precision/recall balance"
+      }
+    },
+    {
+      "key": "hidden-layer",
+      "sectionIds": [
+        "U14"
+      ],
+      "label": {
+        "ar": "الطبقة المخفية",
+        "en": "Hidden layer"
+      }
+    },
+    {
+      "key": "holdout-evaluation",
+      "sectionIds": [
+        "U21"
+      ],
+      "label": {
+        "ar": "التقييم بمجموعة محجوزة",
+        "en": "Holdout evaluation"
+      }
+    },
+    {
+      "key": "human-expert-review",
+      "sectionIds": [
+        "U8"
+      ],
+      "label": {
+        "ar": "مراجعة الخبير البشري",
+        "en": "Human expert review"
+      }
+    },
+    {
+      "key": "hyperparameter-k",
+      "sectionIds": [
+        "U33"
+      ],
+      "label": {
+        "ar": "اختيار عدد الجيران",
+        "en": "Neighbor-count hyperparameter"
+      }
+    },
+    {
+      "key": "hyperparameter-tuning",
+      "sectionIds": [
+        "U21",
+        "U23"
+      ],
+      "label": {
+        "ar": "ضبط المعاملات الفائقة",
+        "en": "Hyperparameter tuning"
+      }
+    },
+    {
+      "key": "image-recognition",
+      "sectionIds": [
+        "U9"
+      ],
+      "label": {
+        "ar": "التعرّف على الصور",
+        "en": "Image recognition"
+      }
+    },
+    {
+      "key": "incremental-model-update",
+      "sectionIds": [
+        "U15"
+      ],
+      "label": {
+        "ar": "التحديث التزايدي للنموذج",
+        "en": "Incremental model update"
+      }
+    },
+    {
+      "key": "independent-test-evaluation",
+      "sectionIds": [
+        "U21",
+        "U23"
+      ],
+      "label": {
+        "ar": "التقييم النهائي المستقل",
+        "en": "Independent final test evaluation"
+      }
+    },
+    {
+      "key": "independent-variable",
+      "sectionIds": [
+        "U7"
+      ],
+      "label": {
+        "ar": "المتغيّر المستقل",
+        "en": "Independent variable"
+      }
+    },
+    {
+      "key": "inference",
+      "sectionIds": [
+        "U8",
+        "U15"
+      ],
+      "label": {
+        "ar": "استخدام النموذج للاستدلال",
+        "en": "Inference"
+      }
+    },
+    {
+      "key": "information-gain",
+      "sectionIds": [
+        "U40",
+        "U43"
+      ],
+      "label": {
+        "ar": "الكسب المعلوماتي",
+        "en": "Information gain"
+      }
+    },
+    {
+      "key": "input-layer",
+      "sectionIds": [
+        "U14"
+      ],
+      "label": {
+        "ar": "طبقة الإدخال",
+        "en": "Input layer"
+      }
+    },
+    {
+      "key": "irrelevant-features",
+      "sectionIds": [
+        "U18"
+      ],
+      "label": {
+        "ar": "السمات غير ذات الصلة",
+        "en": "Irrelevant features"
+      }
+    },
+    {
+      "key": "k-fold-cross-validation",
+      "sectionIds": [
+        "U23"
+      ],
+      "label": {
+        "ar": "التحقق المتقاطع بطيات متعددة",
+        "en": "K-fold cross-validation"
+      }
+    },
+    {
+      "key": "knn",
+      "sectionIds": [
+        "U32"
+      ],
+      "label": {
+        "ar": "خوارزمية أقرب الجيران",
+        "en": "K-nearest neighbors"
+      }
+    },
+    {
+      "key": "knn-computational-cost",
+      "sectionIds": [
+        "U32"
+      ],
+      "label": {
+        "ar": "تكلفة حساب أقرب الجيران",
+        "en": "KNN computational cost"
+      }
+    },
+    {
+      "key": "labeled-data",
+      "sectionIds": [
+        "U7",
+        "U12"
+      ],
+      "label": {
+        "ar": "البيانات الموسومة",
+        "en": "Labeled data"
+      }
+    },
+    {
+      "key": "laplace-smoothing",
+      "sectionIds": [
+        "U36"
+      ],
+      "label": {
+        "ar": "تنعيم لابلاس",
+        "en": "Laplace smoothing"
+      }
+    },
+    {
+      "key": "lazy-learning",
+      "sectionIds": [
+        "U32"
+      ],
+      "label": {
+        "ar": "التعلم الكسول",
+        "en": "Lazy learning"
+      }
+    },
+    {
+      "key": "leaf-prediction",
+      "sectionIds": [
+        "U37"
+      ],
+      "label": {
+        "ar": "التنبؤ عند العقدة الورقية",
+        "en": "Leaf prediction"
+      }
+    },
+    {
+      "key": "learning-algorithm",
+      "sectionIds": [
+        "U6",
+        "U8"
+      ],
+      "label": {
+        "ar": "خوارزمية التعلّم",
+        "en": "Learning algorithm"
+      }
+    },
+    {
+      "key": "learning-rate",
+      "sectionIds": [
+        "U4",
+        "U16"
+      ],
+      "label": {
+        "ar": "معدّل التعلّم",
+        "en": "Learning rate"
+      }
+    },
+    {
+      "key": "logistic-regression",
+      "sectionIds": [
+        "U10"
+      ],
+      "label": {
+        "ar": "الانحدار اللوجستي",
+        "en": "Logistic regression"
+      }
+    },
+    {
+      "key": "machine-learning",
+      "sectionIds": [
+        "U6"
+      ],
+      "label": {
+        "ar": "تعلّم الآلة",
+        "en": "Machine learning"
+      }
+    },
+    {
+      "key": "machine-translation",
+      "sectionIds": [
+        "U9"
+      ],
+      "label": {
+        "ar": "الترجمة الآلية",
+        "en": "Automatic language translation"
+      }
+    },
+    {
+      "key": "majority-class-bias",
+      "sectionIds": [
+        "U3",
+        "U25"
+      ],
+      "label": {
+        "ar": "الانحياز للفئة الغالبة",
+        "en": "Majority-class bias"
+      }
+    },
+    {
+      "key": "majority-minority-classes",
+      "sectionIds": [
+        "U25"
+      ],
+      "label": {
+        "ar": "الفئتان الغالبة والنادرة",
+        "en": "Majority and minority classes"
+      }
+    },
+    {
+      "key": "majority-vote",
+      "sectionIds": [
+        "U32",
+        "U42"
+      ],
+      "label": {
+        "ar": "تصويت الأغلبية",
+        "en": "Majority vote"
+      }
+    },
+    {
+      "key": "majority-voting",
+      "sectionIds": [
+        "U32",
+        "U42",
+        "U44"
+      ],
+      "label": {
+        "ar": "التصويت بالأغلبية",
+        "en": "Majority voting"
+      }
+    },
+    {
+      "key": "manhattan-distance",
+      "sectionIds": [
+        "U31"
+      ],
+      "label": {
+        "ar": "مسافة مانهاتن",
+        "en": "Manhattan distance"
+      }
+    },
+    {
+      "key": "maximum-a-posteriori",
+      "sectionIds": [
+        "U35",
+        "U43"
+      ],
+      "label": {
+        "ar": "اختيار الفئة ذات الاحتمال اللاحق الأكبر",
+        "en": "Maximum a posteriori classification"
+      }
+    },
+    {
+      "key": "measurement-noise",
+      "sectionIds": [
+        "U17"
+      ],
+      "label": {
+        "ar": "ضوضاء القياس",
+        "en": "Measurement noise"
+      }
+    },
+    {
+      "key": "medical-diagnosis",
+      "sectionIds": [
+        "U9"
+      ],
+      "label": {
+        "ar": "التشخيص الطبي",
+        "en": "Medical diagnosis"
+      }
+    },
+    {
+      "key": "metric-selection",
+      "sectionIds": [
+        "U3",
+        "U30",
+        "U45"
+      ],
+      "label": {
+        "ar": "اختيار مقياس التقييم",
+        "en": "Metric selection"
+      }
+    },
+    {
+      "key": "mini-batch",
+      "sectionIds": [
+        "U16"
+      ],
+      "label": {
+        "ar": "الدفعة المصغّرة",
+        "en": "Mini-batch"
+      }
+    },
+    {
+      "key": "minority-neighbor-selection",
+      "sectionIds": [
+        "U27"
+      ],
+      "label": {
+        "ar": "اختيار جيران الفئة النادرة",
+        "en": "Minority-class neighbor selection"
+      }
+    },
+    {
+      "key": "ml-workflow",
+      "sectionIds": [
+        "U8"
+      ],
+      "label": {
+        "ar": "دورة بناء نموذج تعلّم الآلة",
+        "en": "Machine learning workflow"
+      }
+    },
+    {
+      "key": "model-complexity",
+      "sectionIds": [
+        "U19"
+      ],
+      "label": {
+        "ar": "تعقيد النموذج",
+        "en": "Model complexity"
+      }
+    },
+    {
+      "key": "model-deployment",
+      "sectionIds": [
+        "U8"
+      ],
+      "label": {
+        "ar": "نشر النموذج للاستخدام",
+        "en": "Model deployment"
+      }
+    },
+    {
+      "key": "model-evaluation",
+      "sectionIds": [
+        "U8",
+        "U29",
+        "U45"
+      ],
+      "label": {
+        "ar": "تقييم النموذج",
+        "en": "Model evaluation"
+      }
+    },
+    {
+      "key": "model-inspection",
+      "sectionIds": [
+        "U8",
+        "U45"
+      ],
+      "label": {
+        "ar": "فحص النموذج لفهم المشكلة",
+        "en": "Model inspection for human understanding"
+      }
+    },
+    {
+      "key": "model-interpretability",
+      "sectionIds": [
+        "U42"
+      ],
+      "label": {
+        "ar": "قابلية تفسير النموذج",
+        "en": "Model interpretability"
+      }
+    },
+    {
+      "key": "model-parameter-fitting",
+      "sectionIds": [
+        "U4",
+        "U21",
+        "U44"
+      ],
+      "label": {
+        "ar": "تقدير معاملات النموذج",
+        "en": "Model parameter fitting"
+      }
+    },
+    {
+      "key": "model-performance-decay",
+      "sectionIds": [
+        "U15"
+      ],
+      "label": {
+        "ar": "تدهور أداء النموذج بمرور الزمن",
+        "en": "Model performance decay"
+      }
+    },
+    {
+      "key": "model-retraining",
+      "sectionIds": [
+        "U15"
+      ],
+      "label": {
+        "ar": "إعادة تدريب النموذج",
+        "en": "Model retraining"
+      }
+    },
+    {
+      "key": "model-training",
+      "sectionIds": [
+        "U8"
+      ],
+      "label": {
+        "ar": "تدريب النموذج",
+        "en": "Model training"
+      }
+    },
+    {
+      "key": "multiclass-classification",
+      "sectionIds": [
+        "U10"
+      ],
+      "label": {
+        "ar": "التصنيف متعدد الفئات",
+        "en": "Multiclass classification"
+      }
+    },
+    {
+      "key": "multilabel-classification",
+      "sectionIds": [
+        "U10"
+      ],
+      "label": {
+        "ar": "التصنيف متعدد الوسوم",
+        "en": "Multilabel classification"
+      }
+    },
+    {
+      "key": "naive-bayes",
+      "sectionIds": [
+        "U5",
+        "U35"
+      ],
+      "label": {
+        "ar": "بايز الساذج",
+        "en": "Naive Bayes"
+      }
+    },
+    {
+      "key": "nearest-neighbor-search",
+      "sectionIds": [
+        "U32"
+      ],
+      "label": {
+        "ar": "البحث عن أقرب الجيران",
+        "en": "Nearest-neighbor search"
+      }
+    },
+    {
+      "key": "neighbor-average",
+      "sectionIds": [
+        "U32",
+        "U42"
+      ],
+      "label": {
+        "ar": "متوسط قيم الجيران",
+        "en": "Neighbor average"
+      }
+    },
+    {
+      "key": "neural-network",
+      "sectionIds": [
+        "U14"
+      ],
+      "label": {
+        "ar": "الشبكة العصبية",
+        "en": "Neural network"
+      }
+    },
+    {
+      "key": "node-impurity",
+      "sectionIds": [
+        "U38",
+        "U39"
+      ],
+      "label": {
+        "ar": "عدم نقاء العقدة",
+        "en": "Node impurity"
+      }
+    },
+    {
+      "key": "noise-outliers",
+      "sectionIds": [
+        "U17"
+      ],
+      "label": {
+        "ar": "الضوضاء والقيم المتطرفة",
+        "en": "Noise and outliers"
+      }
+    },
+    {
+      "key": "numpy",
+      "sectionIds": [
+        "U18",
+        "U22",
+        "U44"
+      ],
+      "label": {
+        "ar": "مكتبة نمباي",
+        "en": "NumPy"
+      }
+    },
+    {
+      "key": "online-fraud-detection",
+      "sectionIds": [
+        "U9"
+      ],
+      "label": {
+        "ar": "اكتشاف الاحتيال عبر الإنترنت",
+        "en": "Online fraud detection"
+      }
+    },
+    {
+      "key": "online-learning",
+      "sectionIds": [
+        "U15",
+        "U16"
+      ],
+      "label": {
+        "ar": "التعلّم عبر التحديث المتتابع",
+        "en": "Online learning"
+      }
+    },
+    {
+      "key": "out-of-core-learning",
+      "sectionIds": [
+        "U16"
+      ],
+      "label": {
+        "ar": "التعلّم خارج الذاكرة الرئيسية",
+        "en": "Out-of-core learning"
+      }
+    },
+    {
+      "key": "outlier-handling",
+      "sectionIds": [
+        "U17"
+      ],
+      "label": {
+        "ar": "معالجة القيم المتطرّفة",
+        "en": "Outlier handling"
+      }
+    },
+    {
+      "key": "outliers",
+      "sectionIds": [
+        "U17"
+      ],
+      "label": {
+        "ar": "القيم المتطرّفة",
+        "en": "Outliers"
+      }
+    },
+    {
+      "key": "output-layer",
+      "sectionIds": [
+        "U14"
+      ],
+      "label": {
+        "ar": "طبقة الإخراج",
+        "en": "Output layer"
+      }
+    },
+    {
+      "key": "overfitting",
+      "sectionIds": [
+        "U19",
+        "U33"
+      ],
+      "label": {
+        "ar": "فرط التكيّف",
+        "en": "Overfitting"
+      }
+    },
+    {
+      "key": "oversampling-duplicate-risk",
+      "sectionIds": [
+        "U26"
+      ],
+      "label": {
+        "ar": "خطر تكرار العينات في زيادة العينات",
+        "en": "Duplicate-example risk in oversampling"
+      }
+    },
+    {
+      "key": "oversampling-ratio",
+      "sectionIds": [
+        "U26",
+        "U27"
+      ],
+      "label": {
+        "ar": "نسبة زيادة العينات",
+        "en": "Oversampling ratio"
+      }
+    },
+    {
+      "key": "pandas",
+      "sectionIds": [
+        "U18"
+      ],
+      "label": {
+        "ar": "مكتبة بانداس",
+        "en": "Pandas"
+      }
+    },
+    {
+      "key": "positive-class",
+      "sectionIds": [
+        "U1",
+        "U28"
+      ],
+      "label": {
+        "ar": "تحديد الفئة الإيجابية",
+        "en": "Positive-class definition"
+      }
+    },
+    {
+      "key": "posterior-probability",
+      "sectionIds": [
+        "U34",
+        "U35",
+        "U43"
+      ],
+      "label": {
+        "ar": "الاحتمال اللاحق",
+        "en": "Posterior probability"
+      }
+    },
+    {
+      "key": "precision",
+      "sectionIds": [
+        "U2",
+        "U1",
+        "U29"
+      ],
+      "label": {
+        "ar": "الإحكام",
+        "en": "Precision"
+      }
+    },
+    {
+      "key": "precision-and-recall",
+      "sectionIds": [
+        "U2"
+      ],
+      "label": {
+        "ar": "الإحكام والاستدعاء",
+        "en": "Precision and Recall"
+      },
+      "continuityConceptId": "concept-cbef07ccb2266faef5a6",
+      "scope": "Existing navigation/foundation concept; not an additional lecture claim or automatic mastery transfer."
+    },
+    {
+      "key": "prediction",
+      "sectionIds": [
+        "U20"
+      ],
+      "label": {
+        "ar": "التنبّؤ",
+        "en": "Prediction"
+      }
+    },
+    {
+      "key": "prediction-averaging",
+      "sectionIds": [
+        "U42"
+      ],
+      "label": {
+        "ar": "متوسط التنبؤات",
+        "en": "Prediction averaging"
+      }
+    },
+    {
+      "key": "predictive-analysis",
+      "sectionIds": [
+        "U20"
+      ],
+      "label": {
+        "ar": "التحليل التنبّؤي",
+        "en": "Predictive analysis"
+      }
+    },
+    {
+      "key": "problem-framing",
+      "sectionIds": [
+        "U8"
+      ],
+      "label": {
+        "ar": "صياغة المشكلة",
+        "en": "Problem framing"
+      }
+    },
+    {
+      "key": "pseudo-labeling",
+      "sectionIds": [
+        "U12"
+      ],
+      "label": {
+        "ar": "الوسم الزائف",
+        "en": "Pseudo-labeling"
+      }
+    },
+    {
+      "key": "python",
+      "sectionIds": [
+        "U22",
+        "U44"
+      ],
+      "label": {
+        "ar": "بايثون",
+        "en": "Python"
+      }
+    },
+    {
+      "key": "random-data-sampling",
+      "sectionIds": [
+        "U41"
+      ],
+      "label": {
+        "ar": "أخذ عينات عشوائية من البيانات",
+        "en": "Random data sampling"
+      }
+    },
+    {
+      "key": "random-feature-selection",
+      "sectionIds": [
+        "U41"
+      ],
+      "label": {
+        "ar": "اختيار مجموعات خصائص عشوائية",
+        "en": "Random feature-subset selection"
+      }
+    },
+    {
+      "key": "random-forest",
+      "sectionIds": [
+        "U41"
+      ],
+      "label": {
+        "ar": "الغابة العشوائية",
+        "en": "Random forest"
+      }
+    },
+    {
+      "key": "random-oversampling",
+      "sectionIds": [
+        "U26"
+      ],
+      "label": {
+        "ar": "زيادة عينات الفئة النادرة عشوائيًا",
+        "en": "Random oversampling"
+      }
+    },
+    {
+      "key": "random-undersampling",
+      "sectionIds": [
+        "U26"
+      ],
+      "label": {
+        "ar": "خفض عينات الفئة الغالبة عشوائيًا",
+        "en": "Random undersampling"
+      }
+    },
+    {
+      "key": "recall",
+      "sectionIds": [
+        "U2",
+        "U1",
+        "U29"
+      ],
+      "label": {
+        "ar": "الاستدعاء",
+        "en": "Recall"
+      }
+    },
+    {
+      "key": "recommender-systems",
+      "sectionIds": [
+        "U9"
+      ],
+      "label": {
+        "ar": "أنظمة التوصية",
+        "en": "Product recommendations"
+      }
+    },
+    {
+      "key": "recursive-partitioning",
+      "sectionIds": [
+        "U37"
+      ],
+      "label": {
+        "ar": "التقسيم المتكرر للبيانات",
+        "en": "Recursive partitioning"
+      }
+    },
+    {
+      "key": "regression",
+      "sectionIds": [
+        "U10",
+        "U20"
+      ],
+      "label": {
+        "ar": "الانحدار",
+        "en": "Regression"
+      }
+    },
+    {
+      "key": "reinforcement-learning",
+      "sectionIds": [
+        "U13"
+      ],
+      "label": {
+        "ar": "التعلّم المعزّز",
+        "en": "Reinforcement learning"
+      }
+    },
+    {
+      "key": "representation-learning",
+      "sectionIds": [
+        "U14"
+      ],
+      "label": {
+        "ar": "تعلّم التمثيلات",
+        "en": "Representation learning"
+      }
+    },
+    {
+      "key": "reproducible-random-split",
+      "sectionIds": [
+        "U22"
+      ],
+      "label": {
+        "ar": "إعادة إنتاج التقسيم العشوائي",
+        "en": "Reproducible random splitting"
+      }
+    },
+    {
+      "key": "resampling",
+      "sectionIds": [
+        "U26"
+      ],
+      "label": {
+        "ar": "إعادة أخذ العينات",
+        "en": "Resampling for class imbalance"
+      }
+    },
+    {
+      "key": "rl-action",
+      "sectionIds": [
+        "U13"
+      ],
+      "label": {
+        "ar": "الفعل في التعلّم المعزّز",
+        "en": "Reinforcement-learning action"
+      }
+    },
+    {
+      "key": "rl-agent",
+      "sectionIds": [
+        "U13"
+      ],
+      "label": {
+        "ar": "وكيل التعلّم المعزّز",
+        "en": "Reinforcement-learning agent"
+      }
+    },
+    {
+      "key": "rl-environment",
+      "sectionIds": [
+        "U13"
+      ],
+      "label": {
+        "ar": "بيئة التعلّم المعزّز",
+        "en": "Reinforcement-learning environment"
+      }
+    },
+    {
+      "key": "rl-exploration",
+      "sectionIds": [
+        "U13"
+      ],
+      "label": {
+        "ar": "استكشاف البيئة",
+        "en": "Environment exploration"
+      }
+    },
+    {
+      "key": "rl-observation",
+      "sectionIds": [
+        "U13"
+      ],
+      "label": {
+        "ar": "الملاحظة في التعلّم المعزّز",
+        "en": "Observation in reinforcement learning"
+      }
+    },
+    {
+      "key": "rl-policy",
+      "sectionIds": [
+        "U13"
+      ],
+      "label": {
+        "ar": "سياسة التعلّم المعزّز",
+        "en": "Reinforcement-learning policy"
+      }
+    },
+    {
+      "key": "rl-reward",
+      "sectionIds": [
+        "U13"
+      ],
+      "label": {
+        "ar": "المكافأة والعقوبة",
+        "en": "Reward and penalty"
+      }
+    },
+    {
+      "key": "rl-state",
+      "sectionIds": [
+        "U13"
+      ],
+      "label": {
+        "ar": "الحالة في التعلّم المعزّز",
+        "en": "State in reinforcement learning"
+      }
+    },
+    {
+      "key": "sample-representativeness",
+      "sectionIds": [
+        "U17"
+      ],
+      "label": {
+        "ar": "تمثيل العيّنة للمجتمع المستهدف",
+        "en": "Sample representativeness"
+      }
+    },
+    {
+      "key": "scikit-learn",
+      "sectionIds": [
+        "U18",
+        "U22",
+        "U44"
+      ],
+      "label": {
+        "ar": "مكتبة سايكت ليرن",
+        "en": "Scikit-learn"
+      }
+    },
+    {
+      "key": "selective-data-addition",
+      "sectionIds": [
+        "U16"
+      ],
+      "label": {
+        "ar": "الإضافة الانتقائية للبيانات",
+        "en": "Selective data addition"
+      }
+    },
+    {
+      "key": "semi-supervised-learning",
+      "sectionIds": [
+        "U12"
+      ],
+      "label": {
+        "ar": "التعلّم شبه الخاضع للإشراف",
+        "en": "Semi-supervised learning"
+      }
+    },
+    {
+      "key": "smote",
+      "sectionIds": [
+        "U27"
+      ],
+      "label": {
+        "ar": "توليد عينات اصطناعية للفئة النادرة",
+        "en": "SMOTE"
+      }
+    },
+    {
+      "key": "software-engineering",
+      "sectionIds": [
+        "U6"
+      ],
+      "label": {
+        "ar": "هندسة البرمجيات",
+        "en": "Software engineering"
+      }
+    },
+    {
+      "key": "spam-and-malware-filtering",
+      "sectionIds": [
+        "U9"
+      ],
+      "label": {
+        "ar": "ترشيح الرسائل المزعجة والبرمجيات الخبيثة",
+        "en": "Email spam and malware filtering"
+      }
+    },
+    {
+      "key": "speech-recognition",
+      "sectionIds": [
+        "U9"
+      ],
+      "label": {
+        "ar": "التعرّف على الكلام",
+        "en": "Speech recognition"
+      }
+    },
+    {
+      "key": "split-fraction",
+      "sectionIds": [
+        "U22",
+        "U44"
+      ],
+      "label": {
+        "ar": "نسبة تقسيم البيانات",
+        "en": "Split fraction"
+      }
+    },
+    {
+      "key": "split-selection",
+      "sectionIds": [
+        "U38",
+        "U40"
+      ],
+      "label": {
+        "ar": "اختيار خاصية التقسيم",
+        "en": "Split-feature selection"
+      }
+    },
+    {
+      "key": "sqrt-n-heuristic",
+      "sectionIds": [
+        "U33"
+      ],
+      "label": {
+        "ar": "قاعدة الجذر التربيعي لحجم البيانات",
+        "en": "Square-root sample-size heuristic"
+      }
+    },
+    {
+      "key": "stability-plasticity",
+      "sectionIds": [
+        "U16"
+      ],
+      "label": {
+        "ar": "معضلة الثبات والمرونة",
+        "en": "Stability–plasticity dilemma"
+      }
+    },
+    {
+      "key": "statistics",
+      "sectionIds": [
+        "U6"
+      ],
+      "label": {
+        "ar": "الإحصاء",
+        "en": "Statistics"
+      }
+    },
+    {
+      "key": "stock-market-trading",
+      "sectionIds": [
+        "U9"
+      ],
+      "label": {
+        "ar": "التداول في سوق الأسهم",
+        "en": "Stock-market trading"
+      }
+    },
+    {
+      "key": "supervised-learning",
+      "sectionIds": [
+        "U10"
+      ],
+      "label": {
+        "ar": "التعلّم الخاضع للإشراف",
+        "en": "Supervised learning"
+      }
+    },
+    {
+      "key": "support-vector-machine",
+      "sectionIds": [
+        "U10"
+      ],
+      "label": {
+        "ar": "آلة المتجهات الداعمة",
+        "en": "Support vector machine"
+      }
+    },
+    {
+      "key": "synthetic-sample-interpolation",
+      "sectionIds": [
+        "U27"
+      ],
+      "label": {
+        "ar": "استيفاء العينات الاصطناعية",
+        "en": "Synthetic sample interpolation"
+      }
+    },
+    {
+      "key": "tabular-summarization",
+      "sectionIds": [
+        "U20"
+      ],
+      "label": {
+        "ar": "التلخيص الجدولي",
+        "en": "Tabular summarization"
+      }
+    },
+    {
+      "key": "target-population",
+      "sectionIds": [
+        "U17"
+      ],
+      "label": {
+        "ar": "المجتمع المستهدف",
+        "en": "Target population"
+      }
+    },
+    {
+      "key": "target-vector",
+      "sectionIds": [
+        "U7",
+        "U22"
+      ],
+      "label": {
+        "ar": "متجه الهدف",
+        "en": "Target vector"
+      }
+    },
+    {
+      "key": "tensorflow-transform",
+      "sectionIds": [
+        "U18"
+      ],
+      "label": {
+        "ar": "أداة تنسورفلو ترانسفورم",
+        "en": "TensorFlow Transform"
+      }
+    },
+    {
+      "key": "test-data",
+      "sectionIds": [
+        "U21"
+      ],
+      "label": {
+        "ar": "بيانات الاختبار",
+        "en": "Test data"
+      }
+    },
+    {
+      "key": "text-classification",
+      "sectionIds": [
+        "U9",
+        "U35"
+      ],
+      "label": {
+        "ar": "تصنيف النصوص",
+        "en": "Text classification"
+      }
+    },
+    {
+      "key": "time-series-analysis",
+      "sectionIds": [
+        "U20"
+      ],
+      "label": {
+        "ar": "تحليل السلاسل الزمنية",
+        "en": "Time-series analysis"
+      }
+    },
+    {
+      "key": "traffic-prediction",
+      "sectionIds": [
+        "U9"
+      ],
+      "label": {
+        "ar": "التنبؤ بحركة المرور",
+        "en": "Traffic prediction"
+      }
+    },
+    {
+      "key": "train-test-split",
+      "sectionIds": [
+        "U22",
+        "U44"
+      ],
+      "label": {
+        "ar": "تقسيم التدريب والاختبار",
+        "en": "Train-test split"
+      }
+    },
+    {
+      "key": "train-test-split-implementation",
+      "sectionIds": [
+        "U22",
+        "U44"
+      ],
+      "label": {
+        "ar": "تنفيذ تقسيم التدريب والاختبار",
+        "en": "train_test_split implementation"
+      }
+    },
+    {
+      "key": "train-validation-test-split",
+      "sectionIds": [
+        "U21"
+      ],
+      "label": {
+        "ar": "تقسيم التدريب والتحقق والاختبار",
+        "en": "Train-validation-test split"
+      }
+    },
+    {
+      "key": "training-data",
+      "sectionIds": [
+        "U21"
+      ],
+      "label": {
+        "ar": "بيانات التدريب",
+        "en": "Training data"
+      }
+    },
+    {
+      "key": "training-data-quantity",
+      "sectionIds": [
+        "U17"
+      ],
+      "label": {
+        "ar": "كمية بيانات التدريب",
+        "en": "Training-data quantity"
+      }
+    },
+    {
+      "key": "training-data-representativeness",
+      "sectionIds": [
+        "U17",
+        "U25"
+      ],
+      "label": {
+        "ar": "تمثيل وتنوع بيانات التدريب",
+        "en": "Training-data representativeness"
+      }
+    },
+    {
+      "key": "training-validation-test-scores",
+      "sectionIds": [
+        "U23"
+      ],
+      "label": {
+        "ar": "تمييز درجات التدريب والتحقق والاختبار",
+        "en": "Training, validation and test score distinction"
+      }
+    },
+    {
+      "key": "tree-stopping-criteria",
+      "sectionIds": [
+        "U38"
+      ],
+      "label": {
+        "ar": "شروط إيقاف نمو الشجرة",
+        "en": "Tree stopping criteria"
+      }
+    },
+    {
+      "key": "true-negative",
+      "sectionIds": [
+        "U28"
+      ],
+      "label": {
+        "ar": "السلبي الصحيح",
+        "en": "True negative"
+      }
+    },
+    {
+      "key": "true-positive",
+      "sectionIds": [
+        "U28"
+      ],
+      "label": {
+        "ar": "الإيجابي الصحيح",
+        "en": "True positive"
+      }
+    },
+    {
+      "key": "underfitting",
+      "sectionIds": [
+        "U19",
+        "U33"
+      ],
+      "label": {
+        "ar": "قصور التكيّف",
+        "en": "Underfitting"
+      }
+    },
+    {
+      "key": "undersampling-information-loss",
+      "sectionIds": [
+        "U26"
+      ],
+      "label": {
+        "ar": "فقد المعلومات بسبب خفض العينات",
+        "en": "Information loss from undersampling"
+      }
+    },
+    {
+      "key": "unlabeled-data",
+      "sectionIds": [
+        "U7",
+        "U11",
+        "U12"
+      ],
+      "label": {
+        "ar": "البيانات غير الموسومة",
+        "en": "Unlabeled data"
+      }
+    },
+    {
+      "key": "unseen-data",
+      "sectionIds": [
+        "U17"
+      ],
+      "label": {
+        "ar": "البيانات غير المشاهدة أثناء التدريب",
+        "en": "Unseen data"
+      }
+    },
+    {
+      "key": "unstructured-data",
+      "sectionIds": [
+        "U7"
+      ],
+      "label": {
+        "ar": "البيانات غير المهيكلة",
+        "en": "Unstructured data"
+      }
+    },
+    {
+      "key": "unsupervised-learning",
+      "sectionIds": [
+        "U11"
+      ],
+      "label": {
+        "ar": "التعلّم غير الخاضع للإشراف",
+        "en": "Unsupervised learning"
+      }
+    },
+    {
+      "key": "validation-data",
+      "sectionIds": [
+        "U21"
+      ],
+      "label": {
+        "ar": "بيانات التحقق",
+        "en": "Validation data"
+      }
+    },
+    {
+      "key": "validation-driven-model-selection",
+      "sectionIds": [
+        "U21",
+        "U23"
+      ],
+      "label": {
+        "ar": "اختيار النموذج بنتائج التحقق",
+        "en": "Validation-driven model selection"
+      }
+    },
+    {
+      "key": "validation-overuse-leakage",
+      "sectionIds": [
+        "U23",
+        "U24"
+      ],
+      "label": {
+        "ar": "تسرّب معلومات التحقق بسبب التكرار",
+        "en": "Validation overuse and information leakage"
+      }
+    },
+    {
+      "key": "variance-reduction",
+      "sectionIds": [
+        "U38"
+      ],
+      "label": {
+        "ar": "خفض التباين",
+        "en": "Variance reduction"
+      }
+    },
+    {
+      "key": "virtual-personal-assistants",
+      "sectionIds": [
+        "U9"
+      ],
+      "label": {
+        "ar": "المساعدات الشخصية الافتراضية",
+        "en": "Virtual personal assistants"
+      }
+    },
+    {
+      "key": "voting-ties",
+      "sectionIds": [
+        "U32",
+        "U42"
+      ],
+      "label": {
+        "ar": "تعادل الأصوات",
+        "en": "Voting ties"
+      }
+    },
+    {
+      "key": "weak-learners",
+      "sectionIds": [
+        "U41"
+      ],
+      "label": {
+        "ar": "المتعلمون الضعفاء",
+        "en": "Weak learners"
+      }
+    },
+    {
+      "key": "weighted-entropy",
+      "sectionIds": [
+        "U40",
+        "U43"
+      ],
+      "label": {
+        "ar": "الإنتروبي الموزون بعد التقسيم",
+        "en": "Weighted post-split entropy"
+      }
+    },
+    {
+      "key": "zero-frequency",
+      "sectionIds": [
+        "U36"
+      ],
+      "label": {
+        "ar": "مشكلة التكرار الصفري",
+        "en": "Zero-frequency problem"
+      }
+    }
+  ],
+  "legacyConceptSections": {
+    "recall": [
+      "U1",
+      "U2",
+      "U29"
+    ],
+    "precision": [
+      "U1",
+      "U2",
+      "U29"
+    ],
+    "gradient": [
+      "U4",
+      "U16"
+    ],
+    "bayes": [
+      "U5",
+      "U34",
+      "U35"
+    ],
+    "f1": [
+      "U29",
+      "U30"
+    ],
+    "accuracy": [
+      "U25",
+      "U29"
+    ],
+    "imbalance": [
+      "U25",
+      "U26"
+    ],
+    "precision-and-recall": [
+      "U2"
+    ],
+    "denominator-reference-group": [
+      "U1"
+    ]
+  },
+  "sections": [
+    {
+      "id": "U1",
+      "title": {
+        "ar": "مين المجموعة اللي بنقسم عليها؟",
+        "en": "Which group is the denominator?"
+      },
+      "conceptKeys": [
+        "positive-class",
+        "confusion-matrix",
+        "precision",
+        "recall",
+        "conditional-probability",
+        "class-prior",
+        "class-likelihood",
+        "denominator-reference-group"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "حُفظ تفسير المجموعة المرجعية للمقام حرفياً.",
+          "en": "Reference-group denominator reasoning preserved verbatim."
+        }
+      }
+    },
+    {
+      "id": "U2",
+      "title": {
+        "ar": "الاستدعاء والإحكام",
+        "en": "Recall and precision"
+      },
+      "conceptKeys": [
+        "precision",
+        "recall",
+        "fraud-matrix-worked-example",
+        "precision-and-recall"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجعت الصيغ ومثال 5/8 مقابل 5/10 وحُفظت حرفياً.",
+          "en": "Original precision/recall formulas and 5/8 versus 5/10 example rechecked and preserved verbatim."
+        }
+      }
+    },
+    {
+      "id": "U3",
+      "title": {
+        "ar": "اختيار المقياس وتبرير القرار",
+        "en": "Choosing and justifying a metric"
+      },
+      "conceptKeys": [
+        "metric-selection",
+        "accuracy-paradox",
+        "majority-class-bias",
+        "decision-threshold-tuning",
+        "cost-sensitive-learning"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "حُفظ اختيار المقياس السياقي ومقارنة الحالات المحجوزة نفسها حرفياً.",
+          "en": "Original contextual metric choice and equal-heldout comparison preserved verbatim."
+        }
+      }
+    },
+    {
+      "id": "U4",
+      "title": {
+        "ar": "استخدام المشتقة في خطوة تحديث",
+        "en": "Transferring a derivative to an update"
+      },
+      "conceptKeys": [
+        "learning-rate",
+        "model-parameter-fitting"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "حُفظ اتجاه المشتقة المحلية وشرط الخطوة الصغيرة بما يكفي حرفياً.",
+          "en": "Scalar local gradient direction and sufficiently-small-step condition preserved verbatim."
+        }
+      }
+    },
+    {
+      "id": "U5",
+      "title": {
+        "ar": "الاحتمال الشرطي في التصنيف",
+        "en": "Conditional probability in classification"
+      },
+      "conceptKeys": [
+        "conditional-probability",
+        "naive-bayes",
+        "class-likelihood",
+        "conditional-independence",
+        "categorical-frequency-estimation"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "حُفظ العد المشروط بالفئة والاستقلال الشرطي حرفياً.",
+          "en": "Original class-conditional counting and conditional independence preserved verbatim."
+        }
+      }
+    },
+    {
+      "id": "U6",
+      "title": {
+        "ar": "الذكاء الاصطناعي وتعلّم الآلة والتخصصات المرتبطة",
+        "en": "AI, ML and neighboring disciplines"
+      },
+      "conceptKeys": [
+        "artificial-intelligence",
+        "machine-learning",
+        "deep-learning",
+        "learning-algorithm",
+        "data-mining",
+        "autonomous-systems",
+        "statistics",
+        "applied-mathematics",
+        "computer-science",
+        "software-engineering"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجع ترتيب الاحتواء وأسماء التخصصات دون افتراض تنافي أنماط الإشراف أو اختراع تفاصيل خوارزمية.",
+          "en": "Hierarchy and named disciplines checked; no mutually exclusive supervision taxonomy or invented algorithm details."
+        }
+      }
+    },
+    {
+      "id": "U7",
+      "title": {
+        "ar": "البيانات والسمات والأهداف وأشكال المصادر",
+        "en": "Data, features, targets and source formats"
+      },
+      "conceptKeys": [
+        "features",
+        "labeled-data",
+        "unlabeled-data",
+        "data-source-formats",
+        "data-records",
+        "data-metadata",
+        "document-data",
+        "unstructured-data",
+        "dependent-variable",
+        "independent-variable",
+        "feature-matrix",
+        "target-vector",
+        "feature-target-alignment"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجعت الوسوم ومحاذاة المصفوفات مع منع الخلط بين تسمية المتغيّر المستقل والاستقلال الاحتمالي.",
+          "en": "Data labels and matrix alignment reviewed; independent-variable terminology does not assert probability independence."
+        }
+      }
+    },
+    {
+      "id": "U8",
+      "title": {
+        "ar": "دورة بناء النموذج والمراجعة البشرية",
+        "en": "The model lifecycle and human review"
+      },
+      "conceptKeys": [
+        "explicit-rule-programming",
+        "ml-workflow",
+        "problem-framing",
+        "model-training",
+        "learning-algorithm",
+        "model-evaluation",
+        "error-analysis",
+        "model-deployment",
+        "model-inspection",
+        "inference",
+        "human-expert-review"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "فُصلت خطوات العمل عن متطلبات الإتقان، والاستدلال عن الضبط والتقييم النهائي.",
+          "en": "Lifecycle is scoped to process steps and separates inference, tuning and final evaluation."
+        }
+      }
+    },
+    {
+      "id": "U9",
+      "title": {
+        "ar": "أسماء التطبيقات وحدود دلالتها",
+        "en": "Application names and their limits"
+      },
+      "conceptKeys": [
+        "image-recognition",
+        "speech-recognition",
+        "machine-translation",
+        "medical-diagnosis",
+        "stock-market-trading",
+        "online-fraud-detection",
+        "virtual-personal-assistants",
+        "spam-and-malware-filtering",
+        "autonomous-driving",
+        "recommender-systems",
+        "traffic-prediction",
+        "text-classification",
+        "autonomous-systems"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "غُطيت التطبيقات المذكورة بوصفها توجيهاً أولياً دون اختراع تنفيذ أو نتائج أداء.",
+          "en": "All named applications covered as orientation only; no implementation or performance invented."
+        }
+      }
+    },
+    {
+      "id": "U10",
+      "title": {
+        "ar": "الإشراف ومهام التنبؤ",
+        "en": "Supervision and prediction tasks"
+      },
+      "conceptKeys": [
+        "supervised-learning",
+        "classification",
+        "regression",
+        "binary-classification",
+        "multiclass-classification",
+        "multilabel-classification",
+        "logistic-regression",
+        "support-vector-machine",
+        "decision-boundary"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجع الفرق بين الوسوم المتنافية والمتزامنة دون نسبة شرح آليات غير موجودة للمحاضرة.",
+          "en": "Exclusive versus simultaneous labels checked; named model families receive no invented lecture-level mechanism."
+        }
+      }
+    },
+    {
+      "id": "U11",
+      "title": {
+        "ar": "الأنماط دون وسوم الأهداف",
+        "en": "Patterns without target labels"
+      },
+      "conceptKeys": [
+        "unsupervised-learning",
+        "unlabeled-data",
+        "clustering",
+        "anomaly-detection",
+        "association-analysis"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجعت فروق التجميع والشذوذ والارتباط دون تعميمات سببية أو متعلقة بالإشراف.",
+          "en": "Clustering, anomaly and association distinctions reviewed; no causal or supervision absolutes."
+        }
+      }
+    },
+    {
+      "id": "U12",
+      "title": {
+        "ar": "التعلّم شبه الخاضع للإشراف والوسوم الزائفة",
+        "en": "Semi-supervision and pseudo-labels"
+      },
+      "conceptKeys": [
+        "semi-supervised-learning",
+        "pseudo-labeling",
+        "labeled-data",
+        "unlabeled-data"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "فُصلت الوسوم المؤقتة عن الحقيقة المرجعية وعن التعريف العام لجميع أساليب التعلّم شبه الخاضع للإشراف.",
+          "en": "Provisional labels clearly distinguished from truth and from all semi-supervised methods."
+        }
+      }
+    },
+    {
+      "id": "U13",
+      "title": {
+        "ar": "الوكيل والبيئة والمكافأة",
+        "en": "Agent, environment and reward"
+      },
+      "conceptKeys": [
+        "reinforcement-learning",
+        "rl-agent",
+        "rl-environment",
+        "rl-state",
+        "rl-observation",
+        "rl-action",
+        "rl-reward",
+        "rl-policy",
+        "rl-exploration"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "وُضحت حدود المكافأة والفرق بين الحالة والملاحظة وعدم ضمان المثالية لتصحيح التعميمات التمهيدية.",
+          "en": "Reward timing, state/observation and optimization qualifications explicitly correct introductory overgeneralizations."
+        }
+      }
+    },
+    {
+      "id": "U14",
+      "title": {
+        "ar": "الطبقات العصبية والتمثيلات المتعلَّمة",
+        "en": "Neural layers and learned representations"
+      },
+      "conceptKeys": [
+        "artificial-neural-network",
+        "neural-network",
+        "input-layer",
+        "hidden-layer",
+        "output-layer",
+        "representation-learning",
+        "deep-learning"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "صُحح قصر البيانات على غير الموسومة ونفي دور المطور مع الحفاظ على الفروق المفيدة بين الطبقات.",
+          "en": "Corrects the unlabeled-data/developer-design restriction while preserving useful layer distinctions."
+        }
+      }
+    },
+    {
+      "id": "U15",
+      "title": {
+        "ar": "التعلّم الدفعي والمتتابع وتغيّر البيانات",
+        "en": "Batch, online learning and changing data"
+      },
+      "conceptKeys": [
+        "batch-learning",
+        "online-learning",
+        "data-stream",
+        "incremental-model-update",
+        "model-performance-decay",
+        "data-drift",
+        "model-retraining",
+        "inference"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "فُصل انجراف المدخلات والمفهوم عن الأداء المرصود، ونمط التحديث عن اتصال الشبكة.",
+          "en": "Input drift, concept drift and observed performance are distinguished; update pattern is not network connectivity."
+        }
+      }
+    },
+    {
+      "id": "U16",
+      "title": {
+        "ar": "حجم التحديث والذاكرة والتكيّف",
+        "en": "Update size, memory and adaptation"
+      },
+      "conceptKeys": [
+        "mini-batch",
+        "out-of-core-learning",
+        "learning-rate",
+        "forgetting-old-knowledge",
+        "stability-plasticity",
+        "selective-data-addition",
+        "online-learning"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "فُصلت أدوار الدفعات المصغّرة والتعلّم خارج الذاكرة ومعدّل التعلّم مع ضبط ادعاءات التكيّف.",
+          "en": "Mini-batch, out-of-core and learning-rate roles separated; adaptation claims are tendencies."
+        }
+      }
+    },
+    {
+      "id": "U17",
+      "title": {
+        "ar": "العيّنات والكمية وجودة البيانات",
+        "en": "Samples, quantity and data quality"
+      },
+      "conceptKeys": [
+        "training-data-quantity",
+        "sample-representativeness",
+        "training-data-representativeness",
+        "target-population",
+        "data-sample",
+        "data-quality",
+        "data-errors",
+        "outliers",
+        "outlier-handling",
+        "measurement-noise",
+        "noise-outliers",
+        "data-cleaning",
+        "unseen-data"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "لا حدود عامة لكمية البيانات أو حذف تلقائي للقيم المتطرفة؛ عُرّفت العينة والمجتمع بوضوح.",
+          "en": "No universal data-count threshold or automatic outlier deletion; sample versus population explicitly defined."
+        }
+      }
+    },
+    {
+      "id": "U18",
+      "title": {
+        "ar": "هندسة السمات وأدواتها",
+        "en": "Feature engineering and its tools"
+      },
+      "conceptKeys": [
+        "data-preprocessing",
+        "features",
+        "irrelevant-features",
+        "feature-engineering",
+        "feature-selection",
+        "feature-extraction",
+        "feature-creation",
+        "data-selection-and-merge",
+        "data-transformation",
+        "feature-scaling",
+        "pandas",
+        "numpy",
+        "featuretools",
+        "scikit-learn",
+        "tensorflow-transform"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "بقيت الأدوات أوصافاً تمهيدية، ورُوجعت عمليات السمات وقصر تعلّم التحويلات على التدريب.",
+          "en": "Tools remain orientation names; feature operations and training-only fitting are reviewed."
+        }
+      }
+    },
+    {
+      "id": "U19",
+      "title": {
+        "ar": "الملاءمة والتعقيد والتعميم",
+        "en": "Fit, complexity and generalization"
+      },
+      "conceptKeys": [
+        "model-complexity",
+        "overfitting",
+        "underfitting",
+        "generalization",
+        "appropriate-model-fit",
+        "bias-variance-tradeoff",
+        "decision-boundary"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "قُيدت علاقة التحيز والتباين وحدود التقسيم دون قاعدة عامة تربط التعقيد بالدقة.",
+          "en": "Bias/variance and split limitations qualified; no universal complexity–accuracy rule."
+        }
+      }
+    },
+    {
+      "id": "U20",
+      "title": {
+        "ar": "الأسئلة التنبّؤية والوصفية",
+        "en": "Predictive and descriptive questions"
+      },
+      "conceptKeys": [
+        "predictive-analysis",
+        "descriptive-analysis",
+        "prediction",
+        "time-series-analysis",
+        "association-analysis",
+        "data-summarization",
+        "tabular-summarization",
+        "data-visualization",
+        "clustering",
+        "regression",
+        "classification"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "الترتيب الزمني لا يعني الحتمية، ولا يقتصر التنبؤ على أحداث مستقبلية زمنياً.",
+          "en": "Time ordering is not determinism; prediction is not restricted to future calendar events."
+        }
+      }
+    },
+    {
+      "id": "U21",
+      "title": {
+        "ar": "التدريب والتحقق والاختبار النهائي",
+        "en": "Training, validation and a final test"
+      },
+      "conceptKeys": [
+        "dataset-splitting",
+        "training-data",
+        "test-data",
+        "validation-data",
+        "model-parameter-fitting",
+        "hyperparameter-tuning",
+        "holdout-evaluation",
+        "independent-test-evaluation",
+        "train-validation-test-split",
+        "validation-driven-model-selection"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "صُحح تصور غياب وسوم الاختبار وفُصلت المعاملات والمعاملات الفائقة واستخدام الاختبار النهائي.",
+          "en": "Corrects missing-label misconception and separates parameters, hyperparameters and final-test use."
+        }
+      }
+    },
+    {
+      "id": "U22",
+      "title": {
+        "ar": "تقسيم قابل لإعادة الإنتاج ومصفوفات متحاذية",
+        "en": "Reproducible splitting and aligned arrays"
+      },
+      "conceptKeys": [
+        "train-test-split-implementation",
+        "train-test-split",
+        "feature-target-alignment",
+        "feature-matrix",
+        "target-vector",
+        "split-fraction",
+        "reproducible-random-split",
+        "python",
+        "numpy",
+        "scikit-learn"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجع اقتران المصفوفات وتقريب الأعداد وفق سلوك التقسيم؛ البذور العشوائية ليست ضماناً للصلاحية.",
+          "en": "Array pairing and finite-sample counts checked against the documented split semantics; seeds are not validity guarantees."
+        }
+      }
+    },
+    {
+      "id": "U23",
+      "title": {
+        "ar": "التحقق المتقاطع والاختيار المتكرر",
+        "en": "Cross-validation and adaptive selection"
+      },
+      "conceptKeys": [
+        "cross-validation",
+        "k-fold-cross-validation",
+        "training-validation-test-scores",
+        "validation-driven-model-selection",
+        "hyperparameter-tuning",
+        "validation-overuse-leakage",
+        "independent-test-evaluation"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "فُصل عدد الطيات عن عدد الجيران وأدوار الدرجات عن تسرّب الاختيار.",
+          "en": "Fold/neighborhood counts, score roles and selection leakage explicitly separated."
+        }
+      }
+    },
+    {
+      "id": "U24",
+      "title": {
+        "ar": "تعلّم المعالجة داخل القسم المسموح",
+        "en": "Fit preprocessing once in the allowed partition"
+      },
+      "conceptKeys": [
+        "consistent-preprocessing",
+        "data-preprocessing",
+        "data-cleaning",
+        "data-transformation",
+        "feature-scaling",
+        "validation-overuse-leakage"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجع الحد بين تعلّم التحويل وتطبيقه؛ الاتساق لا يجيز الوصول لمعلومات الاختبار النهائي.",
+          "en": "Fit-versus-apply boundary reviewed; consistency never grants access to final-test information."
+        }
+      }
+    },
+    {
+      "id": "U25",
+      "title": {
+        "ar": "اختلال التوازن وخط أساس الفئة الغالبة",
+        "en": "Imbalance and the majority baseline"
+      },
+      "conceptKeys": [
+        "class-imbalance",
+        "majority-minority-classes",
+        "majority-class-bias",
+        "accuracy-paradox",
+        "training-data-representativeness"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "تحققت حسابات خط أساس الفئة الغالبة وفُصل توازن التدريب عن انتشار الفئة وقت الاستخدام.",
+          "en": "Majority baseline arithmetic verified; training balance distinguished from deployment prevalence."
+        }
+      }
+    },
+    {
+      "id": "U26",
+      "title": {
+        "ar": "إعادة أخذ العينات وتفاوت تكلفة الخطأ",
+        "en": "Resampling and unequal error costs"
+      },
+      "conceptKeys": [
+        "resampling",
+        "random-undersampling",
+        "undersampling-information-loss",
+        "random-oversampling",
+        "oversampling-duplicate-risk",
+        "oversampling-ratio",
+        "cost-sensitive-learning"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجعت مخاطر التكرار وفقد المعلومات مع قصر إعادة العينات على التدريب.",
+          "en": "Duplicate and information-loss risks checked; resampling is restricted to training."
+        }
+      }
+    },
+    {
+      "id": "U27",
+      "title": {
+        "ar": "SMOTE بوصفها استيفاءً",
+        "en": "SMOTE as interpolation"
+      },
+      "conceptKeys": [
+        "smote",
+        "minority-neighbor-selection",
+        "synthetic-sample-interpolation",
+        "oversampling-ratio"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "أُعيد حساب معادلة الاستيفاء ومثالها مع توضيح حدود الفئات ونطاق التقسيم.",
+          "en": "Interpolation equation and numeric example recomputed; categorical and partition limits explicit."
+        }
+      }
+    },
+    {
+      "id": "U28",
+      "title": {
+        "ar": "قراءة مصفوفة الالتباس قبل القسمة",
+        "en": "Read the confusion matrix before dividing"
+      },
+      "conceptKeys": [
+        "confusion-matrix",
+        "positive-class",
+        "true-positive",
+        "false-positive",
+        "false-negative",
+        "true-negative"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجعت اتجاهات الخلايا والمجاميع مع منع الإصلاح الضمني لمثال المحاضرة المتعارض.",
+          "en": "Cell orientation and marginal totals checked; inconsistent lecture example is not silently repaired."
+        }
+      }
+    },
+    {
+      "id": "U29",
+      "title": {
+        "ar": "المقاييس ولماذا قد يساوي الاستدعاء 60%",
+        "en": "Metrics and why recall can be 60%"
+      },
+      "conceptKeys": [
+        "precision",
+        "recall",
+        "accuracy",
+        "classification-error-rate",
+        "f1-score",
+        "harmonic-mean-balance",
+        "fraud-matrix-worked-example",
+        "model-evaluation"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجعت الأعداد الأربعة وحسابات المقاييس الخمسة؛ يجيب مقام الإيجابيات الفعلية عن سؤال التجربة الأساسي.",
+          "en": "All four source counts and five metric computations independently checked; actual-positive denominator answers the core pilot question."
+        }
+      }
+    },
+    {
+      "id": "U30",
+      "title": {
+        "ar": "العتبات والمقاييس والقرارات المبررة",
+        "en": "Thresholds, metrics and defensible decisions"
+      },
+      "conceptKeys": [
+        "metric-selection",
+        "decision-threshold-tuning",
+        "cost-sensitive-learning",
+        "accuracy-paradox"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "لا نطاق جودة عام؛ قُيدت آثار العتبة ووُضحت المعلومات التي لا يقدمها كل مقياس.",
+          "en": "No universal quality band; threshold effects and missing information in each metric are qualified."
+        }
+      }
+    },
+    {
+      "id": "U31",
+      "title": {
+        "ar": "المسافات والسمات عالية الأبعاد",
+        "en": "Distances and high-dimensional features"
+      },
+      "conceptKeys": [
+        "distance-metric",
+        "euclidean-distance",
+        "manhattan-distance",
+        "curse-of-dimensionality",
+        "feature-scaling"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "أُعيد حساب الصيغ ومثال المثلث 3–4–5 مع ضبط حدود الأبعاد والترميز.",
+          "en": "Distance formulas and 3–4–5 example recomputed; dimensionality and coding limitations scoped."
+        }
+      }
+    },
+    {
+      "id": "U32",
+      "title": {
+        "ar": "تنبؤ أقرب الجيران والتعلّم الكسول والتعادل",
+        "en": "KNN prediction, lazy learning and ties"
+      },
+      "conceptKeys": [
+        "knn",
+        "nearest-neighbor-search",
+        "majority-vote",
+        "majority-voting",
+        "neighbor-average",
+        "lazy-learning",
+        "knn-computational-cost",
+        "voting-ties"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجعت الخطوات والتكلفة والمتوسطات وقُصر منع التعادل بـk الفردي على الحالة الصحيحة.",
+          "en": "Procedure, costs and averages checked; odd-k tie claim restricted to its valid setting."
+        }
+      }
+    },
+    {
+      "id": "U33",
+      "title": {
+        "ar": "اختيار عدد الجيران",
+        "en": "Choosing a neighbor count"
+      },
+      "conceptKeys": [
+        "hyperparameter-k",
+        "bias-variance-tradeoff",
+        "elbow-method",
+        "sqrt-n-heuristic",
+        "cross-validation",
+        "underfitting",
+        "overfitting"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "مُنع تحويل القواعد الاسترشادية ورسم WSS غير المناسب إلى حقائق تقييم ملزمة.",
+          "en": "Heuristics and mismatched WSS plot explicitly prevented from becoming assessment truths."
+        }
+      }
+    },
+    {
+      "id": "U34",
+      "title": {
+        "ar": "الاحتمال الشرطي ومصطلحات بايز",
+        "en": "Conditional probability and Bayes terms"
+      },
+      "conceptKeys": [
+        "bayes-theorem",
+        "conditional-probability",
+        "class-prior",
+        "class-likelihood",
+        "posterior-probability",
+        "categorical-frequency-estimation"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجعت شروط بايز واتجاه المقام والعد داخل كل فئة.",
+          "en": "Bayes conditions, denominator direction and within-class counting reviewed."
+        }
+      }
+    },
+    {
+      "id": "U35",
+      "title": {
+        "ar": "درجات بايز الساذج والاحتمالات اللاحقة المطَبَّعة",
+        "en": "Naive Bayes scores and normalized posteriors"
+      },
+      "conceptKeys": [
+        "naive-bayes",
+        "conditional-independence",
+        "class-prior",
+        "class-likelihood",
+        "posterior-probability",
+        "maximum-a-posteriori",
+        "text-classification"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجع الاستقلال الشرطي والفرق بين الدرجة والاحتمال مع اشتراط موجبّية معامل التطبيع.",
+          "en": "Conditional independence and score/posterior distinction explicitly checked; shared normalizer used only when positive."
+        }
+      }
+    },
+    {
+      "id": "U36",
+      "title": {
+        "ar": "التكرار الصفري وتنعيم الاحتمالات الفئوية",
+        "en": "Zero frequency and categorical smoothing"
+      },
+      "conceptKeys": [
+        "zero-frequency",
+        "laplace-smoothing",
+        "categorical-frequency-estimation"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجعت صيغة التنعيم ومثال 1/7 مع تحديد مفردات القيم ونسبة الإضافة إلى الملحق.",
+          "en": "Smoothing formula and 1/7 example checked with explicit vocabulary and supplemental attribution."
+        }
+      }
+    },
+    {
+      "id": "U37",
+      "title": {
+        "ar": "قراءة شجرة القرار كاختبارات شرطية",
+        "en": "Read a decision tree as conditional tests"
+      },
+      "conceptKeys": [
+        "decision-tree",
+        "decision-tree-structure",
+        "recursive-partitioning",
+        "continuous-threshold-split",
+        "categorical-split",
+        "leaf-prediction"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجعت أدوار الشجرة وحالة المساواة في المتباينة الصارمة وعدم اختراع معالجة للمفقود.",
+          "en": "Tree roles, strict-threshold equality and unspecified missing-value handling reviewed."
+        }
+      }
+    },
+    {
+      "id": "U38",
+      "title": {
+        "ar": "عدم النقاء والتقسيم والتوقف",
+        "en": "Impurity, splitting and stopping"
+      },
+      "conceptKeys": [
+        "split-selection",
+        "tree-stopping-criteria",
+        "node-impurity",
+        "gini-impurity",
+        "variance-reduction"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجع معيار النقاء ونطاق التوقف مع نسبة صيغة جيني المضافة صراحةً للملحق.",
+          "en": "Impurity criterion and stopping scope reviewed; added Gini formula is explicitly supplemental."
+        }
+      }
+    },
+    {
+      "id": "U39",
+      "title": {
+        "ar": "الإنتروبي بوحدة البت",
+        "en": "Entropy in bits"
+      },
+      "conceptKeys": [
+        "entropy",
+        "node-impurity"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجعت الصيغة واتفاقية النهاية وحد الفئات المتعددة والمثال حسابياً.",
+          "en": "Entropy formula, limiting convention, multiclass maximum and example independently checked."
+        }
+      }
+    },
+    {
+      "id": "U40",
+      "title": {
+        "ar": "الإنتروبي الموزون والكسب المعلوماتي",
+        "en": "Weighted entropy and information gain"
+      },
+      "conceptKeys": [
+        "weighted-entropy",
+        "information-gain",
+        "split-selection"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "تحققت الأوزان وشرط التقسيم وحساب المثال المستقل ذي الحالات الثماني.",
+          "en": "Weights, partition condition and independent 8-case calculation verified."
+        }
+      }
+    },
+    {
+      "id": "U41",
+      "title": {
+        "ar": "النماذج التجميعية والغابات العشوائية",
+        "en": "Ensembles and randomized forests"
+      },
+      "conceptKeys": [
+        "random-forest",
+        "ensemble-learning",
+        "ensemble-classification",
+        "weak-learners",
+        "random-feature-selection",
+        "random-data-sampling",
+        "ensemble-diversity"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "لا ادعاء بالاستقلال الإحصائي أو ضمان الأداء؛ نُسب تفصيل Bootstrap إلى الملحق فقط.",
+          "en": "No false statistical independence or universal performance guarantee; bootstrap details attributed only to supplement."
+        }
+      }
+    },
+    {
+      "id": "U42",
+      "title": {
+        "ar": "تجميع التنبؤات والتفسير وتكلفة الموارد",
+        "en": "Aggregation, interpretability and resource costs"
+      },
+      "conceptKeys": [
+        "majority-vote",
+        "majority-voting",
+        "prediction-averaging",
+        "neighbor-average",
+        "voting-ties",
+        "model-interpretability",
+        "computation-cost",
+        "feature-scaling"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجع التصويت والمتوسط وحدود الغابات مع ضبط ادعاءات المفقود والقيم المتطرفة والتحجيم.",
+          "en": "Voting/averaging and forest limitations reviewed; missing data, outliers and scaling claims qualified."
+        }
+      }
+    },
+    {
+      "id": "U43",
+      "title": {
+        "ar": "مرتكزات عددية مدقَّقة من جداول المحاضرات",
+        "en": "Audited numerical anchors from the lecture tables"
+      },
+      "conceptKeys": [
+        "fraud-matrix-worked-example",
+        "categorical-frequency-estimation",
+        "class-prior",
+        "class-likelihood",
+        "posterior-probability",
+        "maximum-a-posteriori",
+        "entropy",
+        "weighted-entropy",
+        "information-gain"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "أُعيد حساب كسور بايز ومكاسب الإنتروبي من الأعداد المراجعة مع الحفاظ على اختلاف مجموعتي المصدر.",
+          "en": "Exact Bayes fractions and all entropy gains independently recalculated from reviewed counts; source datasets kept distinct."
+        }
+      }
+    },
+    {
+      "id": "U44",
+      "title": {
+        "ar": "الحساب ومسار تنفيذ مصغّر",
+        "en": "Arithmetic and a minimal implementation route"
+      },
+      "conceptKeys": [
+        "python",
+        "numpy",
+        "scikit-learn",
+        "train-test-split-implementation",
+        "train-test-split",
+        "model-parameter-fitting",
+        "accuracy",
+        "majority-voting",
+        "harmonic-mean-balance",
+        "split-fraction"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجعت النسب والمتوسط التوافقي وأدوار التدريب والتنبؤ والتقييم دون ربط الإتقان الرياضي بضرورة البرمجة.",
+          "en": "Ratios, harmonic mean and fit/predict/evaluate roles checked; executable dependency not asserted for mathematical mastery."
+        }
+      }
+    },
+    {
+      "id": "U45",
+      "title": {
+        "ar": "نقد الادعاء بالرجوع إلى دليله",
+        "en": "Critique a claim using its evidence"
+      },
+      "conceptKeys": [
+        "error-analysis",
+        "model-inspection",
+        "model-evaluation",
+        "metric-selection"
+      ],
+      "review": {
+        "status": "approved",
+        "note": {
+          "ar": "رُوجعت نسبة الأدلة وتاريخ التصحيح ونطاق الادعاء مع التصريح بصفة الملحق وانفصاله عن GeeksforGeeks.",
+          "en": "Provenance, correction history and claim scope reviewed; supplemental status and GFG separation explicit."
+        }
+      }
+    }
+  ]
+}

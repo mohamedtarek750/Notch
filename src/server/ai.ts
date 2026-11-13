@@ -252,6 +252,21 @@ export async function retrieveEvidence(
           0,
           staffDraft ? 8 : 4,
         );
+  // Larger approved lecture corpora must not crowd out a relevant supplemental
+  // foundation. Preserve the same bounded context and only use positive matches.
+  if (
+    !staffDraft &&
+    selected.some((r) => r.row.role === "instructor") &&
+    !selected.some((r) => r.row.role === "umbrella")
+  ) {
+    const foundation = ranked.find(
+      (r) => r.score > 0 && r.row.role === "umbrella",
+    );
+    if (foundation) {
+      if (selected.length === 4) selected.pop();
+      selected.push(foundation);
+    }
+  }
   return selected.map((r) => ({
     ...r.row,
     text_content: r.row.text_content.slice(0, 4200),
