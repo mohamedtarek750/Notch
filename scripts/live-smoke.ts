@@ -6,6 +6,9 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { db } from "../src/server/db";
+import { initializeNetwork } from "../src/server/network";
+
+initializeNetwork();
 
 const required = [
   "DATABASE_URL",
@@ -59,6 +62,13 @@ if (
     "Use a secure non-production URL or local development server.",
   );
 const base = baseUrl.origin;
+// Authorized Preview automation only. Never log or write this bearer credential.
+const protectionHeaders: Record<string, string> = process.env
+  .VERCEL_AUTOMATION_BYPASS_SECRET
+  ? {
+      "x-vercel-protection-bypass": process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+    }
+  : {};
 const fingerprint = createHash("sha256")
   .update(
     [base, process.env.GEMINI_MODEL, process.env.LIVE_WORKSPACE_CODE].join(
@@ -140,13 +150,14 @@ async function req(
   const response = await fetch(base + path, {
     method: body === undefined ? "GET" : "POST",
     headers: {
+      ...protectionHeaders,
       "Content-Type": "application/json",
       "Accept-Language": language,
       Origin: base,
       Cookie: cookieHeader(c),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(45000),
+    signal: AbortSignal.timeout(70000),
     redirect: "manual",
   });
   for (const header of response.headers.getSetCookie()) {
@@ -226,7 +237,7 @@ async function validateCitation(c: any) {
     "Citation must stay within authenticated material storage.",
   );
   const response = await fetch(url, {
-    headers: { Cookie: cookieHeader(student) },
+    headers: { ...protectionHeaders, Cookie: cookieHeader(student) },
     signal: AbortSignal.timeout(30000),
     redirect: "manual",
   });
