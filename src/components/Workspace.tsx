@@ -599,6 +599,7 @@ export function Workspace({
                   perform={perform}
                   busy={busy}
                   objectives={data.objectives || []}
+                  path={data.path}
                 />
               )}
               {view === "assignments" && (
@@ -1543,13 +1544,52 @@ function Practice({
   perform,
   busy,
   objectives,
+  path,
 }: {
   t: Translate;
   lang: Lang;
   perform: Perform;
   busy: boolean;
   objectives: RowData[];
+  path?: { nodes: any[]; next: any | null };
 }) {
+  const [queue, SQ] = useState<any[]>([]),
+    [note, SN] = useState("");
+  const show = (r: any) => {
+    SD(r);
+    SA("");
+    SE("");
+    SF(null);
+    AK(crypto.randomUUID());
+  };
+  const diagnostic = async () => {
+    const r = await perform("diagnostic", {});
+    if (!r) return;
+    if (!r.items.length) {
+      SN(
+        t(
+          "لا توجد مفاهيم غير مقيَّمة لها أسئلة معتمدة الآن.",
+          "No unassessed concept has an approved question right now.",
+        ),
+      );
+      return;
+    }
+    SN(
+      t(
+        `اختبار تشخيصي: ${r.items.length} أسئلة، سؤال لكل مفهوم. أجب دون مساعدة.`,
+        `Diagnostic check: ${r.items.length} questions, one per concept. Answer unaided.`,
+      ),
+    );
+    SQ(r.items.slice(1));
+    show(r.items[0]);
+  };
+  const statusText = (status: string) =>
+    ({
+      secure: t("متقَن", "Secure"),
+      developing: t("قيد التطوّر", "Developing"),
+      unassessed: t("لم يُقيَّم بعد", "Not assessed yet"),
+      unassessable: t("بلا أسئلة بعد", "No questions yet"),
+    })[status] || status;
   const [objective, SO] = useState(""),
     [delivery, SD] = useState<any>(null),
     [answer, SA] = useState(""),
@@ -1557,17 +1597,17 @@ function Practice({
     [feedback, SF] = useState<any>(null),
     [attemptKey, AK] = useState("");
   const next = async () => {
+    if (queue.length) {
+      show(queue[0]);
+      SQ(queue.slice(1));
+      return;
+    }
+    SN("");
     const r = await perform(
       "select-practice",
       objective ? { objectiveId: objective } : {},
     );
-    if (r) {
-      SD(r);
-      SA("");
-      SE("");
-      SF(null);
-      AK(crypto.randomUUID());
-    }
+    if (r) show(r);
   };
   const item = delivery?.item?.data || delivery?.item;
   return (
@@ -1593,9 +1633,18 @@ function Practice({
             ))}
           </select>
         </label>
-        <Button primary onClick={next} disabled={busy}>
-          {t("سؤال جديد", "New question")}
-        </Button>
+        <div className="actions">
+          <Button primary onClick={next} disabled={busy}>
+            {t("سؤال جديد", "New question")}
+          </Button>
+          <Button onClick={diagnostic} disabled={busy}>
+            {t("اختبار تشخيصي سريع", "Quick diagnostic check")}
+          </Button>
+        </div>
+        {note && <p role="status">{note}</p>}
+        {delivery && !item && (
+          <p role="status">{localized(delivery.reason, lang)}</p>
+        )}
         <p>
           <small>
             {t(
@@ -1605,8 +1654,55 @@ function Practice({
           </small>
         </p>
       </Box>
+      {!!path?.nodes?.length && (
+        <Box cls="end">
+          <h2>
+            {t(
+              "مسارك عبر المتطلبات السابقة",
+              "Your path through prerequisites",
+            )}
+          </h2>
+          <p>
+            {path.next
+              ? t(
+                  `الخطوة التالية المقترحة: ${path.next.label.ar}`,
+                  `Suggested next step: ${path.next.label.en}`,
+                )
+              : t(
+                  "أتقنت كل المفاهيم التي لها أسئلة معتمدة.",
+                  "Every concept with approved questions is secure.",
+                )}
+          </p>
+          <ol>
+            {path.nodes.map((n: any) => (
+              <li key={n.conceptId}>
+                <strong>{localized(n.label, lang)}</strong> ·{" "}
+                {statusText(n.status)}
+                {n.blockedBy.length > 0 && (
+                  <small>
+                    {" "}
+                    — {t("ابدأ أولًا بـ", "start first with")}{" "}
+                    {n.blockedBy
+                      .map((b: any) => localized(b.label, lang))
+                      .join(lang === "ar" ? "، " : ", ")}
+                  </small>
+                )}
+              </li>
+            ))}
+          </ol>
+        </Box>
+      )}
       {item && (
         <Box cls="practice">
+          {item.difficulty && (
+            <span className="badge">
+              {{
+                easy: t("سهل", "Easy"),
+                medium: t("متوسط", "Medium"),
+                hard: t("صعب", "Hard"),
+              }[item.difficulty as string] || item.difficulty}
+            </span>
+          )}
           <span className="badge lavender">
             {item.kind === "critique"
               ? t("راجع الحل", "Review the solution")

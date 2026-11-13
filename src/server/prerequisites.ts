@@ -637,9 +637,7 @@ export async function extractPrerequisites(
  * How much of what the model proposed survived instructor review: the project's
  * measurable answer to "are the extracted relationships correct?".
  */
-export function extractionQuality(
-  proposals: { data: Record<string, any> }[],
-) {
+export function extractionQuality(proposals: { data: Record<string, any> }[]) {
   const reviewed = proposals.filter(
     (p) =>
       p.data.kind === PREREQUISITE_KIND &&
@@ -658,7 +656,9 @@ export function extractionQuality(
       if (match) accepted++;
       if (match && match.type !== e.type) retyped++;
     }
-    autoRejected += (p.data.dropped ?? []).filter((d: Dropped) => d.from).length;
+    autoRejected += (p.data.dropped ?? []).filter(
+      (d: Dropped) => d.from,
+    ).length;
   }
   return {
     reviewedRuns: reviewed.length,

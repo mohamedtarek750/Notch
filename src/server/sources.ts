@@ -302,7 +302,12 @@ export const LECTURE_PREFIX = "LECTURE-";
 /** Any lecture PDF the instructor teaches from, beyond the fixed pilot pack. */
 export async function importCustomLecture(
   ctx: AuthContext,
-  input: { title: string; filename: string; bytes: Uint8Array; sourceKey?: string },
+  input: {
+    title: string;
+    filename: string;
+    bytes: Uint8Array;
+    sourceKey?: string;
+  },
 ) {
   await staff(ctx);
   const title = input.title.trim();

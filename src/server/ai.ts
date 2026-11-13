@@ -581,7 +581,8 @@ export async function learnerContextFor(
     return (
       rows.find(
         (r) =>
-          r.kind === "state" && r.data.objectiveId === objective.data.objectiveId,
+          r.kind === "state" &&
+          r.data.objectiveId === objective.data.objectiveId,
       )?.data.status ?? "unassessed"
     );
   };

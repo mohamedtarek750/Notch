@@ -24,7 +24,12 @@ const levels = ["easy", "medium", "hard"] as const;
 const weight = z.number().int().min(0).max(10);
 export const bankSettings = z.object({
   kinds: z
-    .object({ choice: weight, critique: weight, open: weight, transfer: weight })
+    .object({
+      choice: weight,
+      critique: weight,
+      open: weight,
+      transfer: weight,
+    })
     .refine((k) => Object.values(k).some((n) => n > 0)),
   difficulty: z
     .object({ easy: weight, medium: weight, hard: weight })
@@ -180,8 +185,14 @@ export async function generateBank(
         [ctx.tenantId, COURSE, input.conceptIds],
       )
   ).rows;
-  const budget = prepared.maxContextCharacters - 2500 - settings.styleNotes.length;
-  const created: { id: string; conceptId: string; kind: string; difficulty: string }[] = [];
+  const budget =
+    prepared.maxContextCharacters - 2500 - settings.styleNotes.length;
+  const created: {
+    id: string;
+    conceptId: string;
+    kind: string;
+    difficulty: string;
+  }[] = [];
   const rejected: { conceptId: string; reason: string }[] = [];
   for (const concept of concepts as Graph["concepts"]) {
     const evidence = (
@@ -199,7 +210,9 @@ export async function generateBank(
       continue;
     }
     const share = Math.floor(budget / evidence.length);
-    const offset = Number(existing.find((e) => e.concept === concept.id)?.n || 0);
+    const offset = Number(
+      existing.find((e) => e.concept === concept.id)?.n || 0,
+    );
     const plan = planItems(settings, offset);
     const evidenceIds = evidence.map((e) => e.id);
     const base = {
@@ -256,9 +269,14 @@ export async function generateBank(
     }
     for (const [i, entry] of plan.entries()) {
       const item = parsed.data.items[i];
-      const problem = item ? checkItem(item, entry, evidenceIds) : "missing_item";
+      const problem = item
+        ? checkItem(item, entry, evidenceIds)
+        : "missing_item";
       if (problem || !item) {
-        rejected.push({ conceptId: concept.id, reason: problem || "missing_item" });
+        rejected.push({
+          conceptId: concept.id,
+          reason: problem || "missing_item",
+        });
         continue;
       }
       const first = evidence.find((e) => item.evidenceIds.includes(e.id))!;
@@ -315,19 +333,31 @@ export async function bankCoverage(ctx: AuthContext) {
   await authorizeCourse(ctx, COURSE, "read");
   if (ctx.role !== "instructor") throw new SourceError("forbidden", 403);
   const rows = (
-    await db
-      .tenant(ctx.tenantId)
-      .query<{ concept: string; difficulty: string | null; kind: string; n: string }>(
-        "SELECT data->>'conceptId' AS concept,data->>'difficulty' AS difficulty,data->>'kind' AS kind,count(*) AS n FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='item' AND data->>'approved'='true' AND data->>'conceptId' IS NOT NULL GROUP BY 1,2,3",
-        [ctx.tenantId, COURSE],
-      )
+    await db.tenant(ctx.tenantId).query<{
+      concept: string;
+      difficulty: string | null;
+      kind: string;
+      n: string;
+    }>("SELECT data->>'conceptId' AS concept,data->>'difficulty' AS difficulty,data->>'kind' AS kind,count(*) AS n FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='item' AND data->>'approved'='true' AND data->>'conceptId' IS NOT NULL GROUP BY 1,2,3", [ctx.tenantId, COURSE])
   ).rows;
-  const byConcept = new Map<string, { total: number; difficulty: Record<string, number>; kinds: Record<string, number> }>();
+  const byConcept = new Map<
+    string,
+    {
+      total: number;
+      difficulty: Record<string, number>;
+      kinds: Record<string, number>;
+    }
+  >();
   for (const r of rows) {
-    const entry = byConcept.get(r.concept) ?? { total: 0, difficulty: {}, kinds: {} };
+    const entry = byConcept.get(r.concept) ?? {
+      total: 0,
+      difficulty: {},
+      kinds: {},
+    };
     const n = Number(r.n);
     entry.total += n;
-    entry.difficulty[r.difficulty || "medium"] = (entry.difficulty[r.difficulty || "medium"] || 0) + n;
+    entry.difficulty[r.difficulty || "medium"] =
+      (entry.difficulty[r.difficulty || "medium"] || 0) + n;
     entry.kinds[r.kind] = (entry.kinds[r.kind] || 0) + n;
     byConcept.set(r.concept, entry);
   }

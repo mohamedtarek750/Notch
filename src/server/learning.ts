@@ -396,14 +396,19 @@ export async function learningPath(
   tx: Queryable,
   ctx: AuthContext,
   userId: string,
-): Promise<{ releaseId: string | null; nodes: PathNode[]; next: PathNode | null }> {
+): Promise<{
+  releaseId: string | null;
+  nodes: PathNode[];
+  next: PathNode | null;
+}> {
   const release = (
     await tx.query<Row>(
       "SELECT * FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release' ORDER BY created_at DESC,id DESC LIMIT 1",
       [ctx.tenantId, ctx.courseId],
     )
   ).rows[0];
-  if (!release?.data.publishedAt) return { releaseId: null, nodes: [], next: null };
+  if (!release?.data.publishedAt)
+    return { releaseId: null, nodes: [], next: null };
   const concepts: any[] = release.data.graph?.concepts ?? [];
   const edges: any[] = (release.data.graph?.edges ?? []).filter(
     (e: any) => e.type === "prerequisite",
@@ -422,7 +427,10 @@ export async function learningPath(
   ).rows;
   const objectiveOf = new Map<string, string>();
   for (const o of objectives)
-    if (typeof o.data.objectiveId === "string" && o.data.objectiveId.startsWith("c:"))
+    if (
+      typeof o.data.objectiveId === "string" &&
+      o.data.objectiveId.startsWith("c:")
+    )
       objectiveOf.set(o.data.conceptId, o.data.objectiveId);
   const statusOf = (conceptId: string) => {
     const objectiveId = objectiveOf.get(conceptId);
@@ -859,7 +867,11 @@ export async function learningAction(
       const state = (
         await tx.query<Row>(
           "SELECT * FROM records WHERE tenant_id=$1 AND course_id=$2 AND id=$3 AND kind='state'",
-          [ctx.tenantId, ctx.courseId, `state:${ctx.userId}:${chosenObjective}`],
+          [
+            ctx.tenantId,
+            ctx.courseId,
+            `state:${ctx.userId}:${chosenObjective}`,
+          ],
         )
       ).rows[0]?.data;
       const difficulty = targetDifficulty(state);
