@@ -236,7 +236,7 @@ export async function inspectInventory(sql: Sql): Promise<Inventory> {
     >(`SELECT n.nspname AS schema_name, c.relname AS name, c.relkind::text AS kind,
     ARRAY(SELECT a.attname::text FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum) AS columns
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp%'
+    WHERE n.nspname NOT IN ('pg_catalog','information_schema','neon_auth') AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp%'
     AND c.relkind IN ('r','p','v','m','f') AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e') ORDER BY n.nspname,c.relname`)
   ).rows;
   const routines =
@@ -244,7 +244,7 @@ export async function inspectInventory(sql: Sql): Promise<Inventory> {
       await sql.query<{
         count: number;
       }>(`SELECT count(*)::int AS count FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-    WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_%'
+    WHERE n.nspname NOT IN ('pg_catalog','information_schema','neon_auth') AND n.nspname NOT LIKE 'pg_%'
     AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')`)
     ).rows[0]?.count ?? 0;
   let migrationNames: string[] = [];
@@ -330,6 +330,42 @@ export function previewSessionSetting(
   )
     return {};
   return { SESSION_SECRET: randomBytes(48).toString("base64url") };
+}
+/** Local cloud bindings may be placeholders: never forward GEMINI_API_KEY to Vercel. */
+export function previewGeminiSetting(
+  existing: VercelVariable[],
+  rawPreviewKey?: string,
+): Record<string, string> {
+  if (rawPreviewKey) return { GEMINI_API_KEY: rawPreviewKey };
+  if (
+    existing.some(
+      (variable) =>
+        variable.key === "GEMINI_API_KEY" &&
+        variable.target?.includes("preview") &&
+        !variable.gitBranch,
+    )
+  )
+    return {};
+  throw new ExistingDeployError(
+    "The existing Vercel project needs GEMINI_API_KEY in its encrypted Preview settings, or an explicitly injected raw PREVIEW_GEMINI_API_KEY. The local proxy binding will not be copied.",
+  );
+}
+export async function readCliToken(
+  configDirectory: string,
+): Promise<string | undefined> {
+  try {
+    const auth = JSON.parse(
+      await readFile(resolve(configDirectory, "auth.json"), "utf8"),
+    ) as { token?: unknown };
+    return typeof auth.token === "string" && auth.token.length > 0
+      ? auth.token
+      : undefined;
+  } catch (error) {
+    if ((error as { code?: string }).code === "ENOENT") return undefined;
+    throw new ExistingDeployError(
+      "The existing Vercel CLI login could not be read. Complete the CLI login in its private config directory.",
+    );
+  }
 }
 function poolFor(value: string): Pool {
   databaseIdentity(value);
@@ -422,7 +458,7 @@ async function requestVercel<T>(
     );
   return response.json() as Promise<T>;
 }
-async function runtimeReady(uri: string): Promise<boolean> {
+export async function runtimeReady(uri: string): Promise<boolean> {
   const pool = poolFor(uri);
   try {
     const role = (
@@ -447,7 +483,7 @@ async function runtimeReady(uri: string): Promise<boolean> {
     await pool.end();
   }
 }
-async function chooseRuntime(
+export async function chooseRuntime(
   migrationUri: string,
   requestedUri: string,
   projectId: string,
@@ -501,7 +537,12 @@ interface Project {
   rootDirectory?: string | null;
 }
 async function main() {
-  const problems = existingDeploymentBlockers(process.env);
+  const cliConfig = resolve(".tilwa-private/vercel-cli");
+  let token = process.env.VERCEL_TOKEN || (await readCliToken(cliConfig));
+  const problems = existingDeploymentBlockers({
+    ...process.env,
+    VERCEL_TOKEN: token,
+  });
   if (problems.length) {
     problems.forEach((problem) => console.error(`BLOCKED: ${problem}`));
     process.exitCode = 2;
@@ -510,7 +551,24 @@ async function main() {
   if (typeof http.setGlobalProxyFromEnv === "function")
     http.setGlobalProxyFromEnv();
   const env = process.env;
-  const token = env.VERCEL_TOKEN!;
+  if (!env.VERCEL_TOKEN && token) {
+    // Let the CLI refresh its own OAuth login; never expose or copy refresh credentials.
+    await run(
+      [
+        "node_modules/vercel/dist/vc.js",
+        "whoami",
+        "--global-config",
+        cliConfig,
+      ],
+      safeEnv(env, { VERCEL_TELEMETRY_DISABLED: "1" }),
+      "Vercel CLI session verification",
+    );
+    token = await readCliToken(cliConfig);
+  }
+  if (!token)
+    throw new ExistingDeployError(
+      "Complete Vercel CLI login or inject VERCEL_TOKEN securely.",
+    );
   const scope = new URLSearchParams();
   const teamId =
     env.VERCEL_TEAM_ID ||
@@ -557,7 +615,6 @@ async function main() {
   );
   const requiredPreviewKeys: Record<string, string> = {
     DATABASE_URL: "",
-    GEMINI_API_KEY: "",
     GEMINI_MODEL: "",
     SESSION_SECRET: "",
     DEMO_MODE: "",
@@ -573,6 +630,12 @@ async function main() {
     )
   )
     delete requiredPreviewKeys.SESSION_SECRET;
+  const geminiPreviewValues = previewGeminiSetting(
+    variables.envs,
+    env.PREVIEW_GEMINI_API_KEY,
+  );
+  if (geminiPreviewValues.GEMINI_API_KEY)
+    requiredPreviewKeys.GEMINI_API_KEY = "";
   previewVariablePlan(variables.envs, requiredPreviewKeys);
   const migrationUri = migrationConnection(env)!;
   const contractFiles = (await readdir("migrations"))
@@ -665,12 +728,12 @@ async function main() {
   );
   const values: Record<string, string> = {
     DATABASE_URL: runtime.uri,
-    GEMINI_API_KEY: env.PREVIEW_GEMINI_API_KEY || env.GEMINI_API_KEY!,
     GEMINI_MODEL: modelId,
     DEMO_MODE: "true",
     TILWA_ENV: "preview",
     LOCAL_DATABASE: "0",
   };
+  Object.assign(values, geminiPreviewValues);
   Object.assign(
     values,
     previewSessionSetting(variables.envs, env.SESSION_SECRET),
@@ -696,7 +759,6 @@ async function main() {
     }),
     { mode: 0o600 },
   );
-  const cliConfig = resolve(".tilwa-private/vercel-cli");
   await mkdir(cliConfig, { recursive: true, mode: 0o700 });
   const output = await run(
     [

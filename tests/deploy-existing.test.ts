@@ -1,10 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import {
   databaseIdentity,
   migrationConnection,
   previewSessionSetting,
+  previewGeminiSetting,
+  readCliToken,
   existingDeploymentBlockers,
   inspectInventory,
   previewVariablePlan,
@@ -165,6 +169,81 @@ describe("existing-resource deployment guard (offline)", () => {
         )
       ).rows,
     ).toEqual([]);
+  });
+  it("excludes provider-managed Neon Auth metadata and never reads or changes its rows", async () => {
+    await pg.exec(
+      `CREATE SCHEMA neon_auth; CREATE TABLE neon_auth."user"(id text, private_value text); INSERT INTO neon_auth."user" VALUES('provider-user','do-not-read-in-inventory');`,
+    );
+    const statements: string[] = [];
+    const observed: Sql = {
+      query: async <T>(statement: string, params?: unknown[]) => {
+        statements.push(statement);
+        return sql.query<T>(statement, params);
+      },
+    };
+    const inventory = await inspectInventory(observed);
+    expect(
+      inventory.relations.some(
+        (relation) => relation.schema_name === "neon_auth",
+      ),
+    ).toBe(false);
+    expect(validateInventory(inventory, contract)).toBe("empty");
+    expect(
+      statements.every((statement) => !statement.includes("FROM neon_auth")),
+    ).toBe(true);
+    expect(
+      (await pg.query('SELECT count(*)::int AS count FROM neon_auth."user"'))
+        .rows,
+    ).toEqual([{ count: 1 }]);
+  });
+  it("preserves a remote Gemini Preview key without forwarding the local proxy value", () => {
+    expect(
+      previewGeminiSetting([
+        { id: "g", key: "GEMINI_API_KEY", target: ["preview"] },
+      ]),
+    ).toEqual({});
+    expect(
+      previewGeminiSetting([
+        { id: "g", key: "GEMINI_API_KEY", target: ["production", "preview"] },
+      ]),
+    ).toEqual({});
+    expect(() => previewGeminiSetting([])).toThrow(
+      "local proxy binding will not be copied",
+    );
+    expect(() =>
+      previewGeminiSetting([
+        {
+          id: "g",
+          key: "GEMINI_API_KEY",
+          target: ["preview"],
+          gitBranch: "unrelated-branch",
+        },
+      ]),
+    ).toThrow("encrypted Preview settings");
+    expect(previewGeminiSetting([], "explicit-raw-offline-fixture")).toEqual({
+      GEMINI_API_KEY: "explicit-raw-offline-fixture",
+    });
+  });
+  it("uses an existing private CLI token when present and rejects malformed auth without exposing it", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "tilwa-cli-auth-test-"));
+    try {
+      expect(await readCliToken(directory)).toBeUndefined();
+      await writeFile(
+        join(directory, "auth.json"),
+        JSON.stringify({ token: "offline-fixture-token" }),
+        { mode: 0o600 },
+      );
+      expect(await readCliToken(directory)).toBe("offline-fixture-token");
+      await writeFile(
+        join(directory, "auth.json"),
+        "{malformed-sensitive-fixture",
+      );
+      await expect(readCliToken(directory)).rejects.toThrow(
+        "CLI login could not be read",
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
   it("refuses unrelated tables and overlapping names without a Tilwa migration ledger", async () => {
     await pg.exec("CREATE TABLE unrelated_customer_data (id text)");

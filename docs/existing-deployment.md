@@ -10,11 +10,11 @@ Inject the credentials through the environment's secure settings, not a shell co
 
 - `DATABASE_URL`: the existing Neon connection supplied for this pilot. An owner connection is accepted for first-time table setup. The runner creates a separate non-owner pooled login for the application when needed.
 - `DATABASE_URL_UNPOOLED` or `POSTGRES_URL_NON_POOLING`: use either existing Neon alias if already supplied. There is no need to invent another database credential. The migration connection priority is `MIGRATION_DATABASE_URL`, then `DATABASE_URL_UNPOOLED`, then `POSTGRES_URL_NON_POOLING`, then `DATABASE_URL`.
-- `VERCEL_TOKEN`: access to the existing Vercel project and Preview settings.
+- `VERCEL_TOKEN`, or a completed Vercel CLI device login using `--global-config .tilwa-private/vercel-cli`: access to the existing project and Preview settings. The runner refreshes the CLI session when needed and reads its access token only in memory.
 - `GEMINI_API_KEY`: a raw server-side Google API key. `GEMINI_MODEL` defaults to the candidate stable model `gemini-2.5-flash`; actual project availability is checked before database changes.
 - `SESSION_SECRET` is optional. An existing Preview value is preserved. On first setup a random value is generated in memory and sent directly to Vercel's encrypted Preview settings.
 
-Proxy secret placeholders are not portable keys. If the local Gemini binding is a proxy placeholder, use `PREVIEW_GEMINI_API_KEY` for the raw server key intended for Vercel, or enter that value securely in Vercel settings. Never prefix server credentials with `NEXT_PUBLIC_`.
+Proxy secret placeholders are not portable keys. The runner always preserves an existing `GEMINI_API_KEY` in Vercel Preview unless an explicit raw `PREVIEW_GEMINI_API_KEY` is supplied. It never copies the local `GEMINI_API_KEY` binding into Vercel. If the Preview key is absent, enter it securely in Vercel Preview settings, or inject the explicit raw Preview key securely. Never prefix server credentials with `NEXT_PUBLIC_`.
 
 The target names are public identifiers and can be passed directly:
 
@@ -31,7 +31,7 @@ Alternatively specify the existing `VERCEL_PROJECT_ID` and `VERCEL_ORG_ID`/`VERC
 
 1. Checks that the required credentials are injected and that the explicit target is Preview.
 2. Resolves the existing Vercel project with a read-only API call. A conflicting local project link is preserved and reported.
-3. Inspects the existing PostgreSQL schema in a **read-only transaction**. Empty databases are accepted. Existing Tilwa databases must have matching migration history. Unrelated tables, incompatible schemas, unknown migrations or non-synthetic tenants stop initialization without running migrations.
+3. Inspects the existing PostgreSQL schema in a **read-only transaction**. Empty databases are accepted. Existing Tilwa databases must have matching migration history. Provider-managed `neon_auth` tables are excluded from this inventory and remain untouched. Unrelated application tables, incompatible schemas, unknown migrations or non-synthetic tenants stop initialization without running migrations.
 4. Verifies the chosen Gemini model exists in the Google project.
 5. Initializes or updates Tilwa's tables using the checked-in migrations. It does not import an existing student dataset.
 6. Uses a verified non-owner runtime login when supplied. Otherwise it creates a separately named Preview login in the existing database, checks RLS and connects using Neon pooling. It never changes the password or permissions of an existing unrelated login.
