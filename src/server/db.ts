@@ -1,4 +1,4 @@
-import { Pool, type PoolClient } from "pg";
+import { createPostgresPool } from "./postgres-pool";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { AppError } from "./errors";
@@ -62,25 +62,14 @@ async function driver(): Promise<Driver> {
       }
       if (!process.env.DATABASE_URL)
         throw new AppError(503, "DATABASE_UNAVAILABLE");
-      const connection = new URL(process.env.DATABASE_URL);
-      // Force certificate verification; sslmode parameters must not override it.
-      for (const key of ["sslmode", "sslcert", "sslkey", "sslrootcert"])
-        connection.searchParams.delete(key);
-      const pool = new Pool({
-        connectionString: connection.toString(),
-        ssl: { rejectUnauthorized: true },
-        enableChannelBinding: true,
-        max: 5,
-        connectionTimeoutMillis: 10000,
-        idleTimeoutMillis: 20000,
-      });
+      const pool = await createPostgresPool(process.env.DATABASE_URL);
       return {
         query: async <T>(sql: string, params: unknown[] = []) => {
           const result = await pool.query(sql, params);
           return { rows: result.rows as T[] };
         },
         transaction: async <T>(fn: (tx: Queryable) => Promise<T>) => {
-          const client: PoolClient = await pool.connect();
+          const client = await pool.connect();
           try {
             await client.query("BEGIN");
             const result = await fn({

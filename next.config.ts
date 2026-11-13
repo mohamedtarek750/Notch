@@ -2,7 +2,15 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   devIndicators: false,
   allowedDevOrigins: ["127.0.0.1"],
-  serverExternalPackages: ["pg", "@electric-sql/pglite", "pdfjs-dist"],
+  // Keep Node WebSocket optional native modules under native Node resolution.
+  // Bundling ws can replace a missing bufferutil dependency with an empty module.
+  serverExternalPackages: [
+    "pg",
+    "@electric-sql/pglite",
+    "pdfjs-dist",
+    "ws",
+    "@neondatabase/serverless",
+  ],
   async headers() {
     return [
       {

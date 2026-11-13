@@ -5,7 +5,7 @@ import * as http from "node:http";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawn, execFileSync } from "node:child_process";
-import { Pool } from "pg";
+import { createPostgresPool } from "../src/server/postgres-pool";
 import { GoogleGenAI } from "@google/genai";
 
 type Env = Record<string, string | undefined>;
@@ -386,15 +386,9 @@ export async function readCliToken(
     );
   }
 }
-function poolFor(value: string): Pool {
+async function poolFor(value: string) {
   databaseIdentity(value);
-  const url = new URL(value);
-  for (const name of ["sslmode", "sslcert", "sslkey", "sslrootcert"])
-    url.searchParams.delete(name);
-  return new Pool({
-    connectionString: url.toString(),
-    ssl: { rejectUnauthorized: true },
-    enableChannelBinding: true,
+  return createPostgresPool(value, {
     max: 1,
     connectionTimeoutMillis: 15000,
     statement_timeout: 30000,
@@ -478,7 +472,7 @@ async function requestVercel<T>(
   return response.json() as Promise<T>;
 }
 export async function runtimeReady(uri: string): Promise<boolean> {
-  const pool = poolFor(uri);
+  const pool = await poolFor(uri);
   try {
     const role = (
       await pool.query<{
@@ -492,6 +486,7 @@ export async function runtimeReady(uri: string): Promise<boolean> {
     const unsafe =
       await pool.query(`SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','demo_sis') AND c.relkind='r'
       AND EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attname='tenant_id' AND a.attnum>0)
+      AND NOT(n.nspname='public' AND c.relname='demo_workspaces')
       AND NOT(c.relrowsecurity AND c.relforcerowsecurity)`);
     if (unsafe.rowCount) return false;
     const rows = await pool.query("SELECT id FROM public.records LIMIT 1");
@@ -517,7 +512,7 @@ export async function chooseRuntime(
   // Do not rotate an existing role/password used by an earlier deployment or any Production service.
   const roleName = `tilwa_preview_${createHash("sha256").update(projectId).digest("hex").slice(0, 8)}_${randomBytes(5).toString("hex")}`;
   const password = randomBytes(36).toString("base64url");
-  const pool = poolFor(migrationUri);
+  const pool = await poolFor(migrationUri);
   try {
     const sql = (
       await pool.query<{ statement: string }>(
@@ -686,7 +681,7 @@ async function main() {
       })),
     ),
   );
-  const owner = poolFor(migrationUri);
+  const owner = await poolFor(migrationUri);
   let inventoryStatus: "empty" | "tilwa";
   try {
     const client = await owner.connect();
