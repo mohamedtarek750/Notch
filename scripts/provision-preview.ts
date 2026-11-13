@@ -265,7 +265,7 @@ async function main() {
   }
   await chmod(privatePath, 0o600);
   // Fix the model ID before any deployment. A requested stable model must exist in this project.
-  const requestedModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const requestedModel = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
   try {
     const client = new GoogleGenAI({
       apiKey: process.env.GEMINI_API_KEY!,

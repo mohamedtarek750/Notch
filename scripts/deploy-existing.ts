@@ -712,7 +712,7 @@ async function main() {
       apiKey: env.PREVIEW_GEMINI_API_KEY || env.GEMINI_API_KEY!,
       httpOptions: { timeout: 20000 },
     });
-    const requested = env.GEMINI_MODEL || "gemini-2.5-flash";
+    const requested = env.GEMINI_MODEL || "gemini-3.5-flash-lite";
     const model = await client.models.get({ model: requested });
     modelId = (model.name || requested).replace(/^models\//, "");
   } catch {

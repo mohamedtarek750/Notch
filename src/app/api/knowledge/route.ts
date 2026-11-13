@@ -11,7 +11,7 @@ import {
 import { sourceErrorResponse } from "@/server/sources";
 import { z } from "zod";
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 const input = z.object({
   action: z.enum(["propose", "review", "publish", "generate", "edit"]),
   id: z.string().optional(),

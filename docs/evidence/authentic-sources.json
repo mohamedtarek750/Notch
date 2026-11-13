@@ -1,0 +1,122 @@
+{
+  "at": "2026-11-13T13:42:45.384Z",
+  "mode": "ACTUAL six CET351 originals retrieved from supplied Drive links",
+  "sources": [
+    {
+      "source": "CET351-L1",
+      "bytes": 2133813,
+      "expected_bytes": 2133813,
+      "sha256": "44b6fe4dd0ee5648707ec92ceb14417e43683809b9f54818606938c658ab6789",
+      "hash_match": true,
+      "pdf_header": true,
+      "pages": 18,
+      "expected_pages": 18,
+      "page_count_match": true
+    },
+    {
+      "source": "CET351-L2",
+      "bytes": 2964013,
+      "expected_bytes": 2964013,
+      "sha256": "b40bedc19946ed38a9a13662a3ce520134020b529d3b5758ab2b2d4a96af4773",
+      "hash_match": true,
+      "pdf_header": true,
+      "pages": 24,
+      "expected_pages": 24,
+      "page_count_match": true
+    },
+    {
+      "source": "CET351-L3",
+      "bytes": 1328632,
+      "expected_bytes": 1328632,
+      "sha256": "657c18769ae11e2e53b06d9e417555e688f0fe5fa5005266e365b78af6483d4f",
+      "hash_match": true,
+      "pdf_header": true,
+      "pages": 18,
+      "expected_pages": 18,
+      "page_count_match": true
+    },
+    {
+      "source": "CET351-L4",
+      "bytes": 1762148,
+      "expected_bytes": 1762148,
+      "sha256": "ac0a7d6913e04f4ff4e85fe6215b66fc5fd300559e3587deec42444295853391",
+      "hash_match": true,
+      "pdf_header": true,
+      "pages": 25,
+      "expected_pages": 25,
+      "page_count_match": true
+    },
+    {
+      "source": "CET351-L5",
+      "bytes": 2054323,
+      "expected_bytes": 2054323,
+      "sha256": "d06b2ee66a18f745fefbd29c1b262a4ab475a36b83c7578e69768373aa66b2e4",
+      "hash_match": true,
+      "pdf_header": true,
+      "pages": 26,
+      "expected_pages": 26,
+      "page_count_match": true
+    },
+    {
+      "source": "CET351-L6",
+      "bytes": 1308765,
+      "expected_bytes": 1308765,
+      "sha256": "343822dbb89b5bc9dbc0ccc18461221708563fefb150c25b30a57a4e86e0eb75",
+      "hash_match": true,
+      "pdf_header": true,
+      "pages": 26,
+      "expected_pages": 26,
+      "page_count_match": true
+    }
+  ],
+  "review": {
+    "L4": {
+      "pages_18_19": {
+        "inspection": "Both physical PDF pages rendered and visually inspected",
+        "counts": {
+          "TP": 6,
+          "FN": 4,
+          "FP": 20,
+          "TN": 970
+        },
+        "recall": {
+          "formula": "6 / (6 + 4)",
+          "value": 0.6
+        },
+        "precision": {
+          "formula": "6 / (6 + 20)",
+          "value": 0.23076923076923078
+        },
+        "accuracy": 0.976,
+        "F1": 0.3333333333333333,
+        "status": "Counts and formulas agree; ready for an explicit instructor review action in application"
+      },
+      "page_16": {
+        "status": "Keep quarantined: source narrative says 60 healthy / 40 patients but cells imply 50 / 50",
+        "cells": {
+          "TP": 25,
+          "FN": 25,
+          "FP": 30,
+          "TN": 20
+        }
+      }
+    },
+    "L5": {
+      "pages": [
+        18,
+        21,
+        22,
+        23
+      ],
+      "status": "Remain quarantined pending complete visual table review; text extraction alone omits image-based calculations. No corrected extract supplied."
+    }
+  },
+  "database": "Imported into existing real Neon pilot database",
+  "approved": [
+    "CET351-L4 physical pages 18 and 19",
+    "Original Tilwa supplement U1-U5"
+  ],
+  "otherPages": "Pending instructor review or quarantined",
+  "institutionalSignoff": false,
+  "originalBytesCommitted": false
+}

@@ -240,7 +240,34 @@ export function MaterialsPanel({
                 {t("صفحة / قسم", "Page / section")} {page.page || page.section}{" "}
                 · {statusLabel(page.status, t)}
               </span>
-              {page.review_note && <p className="notice">{page.review_note}</p>}
+              {page.review_note && page.status !== "approved" && (
+                <p className="notice">
+                  {page.review_note === "New/changed passage: review required."
+                    ? t(
+                        "مقطع جديد أو متغيّر: يحتاج مراجعتك.",
+                        "New or changed passage: your review is required.",
+                      )
+                    : page.review_note ===
+                        "Unchanged passage in new source version: review required."
+                      ? t(
+                          "مقطع لم يتغيّر في نسخة جديدة: يحتاج اعتماد النسخة.",
+                          "Unchanged passage in a new version: version approval is required.",
+                        )
+                      : page.review_note ===
+                          "Known numerical conflict: correction and instructor review required."
+                        ? t(
+                            "تعارض عددي معروف: يحتاج تصحيحًا ومراجعة المدرّس.",
+                            "Known numerical conflict: correction and instructor review required.",
+                          )
+                        : page.review_note ===
+                            "Image-only or unreadable page: corrected extract required."
+                          ? t(
+                              "صفحة مصوّرة أو غير مقروءة: أرفق نصًا مصحّحًا.",
+                              "Image-only or unreadable page: attach a corrected extract.",
+                            )
+                          : page.review_note}
+                </p>
+              )}
               <blockquote className="page-extract" dir="auto">
                 {page.text_content ||
                   t(
@@ -617,7 +644,7 @@ export function KnowledgePanel({
                   <a
                     href={
                       c.url ||
-                      `/sources/${c.version_id || c.versionId || c.sourceVersionId}?page=${c.page}`
+                      `/sources/${c.version_id || c.versionId || c.sourceVersionId}?${c.page ? `page=${c.page}` : `section=${encodeURIComponent(c.section || "")}`}`
                     }
                     target="_blank"
                     rel="noreferrer"

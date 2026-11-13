@@ -113,14 +113,10 @@ async function normalizeGraph(
 ): Promise<Graph> {
   const result = graphSchema.parse(value);
   const existing = (
-    await db
-      .tenant(ctx.tenantId)
-      .query<{
-        id: string;
-        data: { label: { ar: string; en: string }; aliases: string[] };
-      }>("SELECT id,data FROM records WHERE tenant_id=$1 AND kind='concept'", [
-        ctx.tenantId,
-      ])
+    await db.tenant(ctx.tenantId).query<{
+      id: string;
+      data: { label: { ar: string; en: string }; aliases: string[] };
+    }>("SELECT id,data FROM records WHERE tenant_id=$1 AND kind='concept'", [ctx.tenantId])
   ).rows;
   const keyMap = new Map<string, string>();
   const concepts = result.concepts.map((c) => {
@@ -176,7 +172,7 @@ export async function proposeKnowledge(
   try {
     const response = await gateway.generate({
       operation: "propose",
-      system: `${SYSTEM_POLICY}\nPropose a small bilingual course concept graph for instructor review. Direction is prerequisite to dependent. Use only explicit supported prerequisites; Python examples do not prove a hard mathematical prerequisite. Provide keys local to this response, bilingual labels, aliases, reasons and exact evidence IDs.`,
+      system: `${SYSTEM_POLICY}\nPropose a small bilingual course concept graph for instructor review, with at most 6 concepts and 8 edges. Keep labels and reasons concise. Direction is prerequisite to dependent. Use only explicit supported prerequisites; Python examples do not prove a hard mathematical prerequisite. Provide keys local to this response, bilingual labels, aliases, reasons and exact evidence IDs.`,
       schema: {
         type: "object",
         properties: {
@@ -316,19 +312,14 @@ export async function reviewProposal(
 ) {
   await staff(ctx, "publish");
   const record = (
-    await db
-      .tenant(ctx.tenantId)
-      .query<{
-        data: {
-          status: string;
-          graph?: Graph;
-          evidenceIds: string[];
-          [key: string]: unknown;
-        };
-      }>(
-        "SELECT data FROM records WHERE tenant_id=$1 AND id=$2 AND kind='knowledge_proposal' AND course_id=$3",
-        [ctx.tenantId, id, COURSE],
-      )
+    await db.tenant(ctx.tenantId).query<{
+      data: {
+        status: string;
+        graph?: Graph;
+        evidenceIds: string[];
+        [key: string]: unknown;
+      };
+    }>("SELECT data FROM records WHERE tenant_id=$1 AND id=$2 AND kind='knowledge_proposal' AND course_id=$3", [ctx.tenantId, id, COURSE])
   ).rows[0];
   if (!record) throw new SourceError("source_missing", 404);
   if (record.data.status === "published")
@@ -516,6 +507,9 @@ export async function publishKnowledge(ctx: AuthContext) {
             JSON.stringify({
               ...(p.data.session as Record<string, unknown>),
               approved: true,
+              fixture: false,
+              modelId: p.data.modelId,
+              policyVersion: p.data.policyVersion,
               graphVersion: releaseId,
               languageEquivalenceReviewed: true,
             }),
@@ -667,6 +661,7 @@ export async function generateTeaching(
       session: {
         ...draft.session,
         approved: false,
+        fixture: false,
         lecture: 4,
         module: "evaluation",
         version: 1,

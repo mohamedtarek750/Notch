@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { z } from "zod";
 import { initializeNetwork } from "./network";
 import { db } from "./db";
@@ -30,7 +30,7 @@ export class GeminiGateway implements ModelGateway {
     initializeNetwork();
     const client = new GoogleGenAI({
       apiKey: process.env.GEMINI_API_KEY,
-      httpOptions: { timeout: 20000 },
+      httpOptions: { timeout: 45000 },
     });
     const result = await client.models.generateContent({
       model: this.modelId,
@@ -39,7 +39,10 @@ export class GeminiGateway implements ModelGateway {
         systemInstruction: input.system,
         responseMimeType: "application/json",
         responseJsonSchema: input.schema,
-        maxOutputTokens: 2400,
+        maxOutputTokens: input.operation === "tutor" ? 2400 : 4096,
+        ...(/^gemini-3/.test(this.modelId)
+          ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+          : {}),
         temperature: 0.1,
       },
     });
@@ -196,7 +199,7 @@ export async function retrieveEvidence(
     await db
       .tenant(ctx.tenantId)
       .query<Evidence>(
-        `SELECT c.id,c.version_id,c.page,c.section,c.text_content,c.language,c.status,c.review_note,v.source_key,v.title,v.role,v.hash FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND v.current_version=true AND v.rights->>'sendToModel'='true' AND v.rights->>'displayExcerpt'='true' AND c.status ${staffDraft ? "IN ('pending','approved')" : "= 'approved'"} ${staffDraft ? "" : "AND v.status='published'"} ORDER BY v.source_key,c.page,c.section LIMIT 180`,
+        `SELECT c.id,c.version_id,c.page,c.section,c.text_content,c.language,c.status,c.review_note,v.source_key,v.title,v.role,v.hash FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND v.current_version=true AND v.rights->>'sendToModel'='true' AND v.rights->>'displayExcerpt'='true' AND c.status='approved' ${staffDraft ? "" : "AND v.status='published'"} ORDER BY v.source_key,c.page,c.section LIMIT 180`,
         [ctx.tenantId, COURSE],
       )
   ).rows;
@@ -273,18 +276,13 @@ export async function prepareModel(
   const followup = operation === "tutor" && isFollowup(question);
   if (followup) {
     const prior = (
-      await db
-        .tenant(ctx.tenantId)
-        .query<{
-          data: {
-            question: string;
-            contextQuestion?: string;
-            citations: string[];
-          };
-        }>(
-          `SELECT data FROM records WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind='tutor_memory' AND COALESCE(data->>'archived','false') <> 'true' AND jsonb_array_length(data->'citations')>0 ORDER BY created_at DESC LIMIT 1`,
-          [ctx.tenantId, ctx.userId, COURSE],
-        )
+      await db.tenant(ctx.tenantId).query<{
+        data: {
+          question: string;
+          contextQuestion?: string;
+          citations: string[];
+        };
+      }>(`SELECT data FROM records WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind='tutor_memory' AND COALESCE(data->>'archived','false') <> 'true' AND jsonb_array_length(data->'citations')>0 ORDER BY created_at DESC LIMIT 1`, [ctx.tenantId, ctx.userId, COURSE])
     ).rows[0];
     if (prior) {
       priorQuestion = (prior.data.contextQuestion || prior.data.question).slice(

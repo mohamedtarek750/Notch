@@ -2,7 +2,7 @@ import { requireAuth } from "@/server/auth";
 import { tutor, tutorInput } from "@/server/ai";
 import { sourceErrorResponse } from "@/server/sources";
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 export async function POST(req: Request) {
   try {
     const ctx = await requireAuth(req);

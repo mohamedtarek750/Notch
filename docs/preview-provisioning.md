@@ -11,7 +11,7 @@ Set these in secure environment settings; never paste secret values in chat:
 | `NEON_API_KEY`           | API access to create/read a separate pilot project and its connection URI                                      |
 | `VERCEL_TOKEN`           | Create/manage the Preview project and its Preview environment variables                                        |
 | `GEMINI_API_KEY`         | Verify the selected Gemini model and run the tutor                                                             |
-| `GEMINI_MODEL`           | Stable candidate is `gemini-2.5-flash`; availability is checked against the actual project before provisioning |
+| `GEMINI_MODEL`           | Verified stable pilot model is `gemini-3.5-flash-lite`; availability is checked against the actual project before provisioning |
 | `VERCEL_TEAM_ID`         | Optional authorized Vercel team; otherwise the token's account                                                 |
 | `NEON_REGION`            | Optional Neon region; default `aws-us-east-1`                                                                  |
 | `PREVIEW_GEMINI_API_KEY` | Optional raw Gemini key intended for the Vercel server if different from the local key                         |

@@ -137,6 +137,20 @@ describe("database-first AI using actual local PostgreSQL and injected determini
     expect(answer.disposition).toBe("insufficient_evidence");
     expect(calls).toBe(0);
   });
+  it("instructor graph proposals cannot send pending source text to a model", async () => {
+    let generationCalls = 0;
+    const forbiddenGateway: ModelGateway = {
+      modelId: "deterministic-pending-denial-test",
+      async generate() {
+        generationCalls++;
+        throw new Error("Pending passages must never reach generation");
+      },
+    };
+    await expect(
+      proposeKnowledge(instructor, forbiddenGateway),
+    ).rejects.toMatchObject({ code: "insufficient_evidence" });
+    expect(generationCalls).toBe(0);
+  });
   it("requires explicit review and publication before tutoring", async () => {
     const material = await getMaterial(instructor, versionId);
     for (const c of material.chunks)
@@ -151,16 +165,11 @@ describe("database-first AI using actual local PostgreSQL and injected determini
     expect(answer.citations.length).toBeGreaterThan(0);
     expect(calls).toBe(1);
     const trace = (
-      await db
-        .tenant(tenant)
-        .query<{
-          retrieved_at: Date;
-          generated_at: Date;
-          evidence_ids: string[];
-        }>("SELECT * FROM model_traces WHERE tenant_id=$1 AND outcome=$2", [
-          tenant,
-          "answered",
-        ])
+      await db.tenant(tenant).query<{
+        retrieved_at: Date;
+        generated_at: Date;
+        evidence_ids: string[];
+      }>("SELECT * FROM model_traces WHERE tenant_id=$1 AND outcome=$2", [tenant, "answered"])
     ).rows[0];
     expect(new Date(trace.retrieved_at).getTime()).toBeLessThanOrEqual(
       new Date(trace.generated_at).getTime(),
@@ -262,6 +271,7 @@ describe("database-first AI using actual local PostgreSQL and injected determini
     };
     const draft = await generateTeaching(instructor, generation);
     expect(draft.item.approved).toBe(false);
+    expect(draft.session.fixture).toBe(false);
     await reviewProposal(instructor, draft.id, "approved");
     const edited = await editTeaching(instructor, draft.id, {
       item: {
@@ -285,6 +295,24 @@ describe("database-first AI using actual local PostgreSQL and injected determini
     ).rows[0];
     expect(published.owner_id).toBeNull();
     expect(published.data.approved).toBe(true);
+    const session = (
+      await db.tenant(tenant).query<{
+        owner_id: string | null;
+        data: {
+          approved: boolean;
+          fixture: boolean;
+          modelId: string;
+          policyVersion: string;
+          graphVersion: string;
+        };
+      }>("SELECT owner_id,data FROM records WHERE tenant_id=$1 AND id=$2", [tenant, `session-${draft.id}`])
+    ).rows[0];
+    expect(session.owner_id).toBeNull();
+    expect(session.data.approved).toBe(true);
+    expect(session.data.fixture).toBe(false);
+    expect(session.data.modelId).toBe("deterministic-teaching-test");
+    expect(session.data.policyVersion).toBe(draft.policyVersion);
+    expect(session.data.graphVersion).not.toBe("pending");
   });
   it("denies unrelated and prompt-injection requests without generation", async () => {
     const before = calls;
