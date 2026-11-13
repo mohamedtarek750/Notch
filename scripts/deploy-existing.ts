@@ -4,7 +4,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import * as http from "node:http";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { Pool } from "pg";
 import { GoogleGenAI } from "@google/genai";
 
@@ -283,17 +283,27 @@ export interface VercelVariable {
 export function previewVariablePlan(
   existing: VercelVariable[],
   values: Record<string, string>,
+  gitBranch?: string,
 ) {
+  if (
+    gitBranch &&
+    (!/^[A-Za-z0-9_][A-Za-z0-9_./-]{0,199}$/.test(gitBranch) ||
+      gitBranch.includes("..") ||
+      gitBranch.endsWith("/"))
+  )
+    throw new ExistingDeployError("Invalid Preview branch identifier.");
   return Object.entries(values).map(([key, value]) => {
     const matches = existing.filter(
       (variable) =>
-        variable.key === key && variable.target?.includes("preview"),
+        variable.key === key &&
+        variable.target?.includes("preview") &&
+        (!gitBranch || variable.gitBranch === gitBranch),
     );
     if (
       matches.some(
         (variable) =>
           variable.target.some((target) => target !== "preview") ||
-          variable.gitBranch ||
+          (variable.gitBranch && variable.gitBranch !== gitBranch) ||
           variable.customEnvironmentIds?.length,
       )
     )
@@ -306,13 +316,20 @@ export function previewVariablePlan(
       );
     return {
       id: matches[0]?.id,
-      body: { key, value, type: "encrypted", target: ["preview"] },
+      body: {
+        key,
+        value,
+        type: "encrypted",
+        target: ["preview"],
+        ...(gitBranch ? { gitBranch } : {}),
+      },
     };
   });
 }
 export function previewSessionSetting(
   existing: VercelVariable[],
   supplied?: string,
+  gitBranch?: string,
 ): Record<string, string> {
   if (supplied) {
     if (supplied.length < 32)
@@ -325,7 +342,8 @@ export function previewSessionSetting(
     existing.some(
       (variable) =>
         variable.key === "SESSION_SECRET" &&
-        variable.target?.includes("preview"),
+        variable.target?.includes("preview") &&
+        (!variable.gitBranch || variable.gitBranch === gitBranch),
     )
   )
     return {};
@@ -335,6 +353,7 @@ export function previewSessionSetting(
 export function previewGeminiSetting(
   existing: VercelVariable[],
   rawPreviewKey?: string,
+  gitBranch?: string,
 ): Record<string, string> {
   if (rawPreviewKey) return { GEMINI_API_KEY: rawPreviewKey };
   if (
@@ -342,7 +361,7 @@ export function previewGeminiSetting(
       (variable) =>
         variable.key === "GEMINI_API_KEY" &&
         variable.target?.includes("preview") &&
-        !variable.gitBranch,
+        (!variable.gitBranch || variable.gitBranch === gitBranch),
     )
   )
     return {};
@@ -551,6 +570,22 @@ async function main() {
   if (typeof http.setGlobalProxyFromEnv === "function")
     http.setGlobalProxyFromEnv();
   const env = process.env;
+  let currentBranch: string;
+  try {
+    currentBranch = execFileSync("git", ["branch", "--show-current"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    throw new ExistingDeployError(
+      "Cannot determine the current feature branch.",
+    );
+  }
+  const previewBranch = env.VERCEL_PREVIEW_BRANCH || currentBranch;
+  if (!previewBranch || previewBranch !== currentBranch)
+    throw new ExistingDeployError(
+      "Preview overrides must match the current checked-out feature branch.",
+    );
   if (!env.VERCEL_TOKEN && token) {
     // Let the CLI refresh its own OAuth login; never expose or copy refresh credentials.
     await run(
@@ -626,17 +661,19 @@ async function main() {
     variables.envs.some(
       (variable) =>
         variable.key === "SESSION_SECRET" &&
-        variable.target?.includes("preview"),
+        variable.target?.includes("preview") &&
+        (!variable.gitBranch || variable.gitBranch === previewBranch),
     )
   )
     delete requiredPreviewKeys.SESSION_SECRET;
   const geminiPreviewValues = previewGeminiSetting(
     variables.envs,
     env.PREVIEW_GEMINI_API_KEY,
+    previewBranch,
   );
   if (geminiPreviewValues.GEMINI_API_KEY)
     requiredPreviewKeys.GEMINI_API_KEY = "";
-  previewVariablePlan(variables.envs, requiredPreviewKeys);
+  previewVariablePlan(variables.envs, requiredPreviewKeys, previewBranch);
   const migrationUri = migrationConnection(env)!;
   const contractFiles = (await readdir("migrations"))
     .filter((name) => /^\d+.*\.sql$/.test(name))
@@ -736,9 +773,13 @@ async function main() {
   Object.assign(values, geminiPreviewValues);
   Object.assign(
     values,
-    previewSessionSetting(variables.envs, env.SESSION_SECRET),
+    previewSessionSetting(variables.envs, env.SESSION_SECRET, previewBranch),
   );
-  for (const change of previewVariablePlan(variables.envs, values)) {
+  for (const change of previewVariablePlan(
+    variables.envs,
+    values,
+    previewBranch,
+  )) {
     const endpoint = change.id
       ? `/v9/projects/${encodeURIComponent(project.id)}/env/${encodeURIComponent(change.id)}?${scope}`
       : `/v10/projects/${encodeURIComponent(project.id)}/env?${scope}`;
@@ -790,6 +831,7 @@ async function main() {
     target: "preview",
     projectId: project.id,
     projectName: project.name,
+    gitBranch: previewBranch,
     modelId,
     url: urls.at(-1),
     runtimeRoleCreated: runtime.roleCreated,

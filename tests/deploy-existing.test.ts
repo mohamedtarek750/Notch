@@ -342,6 +342,108 @@ describe("existing-resource deployment guard (offline)", () => {
       )[0].id,
     ).toBe("preview-id");
   });
+  it("adds a feature-branch Preview override without changing a shared Production variable", () => {
+    const original = {
+      id: "shared",
+      key: "DATABASE_URL",
+      target: ["production", "preview"],
+    };
+    const branch = "feat/tilwa-pilot-v1";
+    const result = previewVariablePlan(
+      [original],
+      { DATABASE_URL: "runtime-fixture" },
+      branch,
+    );
+    expect(result).toEqual([
+      {
+        id: undefined,
+        body: {
+          key: "DATABASE_URL",
+          value: "runtime-fixture",
+          type: "encrypted",
+          target: ["preview"],
+          gitBranch: branch,
+        },
+      },
+    ]);
+    expect(original.target).toEqual(["production", "preview"]);
+    expect(
+      previewVariablePlan(
+        [
+          {
+            id: "ours",
+            key: "DATABASE_URL",
+            target: ["preview"],
+            gitBranch: branch,
+          },
+        ],
+        { DATABASE_URL: "new-fixture" },
+        branch,
+      )[0].id,
+    ).toBe("ours");
+    expect(
+      previewVariablePlan(
+        [
+          {
+            id: "other",
+            key: "DATABASE_URL",
+            target: ["preview"],
+            gitBranch: "feat/other",
+          },
+        ],
+        { DATABASE_URL: "fixture" },
+        branch,
+      )[0].id,
+    ).toBeUndefined();
+    expect(() => previewVariablePlan([], {}, "invalid branch")).toThrow(
+      "Invalid Preview branch",
+    );
+  });
+  it("uses keys from the selected branch or default Preview scope, never another branch", () => {
+    const branch = "feat/tilwa-pilot-v1";
+    expect(
+      previewGeminiSetting(
+        [
+          {
+            id: "g",
+            key: "GEMINI_API_KEY",
+            target: ["preview"],
+            gitBranch: branch,
+          },
+        ],
+        undefined,
+        branch,
+      ),
+    ).toEqual({});
+    expect(() =>
+      previewGeminiSetting(
+        [
+          {
+            id: "g",
+            key: "GEMINI_API_KEY",
+            target: ["preview"],
+            gitBranch: "feat/other",
+          },
+        ],
+        undefined,
+        branch,
+      ),
+    ).toThrow("encrypted Preview settings");
+    expect(
+      previewSessionSetting(
+        [
+          {
+            id: "s",
+            key: "SESSION_SECRET",
+            target: ["preview"],
+            gitBranch: "feat/other",
+          },
+        ],
+        undefined,
+        branch,
+      ).SESSION_SECRET.length,
+    ).toBeGreaterThanOrEqual(32);
+  });
   it("refuses shared Production/Preview variables or branch overrides before changing any value", () => {
     expect(() =>
       previewVariablePlan(
