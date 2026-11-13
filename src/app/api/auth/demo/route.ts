@@ -7,6 +7,7 @@ import {
   SESSION_COOKIE,
   WORKSPACE_COOKIE,
   cookieValue,
+  isInviteOnlyPilot,
 } from "@/server/auth";
 import { createWorkspace, resolveWorkspace } from "@/server/seed";
 import {
@@ -17,6 +18,7 @@ import {
 } from "@/server/errors";
 export const runtime = "nodejs";
 export async function POST(request: Request) {
+  let locale = localeFrom(request);
   try {
     checkOrigin(request);
     assertDemoMode();
@@ -27,7 +29,10 @@ export async function POST(request: Request) {
         locale: z.enum(["ar", "en"]).optional(),
       })
       .parse(await request.json());
+    locale = body.locale ?? locale;
+    const inviteOnly = isInviteOnlyPilot();
     const code = body.workspaceCode ?? cookieValue(request, WORKSPACE_COOKIE);
+    if (inviteOnly && !code) throw new AppError(401, "INVITE_REQUIRED");
     const workspace = code
       ? await resolveWorkspace(code)
       : await createWorkspace();
@@ -46,7 +51,8 @@ export async function POST(request: Request) {
       {
         user,
         workspaceCode: workspace.workspaceCode,
-        mode: "sandbox",
+        mode: inviteOnly ? "pilot" : "sandbox",
+        accessMode: inviteOnly ? "invite-only" : "sandbox",
         synthetic: true,
       },
       { headers: { "Cache-Control": "no-store" } },
@@ -66,6 +72,6 @@ export async function POST(request: Request) {
     );
     return response;
   } catch (e) {
-    return errorResponse(e, localeFrom(request));
+    return errorResponse(e, locale);
   }
 }

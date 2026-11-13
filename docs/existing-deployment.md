@@ -2,6 +2,8 @@
 
 Use the existing **Tilwa Neon database** and **`tilwa` Vercel project** in `mohamedtarek750s-projects`. This workflow creates no Neon project, database, branch or Vercel project. It deploys only a **Vercel Preview**.
 
+This command remains Preview-only even though the application also supports an explicitly configured, invite-only synthetic pilot on a Production host. That separate deployment requires an existing synthetic workspace and all three server flags: `DEMO_MODE=true`, `TILWA_ENV=pilot`, and `PILOT_ACCESS_MODE=invite-only`. Production demo entry is otherwise denied; invite-only mode does not provision workspaces. See [hosted pilot configuration and verification](hosted-pilot-verification.md). These instructions do not claim that a Production deployment has completed.
+
 قاعدة البيانات الجديدة ممكن تكون فارغة تمامًا. أمر التهيئة ينشئ جداول التطبيق ثم يضيف حسابات وتجارب تعليمية مصطنعة. لا تحتاج ملفات بيانات طلاب أو بيانات من نظام جامعة. بعد النشر تدخل كمدرّس وترفع مواد المقرر من الواجهة.
 
 ## Secure settings / الإعدادات الآمنة
@@ -55,6 +57,8 @@ LIVE_SMOKE=1 LIVE_BASE_URL=https://YOUR-PREVIEW.vercel.app npm run test:live
 ```
 
 `LIVE_WORKSPACE_CODE` must be injected securely for that reviewed demo workspace. The smoke test uses real Neon/Gemini and checks approved L4 locators, three language modes, database-first traces, practice persistence and the assigned advisor view. Missing live credentials or sources are reported as blocked rather than passed.
+
+For the separately deployed invite-only Production pilot, use the [hosted acceptance runner](hosted-pilot-verification.md). Its staged check can make one explicitly enabled real tutor call before promotion; the canonical check can then verify the same deployment over HTTP without another model call. Do not use the Preview deployment runner to change Production settings.
 
 Required access is `api.vercel.com`, the deployment under `*.vercel.app`, `generativelanguage.googleapis.com`, and the selected Neon endpoint over TLS PostgreSQL on port 5432. An available database URL does not by itself establish that the environment can reach that endpoint. Connection errors are reported without printing the URL or password.
 

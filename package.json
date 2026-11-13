@@ -22,7 +22,7 @@
     "deploy:existing": "tsx scripts/deploy-existing.ts"
   },
   "engines": {
-    "node": ">=22"
+    "node": "24.x"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.16",

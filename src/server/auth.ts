@@ -6,6 +6,8 @@ import {
 } from "node:crypto";
 import { db, scopedDb, type Queryable } from "./db";
 import { AppError, checkOrigin, localeFrom, type Locale } from "./errors";
+import { isInviteOnlyPilot } from "./access-mode";
+export { isInviteOnlyPilot } from "./access-mode";
 export type Role = "student" | "instructor" | "advisor";
 export interface AuthContext {
   tenantId: string;
@@ -21,8 +23,8 @@ export type CourseOperation =
 export function assertDemoMode(): void {
   if (
     process.env.DEMO_MODE !== "true" ||
-    process.env.VERCEL_ENV === "production" ||
-    process.env.TILWA_ENV === "production"
+    process.env.TILWA_ENV === "production" ||
+    (process.env.VERCEL_ENV === "production" && !isInviteOnlyPilot())
   )
     throw new AppError(403, "DEMO_DISABLED");
 }
@@ -124,8 +126,8 @@ export async function requireAuth(
   const { rows } = await db
     .tenant(data.tid)
     .query<{ role: Role; name: { ar: string; en: string } }>(
-      `SELECT m.role,u.name FROM auth_sessions s JOIN memberships m ON m.tenant_id=s.tenant_id AND m.user_id=s.user_id JOIN users u ON u.tenant_id=s.tenant_id AND u.id=s.user_id WHERE s.tenant_id=$1 AND s.id=$2 AND s.user_id=$3 AND s.revoked_at IS NULL AND s.expires_at>now() AND m.active=true`,
-      [data.tid, data.sid, data.uid],
+      `SELECT m.role,u.name FROM auth_sessions s JOIN memberships m ON m.tenant_id=s.tenant_id AND m.user_id=s.user_id JOIN users u ON u.tenant_id=s.tenant_id AND u.id=s.user_id JOIN tenants t ON t.id=s.tenant_id WHERE s.tenant_id=$1 AND s.id=$2 AND s.user_id=$3 AND s.revoked_at IS NULL AND s.expires_at>now() AND m.active=true AND (NOT $4::boolean OR t.synthetic=true)`,
+      [data.tid, data.sid, data.uid, isInviteOnlyPilot()],
     );
   if (!rows[0]) throw new AppError(401, "UNAUTHORIZED");
   if (roles && !roles.includes(rows[0].role))

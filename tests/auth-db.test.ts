@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { db } from "../src/server/db";
 import { migrateDatabase } from "../src/server/migrate";
@@ -8,10 +8,17 @@ import {
   requireAuth,
   requireAdvisee,
   SESSION_COOKIE,
+  WORKSPACE_COOKIE,
   type AuthContext,
 } from "../src/server/auth";
+import {
+  createWorkspace,
+  resolveWorkspace,
+  type Workspace,
+} from "../src/server/seed";
 import { POST as demoLogin } from "../src/app/api/auth/demo/route";
 import { POST as demoLogout } from "../src/app/api/auth/logout/route";
+import { GET as currentUser } from "../src/app/api/auth/me/route";
 const tenantA = randomUUID(),
   tenantB = randomUUID(),
   student = randomUUID(),
@@ -288,5 +295,323 @@ describe("sandbox role login and new-browser persistence", () => {
       }),
     );
     expect(response.status).toBe(403);
+  });
+});
+
+describe("invite-only synthetic pilot on a production host (real local PostgreSQL engine)", () => {
+  let invited: Workspace, nonsynthetic: Workspace, nonsyntheticToken: string;
+  const environmentKeys = [
+    "DEMO_MODE",
+    "TILWA_ENV",
+    "VERCEL_ENV",
+    "PILOT_ACCESS_MODE",
+  ] as const;
+  const savedEnvironment: Record<string, string | undefined> = {};
+  const configurePilot = () => {
+    process.env.DEMO_MODE = "true";
+    process.env.TILWA_ENV = "pilot";
+    process.env.VERCEL_ENV = "production";
+    process.env.PILOT_ACCESS_MODE = "invite-only";
+  };
+  const login = (body: unknown, headers: Record<string, string> = {}) =>
+    demoLogin(
+      new Request("https://tilwa.vercel.app/api/auth/demo", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify(body),
+      }),
+    );
+  const sessionCookie = (response: Response) =>
+    response.headers
+      .getSetCookie()
+      .find((value) => value.startsWith(`${SESSION_COOKIE}=`))!
+      .split(";")[0];
+  const tenantCount = async () =>
+    (
+      await db.query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM tenants",
+      )
+    ).rows[0].count;
+
+  beforeAll(async () => {
+    for (const key of environmentKeys) savedEnvironment[key] = process.env[key];
+    process.env.DEMO_MODE = "true";
+    process.env.TILWA_ENV = "pilot";
+    process.env.VERCEL_ENV = "preview";
+    delete process.env.PILOT_ACCESS_MODE;
+    invited = await createWorkspace();
+    nonsynthetic = await createWorkspace();
+    nonsyntheticToken = await createSession(
+      nonsynthetic.tenantId,
+      nonsynthetic.users.student,
+    );
+    await db.query("UPDATE tenants SET synthetic=false WHERE id=$1", [
+      nonsynthetic.tenantId,
+    ]);
+    // Every acceptance assertion below executes with the non-owner runtime role.
+    await db.query("SET ROLE tilwa_runtime");
+  });
+  beforeEach(configurePilot);
+  afterAll(async () => {
+    await db.query("RESET ROLE");
+    for (const key of environmentKeys) {
+      if (savedEnvironment[key] === undefined) delete process.env[key];
+      else process.env[key] = savedEnvironment[key];
+    }
+  });
+
+  it.each(["ar", "en"] as const)(
+    "requires an invitation and returns a %s error without creating a tenant",
+    async (locale) => {
+      const before = await tenantCount();
+      const response = await login({ role: "student", locale });
+      expect(response.status).toBe(401);
+      const body = await response.json();
+      expect(body.error.code).toBe("INVITE_REQUIRED");
+      expect(body.error.message).toBe(body.error.messages[locale]);
+      expect(body.error.message).toMatch(
+        locale === "ar" ? /رمز الوصول/ : /access code/,
+      );
+      expect(response.headers.getSetCookie()).toEqual([]);
+      expect(await tenantCount()).toBe(before);
+    },
+  );
+
+  it.each(["student", "instructor", "advisor"] as const)(
+    "authenticates an invited %s with database-enforced permissions",
+    async (role) => {
+      const response = await login({
+        role,
+        workspaceCode: invited.workspaceCode,
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        mode: "pilot",
+        accessMode: "invite-only",
+        synthetic: true,
+        user: { tenantId: invited.tenantId, userId: invited.users[role], role },
+      });
+      const cookie = sessionCookie(response);
+      const me = await currentUser(
+        new Request("https://tilwa.vercel.app/api/auth/me", {
+          headers: { cookie },
+        }),
+      );
+      expect(me.status).toBe(200);
+      expect(await me.json()).toMatchObject({
+        mode: "pilot",
+        accessMode: "invite-only",
+        synthetic: true,
+        user: { tenantId: invited.tenantId, userId: invited.users[role], role },
+      });
+      const authenticated = await requireAuth(
+        new Request("https://tilwa.vercel.app/api/auth/me", {
+          headers: {
+            cookie,
+            "x-role": role === "student" ? "instructor" : "student",
+          },
+        }),
+      );
+      expect(authenticated.role).toBe(role);
+      expect(
+        (await db.query<{ current_user: string }>("SELECT current_user"))
+          .rows[0].current_user,
+      ).toBe("tilwa_runtime");
+      await expect(
+        authorizeCourse(authenticated, "OTHER"),
+      ).rejects.toMatchObject({ code: "COURSE_FORBIDDEN" });
+      if (role === "instructor") {
+        expect(
+          (await authorizeCourse(authenticated, "CET351", "publish"))
+            .canPublish,
+        ).toBe(true);
+      } else {
+        await expect(
+          authorizeCourse(authenticated, "CET351", "publish"),
+        ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      }
+      if (role === "advisor") {
+        await expect(
+          requireAdvisee(authenticated, invited.users.student),
+        ).resolves.toBeUndefined();
+        await expect(
+          requireAdvisee(authenticated, nonsynthetic.users.student),
+        ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      }
+      expect(
+        response.headers
+          .getSetCookie()
+          .every(
+            (value) =>
+              value.includes("HttpOnly") &&
+              value.includes("SameSite=Lax") &&
+              value.includes("Secure"),
+          ),
+      ).toBe(true);
+    },
+  );
+
+  it("rejects unknown codes without provisioning or returning cookies", async () => {
+    const before = await tenantCount();
+    const response = await login({
+      role: "instructor",
+      workspaceCode: `unknown-${randomUUID()}`,
+    });
+    expect(response.status).toBe(401);
+    expect((await response.json()).error.code).toBe("INVALID_WORKSPACE");
+    expect(response.headers.getSetCookie()).toEqual([]);
+    expect(await tenantCount()).toBe(before);
+  });
+
+  it("never resolves a non-synthetic workspace, even with a valid registered code or old session", async () => {
+    const before = await tenantCount();
+    const response = await login({
+      role: "student",
+      workspaceCode: nonsynthetic.workspaceCode,
+    });
+    expect(response.status).toBe(401);
+    expect((await response.json()).error.code).toBe("INVALID_WORKSPACE");
+    await expect(
+      resolveWorkspace(nonsynthetic.workspaceCode),
+    ).rejects.toMatchObject({ code: "INVALID_WORKSPACE" });
+    await expect(requireAuth(request(nonsyntheticToken))).rejects.toMatchObject(
+      { code: "UNAUTHORIZED" },
+    );
+    expect(await tenantCount()).toBe(before);
+  });
+
+  it("blocks the seed boundary with no code, a new supplied code and an existing code", async () => {
+    const before = await tenantCount();
+    for (const code of [
+      undefined,
+      `new-${randomUUID()}`,
+      invited.workspaceCode,
+    ]) {
+      await expect(createWorkspace(code)).rejects.toMatchObject({
+        code: "WORKSPACE_CREATION_DISABLED",
+      });
+    }
+    expect(await tenantCount()).toBe(before);
+  });
+
+  it("retains the invited workspace cookie after logout and revokes the old session", async () => {
+    const response = await login({
+      role: "student",
+      workspaceCode: invited.workspaceCode,
+    });
+    const cookie = sessionCookie(response);
+    const workspaceCookie = response.headers
+      .getSetCookie()
+      .find((value) => value.startsWith(`${WORKSPACE_COOKIE}=`))!
+      .split(";")[0];
+    const signedOut = await demoLogout(
+      new Request("https://tilwa.vercel.app/api/auth/logout", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: "{}",
+      }),
+    );
+    expect(signedOut.status).toBe(200);
+    expect(
+      signedOut.headers
+        .getSetCookie()
+        .some((value) => value.startsWith(`${WORKSPACE_COOKIE}=`)),
+    ).toBe(false);
+    await expect(
+      requireAuth(
+        new Request("https://tilwa.vercel.app/api/auth/me", {
+          headers: { cookie },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    const before = await tenantCount();
+    const restored = await login(
+      { role: "advisor" },
+      { cookie: workspaceCookie },
+    );
+    expect(restored.status).toBe(200);
+    expect((await restored.json()).user).toMatchObject({
+      tenantId: invited.tenantId,
+      userId: invited.users.advisor,
+    });
+    expect(await tenantCount()).toBe(before);
+  });
+
+  it("continues to enforce protected exams and revoked enrollment for invited sessions", async () => {
+    const response = await login({
+      role: "student",
+      workspaceCode: invited.workspaceCode,
+    });
+    const authenticated = await requireAuth(
+      new Request("https://tilwa.vercel.app/api/auth/me", {
+        headers: { cookie: sessionCookie(response) },
+      }),
+    );
+    await db
+      .tenant(invited.tenantId)
+      .query(
+        "INSERT INTO exam_sessions(tenant_id,id,user_id,course_id) VALUES($1,$2,$3,$4)",
+        [invited.tenantId, "invite-test-exam", invited.users.student, "CET351"],
+      );
+    await expect(
+      authorizeCourse(authenticated, "CET351", "tutor"),
+    ).rejects.toMatchObject({ code: "EXAM_PROTECTED" });
+    await db
+      .tenant(invited.tenantId)
+      .query("UPDATE exam_sessions SET status='completed' WHERE tenant_id=$1", [
+        invited.tenantId,
+      ]);
+    await db
+      .tenant(invited.tenantId)
+      .query(
+        "UPDATE course_access SET active=false WHERE tenant_id=$1 AND user_id=$2",
+        [invited.tenantId, invited.users.student],
+      );
+    await expect(
+      authorizeCourse(authenticated, "CET351", "read"),
+    ).rejects.toMatchObject({ code: "COURSE_FORBIDDEN" });
+    await db
+      .tenant(invited.tenantId)
+      .query(
+        "UPDATE course_access SET active=true WHERE tenant_id=$1 AND user_id=$2",
+        [invited.tenantId, invited.users.student],
+      );
+  });
+
+  it.each(["DEMO_MODE", "TILWA_ENV", "PILOT_ACCESS_MODE"] as const)(
+    "keeps production closed if %s is not explicitly enabled",
+    async (key) => {
+      delete process.env[key];
+      const before = await tenantCount();
+      const response = await login(
+        { role: "instructor", workspaceCode: invited.workspaceCode },
+        { "x-pilot-access-mode": "invite-only", "x-role": "instructor" },
+      );
+      expect(response.status).toBe(403);
+      expect((await response.json()).error.code).toBe("DEMO_DISABLED");
+      expect(await tenantCount()).toBe(before);
+    },
+  );
+
+  it("does not turn a standard production environment into a pilot", async () => {
+    process.env.TILWA_ENV = "production";
+    const response = await login({
+      role: "student",
+      workspaceCode: invited.workspaceCode,
+    });
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe("DEMO_DISABLED");
+  });
+
+  it("preserves anonymous workspace creation in the default Preview sandbox", async () => {
+    process.env.VERCEL_ENV = "preview";
+    delete process.env.PILOT_ACCESS_MODE;
+    const before = await tenantCount();
+    const response = await login({ role: "student" });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ mode: "sandbox", synthetic: true });
+    expect(body.user.tenantId).not.toBe(invited.tenantId);
+    expect(await tenantCount()).toBe(before + 1);
   });
 });

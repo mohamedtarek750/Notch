@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { db } from "./db";
-import { hashCode, assertDemoMode, type Role } from "./auth";
+import { hashCode, assertDemoMode, isInviteOnlyPilot, type Role } from "./auth";
 import { AppError } from "./errors";
 import { seedDomain } from "./domain-seed";
 import { seedSis } from "./sis";
@@ -15,7 +15,7 @@ export async function resolveWorkspace(
   if (workspaceCode.length < 16 || workspaceCode.length > 128)
     throw new AppError(401, "INVALID_WORKSPACE");
   const { rows } = await db.query<{ tenant_id: string }>(
-    "SELECT tenant_id FROM demo_workspaces WHERE code_hash=$1",
+    "SELECT w.tenant_id FROM demo_workspaces w JOIN tenants t ON t.id=w.tenant_id WHERE w.code_hash=$1 AND t.synthetic=true",
     [hashCode(workspaceCode)],
   );
   if (!rows[0]) throw new AppError(401, "INVALID_WORKSPACE");
@@ -34,6 +34,10 @@ export async function createWorkspace(
   suppliedCode?: string,
 ): Promise<Workspace> {
   assertDemoMode();
+  // Hosted invitations only recover pre-provisioned synthetic workspaces.
+  // Keep this guard in the seed boundary as well as the HTTP route.
+  if (isInviteOnlyPilot())
+    throw new AppError(403, "WORKSPACE_CREATION_DISABLED");
   const workspaceCode = suppliedCode ?? randomBytes(24).toString("base64url");
   if (workspaceCode.length < 16 || workspaceCode.length > 128)
     throw new AppError(400, "INVALID_INPUT");

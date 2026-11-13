@@ -124,7 +124,11 @@ const STAFF = [
   ["teaching", "المحاضرة القادمة", "Next class", Users],
   ["qms", "الجودة التعليمية", "Learning quality", ShieldCheck],
 ] as const;
-export function Workspace() {
+export function Workspace({
+  inviteOnlyPilot = false,
+}: {
+  inviteOnlyPilot?: boolean;
+}) {
   const [lang, L] = useState<Lang>("ar"),
     [user, U] = useState<any>(null),
     [data, D] = useState<any>(null),
@@ -318,7 +322,10 @@ export function Workspace() {
         <div className="login-toolbar">
           <button
             className="textbtn"
-            onClick={() => L(lang === "ar" ? "en" : "ar")}
+            onClick={() => {
+              L(lang === "ar" ? "en" : "ar");
+              E("");
+            }}
           >
             <Languages size={17} />
             {lang === "ar" ? "English" : "العربية"}
@@ -326,7 +333,10 @@ export function Workspace() {
         </div>
         <img src="/brand/tilwa.png" className="login-logo" alt="Tilwa | تِلوا" />
         <span className="overline">
-          CET351 · {t("تجربة تعليمية جامعية", "University learning pilot")}
+          CET351 ·{" "}
+          {inviteOnlyPilot
+            ? t("تجربة جامعية بدعوة", "Invite-only university pilot")
+            : t("تجربة تعليمية جامعية", "University learning pilot")}
         </span>
         <h1>{t("اعرف طريقك.", "Know your path.")}</h1>
         <p>
@@ -340,6 +350,53 @@ export function Workspace() {
             {error}
           </div>
         )}
+        <Box cls="login-access">
+          {inviteOnlyPilot && (
+            <p id="pilot-access-instruction">
+              {t(
+                "أدخل رمز مساحة التجربة الذي وصلك، ثم اختَر دورك للوصول إلى المصادر المراجَعة. لو سبق الدخول على هذا المتصفح، تقدر تكمل من غير إعادة إدخال الرمز.",
+                "Enter the pilot workspace code you received, then choose a role to open the reviewed materials. If you have used this browser before, you can continue without entering the code again.",
+              )}
+            </p>
+          )}
+          <label>
+            {inviteOnlyPilot
+              ? t("رمز مساحة التجربة", "Pilot workspace code")
+              : t(
+                  "رمز مساحة سابقة (اختياري)",
+                  "Existing workspace code (optional)",
+                )}
+            <input
+              value={recovery}
+              onChange={(e) => RC(e.target.value)}
+              type="password"
+              dir="ltr"
+              autoComplete="off"
+              spellCheck={false}
+              aria-describedby={
+                inviteOnlyPilot
+                  ? "pilot-access-instruction pilot-access-note"
+                  : "pilot-access-note"
+              }
+              placeholder={
+                inviteOnlyPilot
+                  ? t("الصق رمز المساحة هنا", "Paste your workspace code")
+                  : t("للرجوع من جهاز آخر", "Resume on another device")
+              }
+            />
+          </label>
+          <small id="pilot-access-note">
+            {inviteOnlyPilot
+              ? t(
+                  "هذه تجربة بدعوة فقط، بحسابات وأدوار وبيانات طلاب اصطناعية. تسجيل الخروج يحتفظ بمساحتك على هذا المتصفح.",
+                  "This is an invite-only pilot with synthetic accounts, roles and student records. Signing out preserves your workspace on this browser.",
+                )
+              : t(
+                  "حسابات وبيانات تعليمية اصطناعية. كل زائر يحصل على مساحة منفصلة. يحتفظ تسجيل الخروج بمساحتك على هذا المتصفح.",
+                  "Synthetic demo accounts and learning records. Each visitor has a separate workspace. Signing out preserves your workspace on this browser.",
+                )}
+          </small>
+        </Box>
         <div className="role-cards">
           {(
             [
@@ -391,27 +448,6 @@ export function Workspace() {
             </button>
           ))}
         </div>
-        <Box>
-          <label>
-            {t(
-              "رمز مساحة سابقة (اختياري)",
-              "Existing workspace code (optional)",
-            )}
-            <input
-              value={recovery}
-              onChange={(e) => RC(e.target.value)}
-              dir="ltr"
-              autoComplete="off"
-              placeholder={t("للرجوع من جهاز آخر", "Resume on another device")}
-            />
-          </label>
-          <small>
-            {t(
-              "حسابات وبيانات تعليمية اصطناعية. كل زائر يحصل على مساحة منفصلة. يحتفظ تسجيل الخروج بمساحتك على هذا المتصفح.",
-              "Synthetic demo accounts and learning records. Each visitor has a separate workspace. Signing out preserves your workspace on this browser.",
-            )}
-          </small>
-        </Box>
       </main>
     );
   return (

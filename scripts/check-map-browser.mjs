@@ -65,7 +65,7 @@ async function shot(name) {
 }
 try {
   await page.goto("/");
-  await page.getByLabel("رمز مساحة سابقة (اختياري)").fill(code);
+  await page.getByLabel(/^رمز مساحة (سابقة|التجربة)/).fill(code);
   await page.getByRole("button", { name: /طالب.*دخول تجريبي/ }).click();
   await expect(
     page.getByRole("button", { name: "تسجيل الخروج", exact: true }),

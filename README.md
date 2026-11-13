@@ -14,7 +14,7 @@ A bilingual university pilot with authenticated, tenant-scoped learning, private
 
 ## Run locally / التشغيل المحلي
 
-Node.js 22+ (validated on Node 24), npm, Chromium for browser tests.
+Node.js 24.x (the pinned and validated runtime), npm, Chromium for browser tests.
 
 ```bash
 npm ci
@@ -32,13 +32,19 @@ Open the running application using your development environment's browser. The o
 3. من التفضيلات احتفظ برمز المساحة للعودة من متصفح آخر؛ هو رمز وصول لحسابات الديمو الثلاثة. سجل الخروج ثم ادخل بنفس الرمز للتحقق من التقدّم.
 4. اختر **مرشد أكاديمي** لمراجعة دليل الطالب المعيّن والتوصية وRubric أعماله. حساب المدرّس يستطيع متابعة الجودة والتدخلات ومراجعة الإجابات المفتوحة.
 
-Each fresh visitor receives a separate synthetic workspace. The role selector is gated by `DEMO_MODE=true` and disabled in Production. Signed HttpOnly cookies identify sessions; client role headers/query params confer no authority. The recovery code is a bearer credential for that synthetic workspace. Production SSO should replace demo entry with verified identity-to-membership mapping; retain server authorization and RLS.
+In the default local/Preview sandbox, a fresh visitor can receive a separate synthetic workspace. Production-hosted demo entry is denied by default. The explicitly configured invite-only pilot requires all three server settings: `DEMO_MODE=true`, `TILWA_ENV=pilot` and `PILOT_ACCESS_MODE=invite-only`. It accepts a valid code for an existing synthetic workspace, including its remembered HttpOnly workspace cookie; it never provisions a workspace anonymously. A non-synthetic workspace is refused, including when an old signed session exists.
+
+في التجربة المحلية وPreview الافتراضي، يمكن إنشاء مساحة اصطناعية منفصلة للزائر الجديد. أما تجربة الإنتاج بالدعوة فتتطلب الإعدادات الثلاثة المذكورة ورمز مساحة اصطناعية موجودة مسبقًا؛ ولا تنشئ مساحة جديدة للزائر. اختيار الطالب أو المدرّس أو المرشد هنا يخص حسابات الديمو الاصطناعية، وليس تسجيل دخول رسميًا لحسابات جامعة.
+
+Signed HttpOnly cookies identify sessions; client role headers/query params confer no authority. The workspace code is a bearer credential for all three synthetic demo roles. Server membership, course, advisor-assignment and protected-exam checks still apply. Institutional access needs verified identity-to-membership mapping, such as SSO, with those authorization and RLS controls retained. See [invite-only configuration and hosted acceptance](docs/hosted-pilot-verification.md); the configuration instructions alone do not establish a successful Production deployment.
 
 ## Neon, Gemini and Vercel / الإعداد والنشر
 
 The database is designed from scratch in [migrations](migrations). **“Migrations” are the SQL commands that create Tilwa’s tables in an empty database. You do not need to supply an old database, migration files or student records.**
 
 For the existing Neon database and the Vercel project `mohamedtarek750s-projects/tilwa`, use [deploy to existing resources](docs/existing-deployment.md). This path initializes the tables, creates the demo accounts and deploys a Preview in that project. It does not create another Neon or Vercel project and needs no Neon API key.
+
+`deploy:existing` and `provision:preview` remain Preview-only commands. Hosting the synthetic pilot on the canonical Production domain is a separate deployment with the explicit invite-only settings described in the [hosted pilot guide](docs/hosted-pilot-verification.md). Provision and review the existing synthetic workspace before enabling that access mode; its application entry points do not create or reseed workspaces.
 
 ```bash
 GEMINI_MODEL=gemini-3.5-flash-lite NEON_TRANSPORT=websocket DEPLOY_EXISTING=1 npm run deploy:existing

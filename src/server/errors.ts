@@ -18,8 +18,16 @@ const messages: Record<string, { ar: string; en: string }> = {
     en: "The database is currently unavailable. Please retry; we cannot generate an answer without approved evidence.",
   },
   DEMO_DISABLED: {
-    ar: "حسابات التجربة متاحة في البيئة التجريبية فقط.",
-    en: "Demo accounts are available only in a sandbox environment.",
+    ar: "تسجيل الدخول التجريبي غير مفعّل في هذه البيئة.",
+    en: "Demo sign-in is not enabled in this environment.",
+  },
+  INVITE_REQUIRED: {
+    ar: "أدخل رمز الوصول إلى مساحة التجربة المرسَل إليك للمتابعة.",
+    en: "Enter your invited pilot workspace access code to continue.",
+  },
+  WORKSPACE_CREATION_DISABLED: {
+    ar: "تتيح هذه التجربة الدخول إلى المساحات المدعوة الموجودة فقط.",
+    en: "This pilot only allows access to existing invited workspaces.",
   },
   INVALID_WORKSPACE: {
     ar: "رمز مساحة التجربة غير صحيح.",
