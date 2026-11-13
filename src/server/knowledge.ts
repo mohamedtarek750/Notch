@@ -24,7 +24,7 @@ import {
   lectureKeys,
 } from "./coverage";
 
-const normalize = (value: string) =>
+export const normalize = (value: string) =>
   value
     .normalize("NFKC")
     .toLowerCase()
@@ -732,7 +732,19 @@ export async function publishKnowledge(ctx: AuthContext) {
         for (const c of p.data.graph.concepts) {
           const idx = graph.concepts.findIndex((n) => n.id === c.id);
           if (idx < 0) graph.concepts.push(c);
-          else graph.concepts[idx] = c;
+          else if (p.data.kind === "prerequisite-extraction") {
+            // Extraction adds evidence and relationships to a reviewed concept;
+            // it never replaces its summary, coverage or earlier citations.
+            const old = graph.concepts[idx];
+            graph.concepts[idx] = {
+              ...old,
+              ...c,
+              label: old.label,
+              scope: old.scope ?? c.scope,
+              aliases: [...new Set([...(old.aliases ?? []), ...c.aliases])],
+              evidenceIds: [...new Set([...old.evidenceIds, ...c.evidenceIds])],
+            };
+          } else graph.concepts[idx] = c;
         }
         graph.edges.push(
           ...p.data.graph.edges.filter(

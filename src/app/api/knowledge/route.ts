@@ -11,6 +11,10 @@ import {
   type Graph,
 } from "@/server/knowledge";
 import { knowledgeErrorResponse } from "@/server/coverage";
+import {
+  extractPrerequisites,
+  reviewPrerequisiteEdges,
+} from "@/server/prerequisites";
 import { z } from "zod";
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -22,7 +26,12 @@ const input = z.object({
     "generate",
     "edit",
     "stage-comprehensive",
+    "extract-prerequisites",
+    "review-edges",
   ]),
+  lectureSourceKey: z.string().optional(),
+  accept: z.unknown().optional(),
+  rejectConcepts: z.unknown().optional(),
   id: z.string().optional(),
   status: z.enum(["approved", "rejected"]).optional(),
   data: z.unknown().optional(),
@@ -57,6 +66,20 @@ export async function POST(req: Request) {
         { status: 413 },
       );
     const body = input.parse(JSON.parse(raw));
+    if (body.action === "extract-prerequisites")
+      return Response.json(
+        await extractPrerequisites(ctx, undefined, {
+          lectureSourceKey: body.lectureSourceKey,
+        }),
+      );
+    if (body.action === "review-edges")
+      return Response.json(
+        await reviewPrerequisiteEdges(ctx, {
+          id: body.id,
+          accept: body.accept,
+          rejectConcepts: body.rejectConcepts ?? [],
+        }),
+      );
     if (body.action === "stage-comprehensive")
       return Response.json(await stageComprehensiveGraph(ctx, body.data));
     if (body.action === "edit") {

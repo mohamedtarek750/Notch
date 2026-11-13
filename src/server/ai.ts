@@ -188,6 +188,59 @@ function tokens(q: string) {
     .map((t) => t.replace(/^ال/, ""))
     .filter((t) => t.length > 2 && !stopwords.has(t));
 }
+/** Per-user provider budget. Course staff run whole-lecture extraction jobs, so
+ * their daily token allowance is larger; the per-minute call ceiling is shared. */
+export function budgetLimits(ctx: AuthContext) {
+  const staffTokens = Number(process.env.STAFF_DAILY_TOKEN_BUDGET);
+  return {
+    callsPerMinute: 12,
+    tokensPerDay:
+      ctx.role === "instructor"
+        ? Number.isFinite(staffTokens) && staffTokens > 0
+          ? staffTokens
+          : 300000
+        : 40000,
+  };
+}
+function overBudget(
+  ctx: AuthContext,
+  budget: { calls: string; tokens: string } | undefined,
+) {
+  const limits = budgetLimits(ctx);
+  return (
+    Number(budget?.calls) >= limits.callsPerMinute ||
+    Number(budget?.tokens) >= limits.tokensPerDay
+  );
+}
+/** Authorization, active policy and budget for a staff-only generation job that
+ * selects its own approved evidence deterministically (no lexical ranking). */
+export async function prepareStaffGeneration(ctx: AuthContext) {
+  await authorizeCourse(ctx, COURSE, "generate");
+  if (ctx.role !== "instructor") throw new SourceError("forbidden", 403);
+  const policy = (
+    await db.query<{
+      version: string;
+      data: { maxContextCharacters?: number };
+    }>("SELECT version,data FROM policy_versions WHERE active=true LIMIT 1")
+  ).rows[0];
+  if (!policy) throw new SourceError("policy_unavailable", 503);
+  const budget = (
+    await db
+      .tenant(ctx.tenantId)
+      .query<{ calls: string; tokens: string }>(
+        `SELECT count(*) FILTER(WHERE created_at>now()-interval '1 minute') as calls,COALESCE(sum(tokens),0) as tokens FROM model_traces WHERE tenant_id=$1 AND user_id=$2 AND created_at>now()-interval '1 day'`,
+        [ctx.tenantId, ctx.userId],
+      )
+  ).rows[0];
+  if (overBudget(ctx, budget)) throw new SourceError("rate_limited", 429);
+  return {
+    policyVersion: policy.version,
+    maxContextCharacters: Math.min(
+      12000,
+      Math.max(1000, Number(policy.data?.maxContextCharacters) || 12000),
+    ),
+  };
+}
 export async function retrieveEvidence(
   ctx: AuthContext,
   question: string,
@@ -309,8 +362,7 @@ export async function prepareModel(
         [ctx.tenantId, ctx.userId],
       )
   ).rows[0];
-  if (Number(budget?.calls) >= 12 || Number(budget?.tokens) >= 40000)
-    throw new SourceError("rate_limited", 429);
+  if (overBudget(ctx, budget)) throw new SourceError("rate_limited", 429);
   let effectiveQuestion = question,
     priorQuestion: string | undefined;
   let priorIds: string[] | undefined;
@@ -390,8 +442,7 @@ export async function saveTrace(
           [ctx.tenantId, ctx.userId],
         )
       ).rows[0];
-      if (Number(budget?.calls) >= 12 || Number(budget?.tokens) >= 40000)
-        throw new SourceError("rate_limited", 429);
+      if (overBudget(ctx, budget)) throw new SourceError("rate_limited", 429);
     }
     await tx.query(
       `INSERT INTO model_traces(tenant_id,id,user_id,operation,policy_version,retrieved_at,generated_at,evidence_ids,model_id,outcome,tokens) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(tenant_id,id) DO UPDATE SET generated_at=excluded.generated_at,outcome=excluded.outcome,tokens=excluded.tokens`,

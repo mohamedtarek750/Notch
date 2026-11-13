@@ -56,6 +56,34 @@ export const sourceMessages: Record<string, [string, string]> = {
     "تغيّرت نسخة المصدر؛ افتح النسخة الحالية وأعد المراجعة.",
     "The source version changed; reopen the current version and review again.",
   ],
+  umbrella_required: [
+    "ارفع مرجعًا شاملًا واعتمد أقسامه أولًا؛ المتطلبات السابقة تُستخرج منه.",
+    "Upload an umbrella reference and approve its sections first; prerequisites are extracted from it.",
+  ],
+  permission_required: [
+    "أكّد أن لديك تصريحًا باستخدام هذا المرجع واذكر مرجع التصريح.",
+    "Confirm you are permitted to use this reference and state the permission.",
+  ],
+  unsupported_file: [
+    "ارفع المرجع بصيغة PDF أو نص عادي أو Markdown.",
+    "Upload the reference as a PDF, plain text or Markdown file.",
+  ],
+  insufficient_evidence: [
+    "لا توجد صفحات معتمدة كافية. راجع صفحات المصدر واعتمدها أولًا.",
+    "Not enough approved pages. Review and approve the source pages first.",
+  ],
+  invalid_output: [
+    "ردّ النموذج لم يجتز التحقق ولم يُحفظ منه شيء. أعد المحاولة.",
+    "The model response failed validation and nothing was saved. Please retry.",
+  ],
+  rate_limited: [
+    "وصلت إلى حد استخدام النموذج المؤقت. حاول بعد دقيقة.",
+    "The temporary model usage limit was reached. Retry in a minute.",
+  ],
+  already_published: [
+    "هذا المقترح منشور بالفعل.",
+    "This proposal is already published.",
+  ],
   invalid_review: [
     "راجع الصفحات المحددة وحالة اعتماد كل صفحة.",
     "Check the selected pages and their review decisions.",
@@ -162,6 +190,150 @@ export async function registerPack(ctx: AuthContext) {
   );
   return importSupplement(ctx, supplement);
 }
+export const UMBRELLA_PREFIX = "UMBRELLA-";
+const umbrellaKeyPattern = /^UMBRELLA-[0-9A-F]{12}$/;
+/** Split an instructor-supplied text/Markdown reference into bounded, locatable sections. */
+export function splitUmbrellaText(text: string) {
+  const clean = text.replace(/\r\n?/g, "\n").trim();
+  const byHeading = clean
+    .split(/(?=^#{1,3} \S)/m)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const blocks =
+    byHeading.length > 1 ? byHeading : clean.split(/\n{2,}/).filter(Boolean);
+  const sections: string[] = [];
+  let current = "";
+  const flush = () => {
+    if (current.trim()) sections.push(current.trim());
+    current = "";
+  };
+  for (const block of blocks) {
+    // A heading always starts a new section; plain paragraphs are packed together.
+    if (byHeading.length > 1 || current.length + block.length > 1800) flush();
+    let rest = block;
+    while (rest.length > 6000) {
+      const cut = rest.lastIndexOf("\n", 6000);
+      const at = cut > 2000 ? cut : 6000;
+      sections.push(rest.slice(0, at).trim());
+      rest = rest.slice(at);
+    }
+    current += (current ? "\n\n" : "") + rest;
+  }
+  flush();
+  return sections;
+}
+/** Instructor upload of the course umbrella reference (PDF, text or Markdown).
+ * Sections stay pending until reviewed; nothing reaches a model or a learner before that. */
+export async function importUmbrella(
+  ctx: AuthContext,
+  input: {
+    title: string;
+    filename: string;
+    bytes: Uint8Array;
+    rightsConfirmed: boolean;
+    rightsReference: string;
+    sourceKey?: string;
+  },
+) {
+  await staff(ctx);
+  const title = input.title.trim();
+  if (!title || title.length > 200) throw new SourceError("invalid_review");
+  if (!input.rightsConfirmed || input.rightsReference.trim().length < 5)
+    throw new SourceError("permission_required", 400);
+  if (input.bytes.byteLength > MAX_FILE) throw new SourceError("file_size");
+  if (input.sourceKey && !umbrellaKeyPattern.test(input.sourceKey))
+    throw new SourceError("invalid_review");
+  const sourceKey =
+    input.sourceKey ||
+    UMBRELLA_PREFIX +
+      hashBytes(title.normalize("NFKC").toLowerCase())
+        .slice(0, 12)
+        .toUpperCase();
+  const safeName = path.basename(input.filename || "umbrella").normalize("NFC");
+  const isPdf = Buffer.from(input.bytes.slice(0, 5)).toString() === "%PDF-";
+  let pages: NewMaterial["pages"];
+  if (isPdf)
+    pages = (await parsePdf(input.bytes)).map((text, i) => ({
+      text,
+      page: i + 1,
+      section: null,
+    }));
+  else {
+    if (input.bytes.includes(0) || !/\.(md|markdown|txt)$/i.test(safeName))
+      throw new SourceError("unsupported_file");
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(input.bytes);
+    } catch {
+      throw new SourceError("unsupported_file");
+    }
+    const sections = splitUmbrellaText(text);
+    if (!sections.length || sections.length > 300)
+      throw new SourceError("parse_failed");
+    pages = sections.map((section, i) => ({
+      text: section,
+      page: null,
+      section: `S${i + 1}`,
+    }));
+  }
+  const result = await persistMaterial(ctx, {
+    sourceKey,
+    title,
+    role: "umbrella",
+    filename: safeName,
+    mime: isPdf ? "application/pdf" : "text/plain",
+    bytes: input.bytes,
+    hash: hashBytes(input.bytes),
+    pages,
+    metadata: {
+      instructorUmbrella: true,
+      originalSupplement: false,
+      uploadedBy: ctx.userId,
+      authorization: {
+        assertedBy: ctx.userId,
+        reference: input.rightsReference.trim(),
+        assertedAt: new Date().toISOString(),
+      },
+    },
+  });
+  return { ...result, sourceKey };
+}
+/** Approve every readable pending section of one current umbrella version in a single
+ * explicit instructor decision. Quarantined sections still need a corrected extract. */
+export async function approvePendingUmbrella(
+  ctx: AuthContext,
+  versionId: string,
+) {
+  await staff(ctx, "publish");
+  return db.tenant(ctx.tenantId).transaction(async (tx) => {
+    await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
+    const current = await tx.query(
+      "SELECT id FROM material_versions WHERE tenant_id=$1 AND id=$2 AND course_id=$3 AND current_version=true AND role='umbrella' FOR UPDATE",
+      [ctx.tenantId, versionId, COURSE],
+    );
+    if (!current.rows.length) throw new SourceError("stale_source", 409);
+    const updated = await tx.query<{ id: string }>(
+      "UPDATE evidence_chunks SET status='approved',review_note='Approved in an explicit whole-reference review.',reviewed_by=$3,reviewed_at=now() WHERE tenant_id=$1 AND version_id=$2 AND status='pending' RETURNING id",
+      [ctx.tenantId, versionId, ctx.userId],
+    );
+    await tx.query(
+      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'source_review',$3,$4,$5)",
+      [
+        ctx.tenantId,
+        randomUUID(),
+        COURSE,
+        ctx.userId,
+        JSON.stringify({
+          action: "umbrella-approve-pending",
+          versionId,
+          chunkIds: updated.rows.map((r) => r.id),
+          institutionalSignoff: false,
+        }),
+      ],
+    );
+    return { versionId, approved: updated.rows.length };
+  });
+}
 export async function listMaterials(ctx: AuthContext) {
   await authorizeCourse(ctx, COURSE, "read");
   const rows = (
@@ -172,7 +344,46 @@ export async function listMaterials(ctx: AuthContext) {
         [ctx.tenantId, COURSE],
       )
   ).rows;
+  const umbrellaRows = rows.filter(
+    (r) => r.role === "umbrella" && r.source_key.startsWith(UMBRELLA_PREFIX),
+  );
+  const counts = umbrellaRows.length
+    ? (
+        await db
+          .tenant(ctx.tenantId)
+          .query<{ version_id: string; status: string; n: string }>(
+            "SELECT version_id,status,count(*) AS n FROM evidence_chunks WHERE tenant_id=$1 AND course_id=$2 AND version_id=ANY($3::text[]) GROUP BY version_id,status",
+            [ctx.tenantId, COURSE, umbrellaRows.map((r) => r.id)],
+          )
+      ).rows
+    : [];
+  const umbrellas =
+    ctx.role !== "instructor"
+      ? []
+      : [...new Set(umbrellaRows.map((r) => r.source_key))].map((key) => {
+          const versions = umbrellaRows.filter((r) => r.source_key === key);
+          const current =
+            versions.find((v) => v.current_version) || versions[0];
+          const sections = Object.fromEntries(
+            counts
+              .filter((c) => c.version_id === current.id)
+              .map((c) => [c.status, Number(c.n)]),
+          );
+          return {
+            sourceKey: key,
+            title: current.title,
+            status: current.status,
+            currentVersionId: current.id,
+            sections,
+            versions: versions.map((v) => ({
+              id: v.id,
+              current_version: v.current_version,
+              status: v.status,
+            })),
+          };
+        });
   return {
+    umbrellas,
     materials: sourceManifest.map((entry) => ({
       sourceKey: entry.source_key,
       title: "title" in entry ? entry.title : entry.source_key,

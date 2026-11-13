@@ -1,5 +1,10 @@
 import { requireAuth } from "@/server/auth";
-import { getMaterial, reviewPage, sourceErrorResponse } from "@/server/sources";
+import {
+  approvePendingUmbrella,
+  getMaterial,
+  reviewPage,
+  sourceErrorResponse,
+} from "@/server/sources";
 import { z } from "zod";
 const review = z.object({
   chunkId: z.string(),
@@ -25,7 +30,12 @@ export async function POST(
   try {
     const ctx = await requireAuth(req, ["instructor"]);
     const material = await getMaterial(ctx, (await params).id);
-    const body = review.parse(await req.json());
+    const raw = await req.json();
+    if (raw?.action === "approve-pending")
+      return Response.json(
+        await approvePendingUmbrella(ctx, material.material.id),
+      );
+    const body = review.parse(raw);
     if (!material.chunks.some((c) => c.id === body.chunkId))
       return Response.json({ error: "invalid_chunk" }, { status: 400 });
     return Response.json(

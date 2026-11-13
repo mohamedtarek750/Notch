@@ -3,6 +3,7 @@ import { requireAuth } from "@/server/auth";
 import {
   importAuthorizedPassage,
   importLecture,
+  importUmbrella,
   listMaterials,
   registerPack,
   sourceErrorResponse,
@@ -27,6 +28,19 @@ export async function POST(req: Request) {
       const file = form.get("file");
       if (!(file instanceof File))
         return Response.json({ error: "invalid_file" }, { status: 400 });
+      if (form.get("kind") === "umbrella")
+        return Response.json(
+          await importUmbrella(ctx, {
+            title: String(form.get("title") || ""),
+            filename: file.name,
+            bytes: new Uint8Array(await file.arrayBuffer()),
+            rightsConfirmed: form.get("rightsConfirmed") === "true",
+            rightsReference: String(form.get("rightsReference") || ""),
+            sourceKey: form.get("sourceKey")
+              ? String(form.get("sourceKey"))
+              : undefined,
+          }),
+        );
       return Response.json(
         await importLecture(
           ctx,

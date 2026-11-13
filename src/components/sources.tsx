@@ -340,6 +340,14 @@ export function MaterialsPanel({
           )}
         </Box>
       </div>
+      <UmbrellaUpload
+        lang={lang}
+        t={t}
+        busy={busy}
+        umbrellas={data?.umbrellas || []}
+        act={act}
+        open={open}
+      />
       <Box cls="end">
         <h2>{t("مقطع مرخّص من مرجع جامع", "Authorized umbrella passage")}</h2>
         <p>
@@ -447,6 +455,388 @@ export function MaterialsPanel({
     </>
   );
 }
+function UmbrellaUpload({
+  lang,
+  t,
+  busy,
+  umbrellas,
+  act,
+  open,
+}: {
+  lang: Lang;
+  t: Translate;
+  busy: boolean;
+  umbrellas: any[];
+  act: (f: () => Promise<any>) => Promise<any>;
+  open: (id: string) => Promise<void>;
+}) {
+  const [title, TI] = useState(""),
+    [rights, RI] = useState(""),
+    [confirmed, CF] = useState(false),
+    [file, F] = useState<File | null>(null),
+    [replace, RP] = useState(""),
+    [done, DN] = useState("");
+  return (
+    <Box cls="end">
+      <h2>{t("المرجع الشامل للمقرر", "Course umbrella reference")}</h2>
+      <p>
+        {t(
+          "ارفع المرجع الذي تُستخرج منه المتطلبات السابقة لمفاهيم المحاضرات: كتاب المقرر أو فصل منه أو مذكرة أساسيات. يُقسَّم إلى أقسام تبقى بانتظار مراجعتك.",
+          "Upload the reference that prerequisites of lecture concepts are extracted from: the course textbook, a chapter or a foundations handout. It is split into sections that stay pending your review.",
+        )}
+      </p>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!file) return;
+          const form = new FormData();
+          form.append("kind", "umbrella");
+          form.append("file", file);
+          form.append("title", title);
+          form.append("rightsConfirmed", String(confirmed));
+          form.append("rightsReference", rights);
+          if (replace) form.append("sourceKey", replace);
+          DN("");
+          const r = await act(() => request("/api/materials", form, lang));
+          if (r)
+            DN(
+              r.deduplicated
+                ? t(
+                    "هذا الملف مرفوع من قبل؛ لم تُنشأ نسخة جديدة.",
+                    "This file was already uploaded; no new version was created.",
+                  )
+                : t(
+                    `تم الاستيراد: ${r.pages} قسمًا بانتظار المراجعة.`,
+                    `Imported: ${r.pages} sections pending review.`,
+                  ),
+            );
+        }}
+      >
+        <div className="two-columns">
+          <label>
+            {t("عنوان المرجع", "Reference title")}
+            <input
+              value={title}
+              onChange={(e) => TI(e.target.value)}
+              required
+              maxLength={200}
+            />
+          </label>
+          <label>
+            {t("الملف (PDF أو نص أو Markdown)", "File (PDF, text or Markdown)")}
+            <input
+              type="file"
+              accept=".pdf,.md,.markdown,.txt,application/pdf,text/plain,text/markdown"
+              required
+              onChange={(e) => F(e.target.files?.[0] || null)}
+            />
+          </label>
+          <label>
+            {t("مرجع تصريح الاستخدام", "Permission reference")}
+            <input
+              value={rights}
+              onChange={(e) => RI(e.target.value)}
+              required
+              minLength={5}
+              maxLength={500}
+            />
+          </label>
+          {umbrellas.length > 0 && (
+            <label>
+              {t("نوع الرفع", "Upload as")}
+              <select value={replace} onChange={(e) => RP(e.target.value)}>
+                <option value="">{t("مرجع جديد", "New reference")}</option>
+                {umbrellas.map((u) => (
+                  <option key={u.sourceKey} value={u.sourceKey}>
+                    {t("نسخة جديدة من", "New version of")} {u.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+        <small>
+          {t(
+            "الحد الأقصى ٣٫٥ ميجابايت و١٠٠ صفحة للملف؛ ارفع الكتاب الكبير فصلًا فصلًا. الصفحات المصوّرة تُعزل حتى ترفق نصًّا لها.",
+            "Up to 3.5 MB and 100 pages per file; upload a large book chapter by chapter. Image-only pages are quarantined until you attach their text.",
+          )}
+        </small>
+        <label className="checklabel">
+          <input
+            type="checkbox"
+            checked={confirmed}
+            onChange={(e) => CF(e.target.checked)}
+            required
+          />
+          {t(
+            "أؤكد السماح باستخراج هذا المرجع وعرض مقاطعه وإرسالها للنموذج المعتمد.",
+            "I confirm permission to extract this reference, display its passages and send them to the approved model.",
+          )}
+        </label>
+        <div className="end">
+          <Button type="submit" primary disabled={busy || !confirmed || !file}>
+            <Upload size={16} />
+            {t("رفع المرجع للمراجعة", "Upload reference for review")}
+          </Button>
+        </div>
+      </form>
+      {done && <p role="status">{done}</p>}
+      {umbrellas.map((u) => (
+        <article key={u.sourceKey} className="material-row">
+          <div>
+            <strong>{u.title}</strong>
+            <small>
+              {statusLabel(u.status, t)} · {t("معتمد", "Approved")}{" "}
+              {u.sections.approved || 0} · {t("بانتظار المراجعة", "Pending")}{" "}
+              {u.sections.pending || 0}
+              {u.sections.quarantined
+                ? ` · ${t("معزول", "Quarantined")} ${u.sections.quarantined}`
+                : ""}
+            </small>
+          </div>
+          <Button onClick={() => open(u.currentVersionId)}>
+            <FileText size={16} />
+            {t("مراجعة الأقسام", "Review sections")}
+          </Button>
+          {(u.sections.pending || 0) > 0 && (
+            <Button
+              disabled={busy}
+              onClick={() =>
+                act(() =>
+                  request(
+                    `/api/materials/${u.currentVersionId}`,
+                    { action: "approve-pending" },
+                    lang,
+                  ),
+                )
+              }
+            >
+              <Check size={16} />
+              {t("اعتماد كل الأقسام المقروءة", "Approve all readable sections")}
+            </Button>
+          )}
+        </article>
+      ))}
+    </Box>
+  );
+}
+const LECTURES = [1, 2, 3, 4, 5, 6].map((n) => `CET351-L${n}`);
+function PrerequisiteReview({
+  p,
+  lang,
+  t,
+  busy,
+  act,
+}: {
+  p: any;
+  lang: Lang;
+  t: Translate;
+  busy: boolean;
+  act: (body: any) => Promise<void>;
+}) {
+  const d = p.data || p;
+  const source = d.extracted || d.graph;
+  const status = d.status || "pending";
+  const kept = new Set(
+    (d.graph?.edges || []).map((e: any) => `${e.from}|${e.to}`),
+  );
+  const key = (e: any) => `${e.from}|${e.to}`;
+  // Before the first decision every extracted relationship starts selected.
+  const [accepted, AC] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      source.edges.map((e: any) => [
+        key(e),
+        status === "pending" ? true : kept.has(key(e)),
+      ]),
+    ),
+  );
+  const [types, TY] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      source.edges.map((e: any) => [
+        key(e),
+        d.graph?.edges.find((x: any) => key(x) === key(e))?.type || e.type,
+      ]),
+    ),
+  );
+  const [dropped, DR] = useState<Record<string, boolean>>({});
+  const label = (id: string) =>
+    localized(source.concepts.find((c: any) => c.id === id)?.label, lang) || id;
+  const lectureIds = new Set(d.lectureConceptIds || []);
+  const passage = (id: string) =>
+    (p.passages || []).find((x: any) => x.id === id);
+  const locked = status === "published";
+  const count = source.edges.filter((e: any) => accepted[key(e)]).length;
+  return (
+    <article className="proposal-card">
+      <div className="sectionTop">
+        <h3>{localized(d.title, lang)}</h3>
+        <span className="badge lavender">{statusLabel(status, t)}</span>
+      </div>
+      <small>
+        {t("النموذج", "Model")}: <bdi>{d.modelId}</bdi> · {t("طلبات", "Calls")}{" "}
+        {d.stats?.calls} · {t("مفاهيم المحاضرة", "Lecture concepts")}{" "}
+        {d.stats?.lectureConcepts} · {t("علاقات", "Relationships")}{" "}
+        {d.stats?.edges}
+      </small>
+      {d.stats?.partial && (
+        <p className="notice">
+          {t(
+            "الاستخراج جزئي: تعذّر أحد طلبات النموذج. يمكنك اعتماد الموجود أو إعادة الاستخراج لاحقًا.",
+            "Partial extraction: a model request failed. Approve what is here or re-run later.",
+          )}
+        </p>
+      )}
+      <h3>{t("مفاهيم المحاضرة", "Lecture concepts")}</h3>
+      <div className="chips">
+        {source.concepts
+          .filter((c: any) => lectureIds.has(c.id))
+          .map((c: any) => (
+            <label className="checklabel" key={c.id}>
+              <input
+                type="checkbox"
+                disabled={locked}
+                checked={!dropped[c.id]}
+                onChange={(e) =>
+                  DR((x) => ({ ...x, [c.id]: !e.target.checked }))
+                }
+              />
+              {localized(c.label, lang)}
+            </label>
+          ))}
+      </div>
+      <h3>
+        {t("المتطلبات السابقة المقترحة", "Proposed prerequisites")} ({count}/
+        {source.edges.length})
+      </h3>
+      {source.edges.length === 0 && (
+        <p>
+          {t(
+            "لم يجد النموذج في المرجع الشامل ما يدعم متطلبات سابقة لهذه المحاضرة.",
+            "The model found no umbrella support for prerequisites of this lecture.",
+          )}
+        </p>
+      )}
+      {source.edges.map((e: any) => {
+        const off = dropped[e.from] || dropped[e.to];
+        return (
+          <div className="notice" key={key(e)}>
+            <label className="checklabel">
+              <input
+                type="checkbox"
+                disabled={locked || off}
+                checked={!!accepted[key(e)] && !off}
+                onChange={(ev) =>
+                  AC((x) => ({ ...x, [key(e)]: ev.target.checked }))
+                }
+              />
+              <strong>
+                {label(e.from)} → {label(e.to)}
+              </strong>
+            </label>
+            <p>{localized(e.reason, lang)}</p>
+            <label>
+              {t("نوع العلاقة", "Relationship type")}
+              <select
+                disabled={locked}
+                value={types[key(e)]}
+                onChange={(ev) =>
+                  TY((x) => ({ ...x, [key(e)]: ev.target.value }))
+                }
+              >
+                <option value="prerequisite">
+                  {t(
+                    "متطلب سابق — يوجّه مسار الطالب",
+                    "Prerequisite — routes the learner",
+                  )}
+                </option>
+                <option value="optional_bridge">
+                  {t(
+                    "خلفية اختيارية — لا تغيّر المسار",
+                    "Optional background — does not route",
+                  )}
+                </option>
+              </select>
+            </label>
+            {e.evidenceIds.map((id: string) => {
+              const c = passage(id);
+              return c ? (
+                <div key={id}>
+                  <a
+                    href={`/sources/${c.version_id}?${c.page ? `page=${c.page}` : `section=${encodeURIComponent(c.section || "")}`}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="textbtn"
+                  >
+                    {c.title || c.source_key} · {c.page || c.section}
+                  </a>
+                  <blockquote dir="auto">
+                    {String(c.text_content || "").slice(0, 700)}
+                  </blockquote>
+                </div>
+              ) : null;
+            })}
+          </div>
+        );
+      })}
+      {(d.dropped || []).length > 0 && (
+        <details>
+          <summary>
+            {t(
+              `استبعد التحقق الآلي ${d.dropped.length} عنصرًا من ردّ النموذج`,
+              `Automatic validation excluded ${d.dropped.length} model outputs`,
+            )}
+          </summary>
+          {d.dropped.map((x: any, i: number) => (
+            <p key={i}>
+              <bdi>
+                {x.from ? `${x.from} → ${x.to}` : x.label} · {x.reason}
+              </bdi>
+            </p>
+          ))}
+        </details>
+      )}
+      {!locked && (
+        <div className="actions">
+          <Button
+            primary
+            disabled={busy}
+            onClick={() =>
+              act({
+                action: "review-edges",
+                id: p.id,
+                accept: source.edges
+                  .filter((e: any) => accepted[key(e)])
+                  .map((e: any) => ({
+                    from: e.from,
+                    to: e.to,
+                    type: types[key(e)],
+                  })),
+                rejectConcepts: Object.keys(dropped).filter((k) => dropped[k]),
+              })
+            }
+          >
+            <Check size={16} />
+            {t("اعتماد المحدَّد", "Approve selection")}
+          </Button>
+          <Button
+            disabled={busy}
+            onClick={() =>
+              act({ action: "review", id: p.id, status: "rejected" })
+            }
+          >
+            {t("رفض المقترح كله", "Reject whole proposal")}
+          </Button>
+        </div>
+      )}
+      <small>
+        {t(
+          "الاعتماد لا يغيّر مسار أي طالب حتى تضغط «نشر المعتمد».",
+          "Approval changes no learner path until you press “Publish approved”.",
+        )}
+      </small>
+    </article>
+  );
+}
 export function KnowledgePanel({
   lang,
   t,
@@ -462,7 +852,8 @@ export function KnowledgePanel({
     [busy, B] = useState(false),
     [expanded, EX] = useState(""),
     [edit, ED] = useState(""),
-    [teachingEdit, TE] = useState("");
+    [teachingEdit, TE] = useState(""),
+    [lecture, LE] = useState(LECTURES[0]);
   const refresh = async () =>
     D(await request("/api/knowledge", undefined, lang));
   useEffect(() => {
@@ -515,6 +906,40 @@ export function KnowledgePanel({
             </Button>
           </div>
         </div>
+        <div className="actions">
+          <label>
+            {t("المحاضرة", "Lecture")}
+            <select value={lecture} onChange={(e) => LE(e.target.value)}>
+              {LECTURES.map((k) => (
+                <option key={k} value={k}>
+                  {k}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            primary
+            disabled={busy}
+            onClick={() =>
+              act({
+                action: "extract-prerequisites",
+                lectureSourceKey: lecture,
+              })
+            }
+          >
+            <GitBranch size={16} />
+            {t(
+              "استخراج المفاهيم والمتطلبات السابقة",
+              "Extract concepts & prerequisites",
+            )}
+          </Button>
+        </div>
+        <small>
+          {t(
+            "يقرأ النموذج كل صفحات المحاضرة المعتمدة ثم يبحث في المرجع الشامل المعتمد عمّا يسبق كل مفهوم. قد يستغرق حتى دقيقة.",
+            "The model reads every approved lecture page, then searches the approved umbrella reference for what precedes each concept. This can take up to a minute.",
+          )}
+        </small>
         <p className="notice">
           {t(
             "تُرسل المقاطع المسموح بها فقط. الاقتراح لا يغيّر مسار الطالب حتى المراجعة والنشر.",
@@ -534,6 +959,17 @@ export function KnowledgePanel({
         )}
         {(data?.proposals || []).map((p: any) => {
           const d = p.data || p;
+          if (d.kind === "prerequisite-extraction")
+            return (
+              <PrerequisiteReview
+                key={`${p.id}:${d.status}:${d.reviewedAt || ""}`}
+                p={p}
+                lang={lang}
+                t={t}
+                busy={busy}
+                act={act}
+              />
+            );
           return (
             <article className="proposal-card" key={p.id}>
               <div className="sectionTop">
