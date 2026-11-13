@@ -1,8 +1,8 @@
 // Read-only published-map browser check. Credentials stay in memory and are never logged.
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import { createServer } from "node:http";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { chromium, expect as baseExpect } from "@playwright/test";
 const expect = baseExpect.configure({ timeout: 30000 });
 const baseURL = process.env.TILWA_BASE_URL;
@@ -23,7 +23,12 @@ const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium",
   args: ["--no-sandbox"],
   ...(process.env.HTTPS_PROXY
-    ? { proxy: { server: process.env.HTTPS_PROXY } }
+    ? {
+        proxy: {
+          server: process.env.HTTPS_PROXY,
+          ...(process.env.NO_PROXY ? { bypass: process.env.NO_PROXY } : {}),
+        },
+      }
     : {}),
 });
 const context = await browser.newContext({
@@ -270,17 +275,32 @@ try {
       await fs.readFile(path.join(out, "Tilwa-CET351-approved-map.csv"), "utf8")
     ).includes("coverage_level"),
   );
+  // Managed browsers may disallow file:// navigation. Serve only the downloaded
+  // report on loopback to validate the standalone HTML without changing policy.
+  const reportHtml = await fs.readFile(
+    path.join(out, "Tilwa-CET351-approved-map.html"),
+  );
+  const reportServer = createServer((_request, response) => {
+    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    response.end(reportHtml);
+  });
+  await new Promise((resolve, reject) => {
+    reportServer.once("error", reject);
+    reportServer.listen(0, "127.0.0.1", resolve);
+  });
   const reportPage = await context.newPage();
-  await reportPage.goto(
-    pathToFileURL(path.join(out, "Tilwa-CET351-approved-map.html")).href,
-  );
-  await expect(reportPage.locator("article[id]")).toHaveCount(approved.length);
-  assert.equal(
-    await reportPage.locator('a[href^="/sources/"]').count(),
-    0,
-    "Offline report must use absolute Preview URLs",
-  );
-  await reportPage.close();
+  try {
+    await reportPage.goto(`http://127.0.0.1:${reportServer.address().port}/`);
+    await expect(reportPage.locator("article[id]")).toHaveCount(approved.length);
+    assert.equal(
+      await reportPage.locator('a[href^="/sources/"]').count(),
+      0,
+      "Offline report must use absolute Preview URLs",
+    );
+  } finally {
+    await reportPage.close();
+    await new Promise((resolve) => reportServer.close(resolve));
+  }
   pass(
     "Filtered UI exports the entire approved map as JSON, CSV and bilingual HTML with absolute source URLs and no private source text/keys",
     {
@@ -294,6 +314,11 @@ try {
 } catch (error) {
   report.status = "failed";
   report.failure = String(error.message).replaceAll(code, "[redacted]");
+  if (process.env.VERCEL_AUTOMATION_BYPASS_SECRET)
+    report.failure = report.failure.replaceAll(
+      process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+      "[redacted]",
+    );
   console.error(report.failure);
   process.exitCode = 1;
 } finally {
@@ -304,5 +329,5 @@ try {
     JSON.stringify(report, null, 2),
     { mode: 0o600 },
   );
-  console.log("Report: .tilwa-private/browser/map-evidence/report.json");
+  console.log(`Report: ${path.join(out, "report.json")}`);
 }
