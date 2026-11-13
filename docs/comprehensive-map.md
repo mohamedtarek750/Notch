@@ -12,9 +12,13 @@ The graph contains 251 related links, five narrowly scoped calculation prerequis
 - U1–U5 are unchanged. U6–U45 are original Arabic/English explanations, with a checked manifest hash and explicit per-section review decisions.
 - GeeksforGeeks is registered separately. Each concept has an appropriate link from the actual supplied index or an explicitly labelled general-index fallback. **No GFG article body was imported, approved as evidence or sent to Gemini.**
 - The comprehensive inventory and bilingual summaries were authored/reviewed by implementation agents under the authorized demo instructor account. This is **not institutional human sign-off**.
-- Six successful bounded real Gemini advisories use two approved pages per lecture plus two original Umbrella sections. They remain pending review and are recorded as generation provenance. The complete map is the separately reviewed source inventory; it is not claimed to be a 225-concept Gemini output.
+- Six successful bounded real Gemini advisories (seven attempts: one invalid output rejected, then a successful retry) use two approved pages per lecture plus two original Umbrella sections. They remain pending review and are recorded as generation provenance. The complete map is the separately reviewed source inventory; it is not claimed to be a 225-concept Gemini output.
 
 ## Use and download
+
+**Verified Preview:** https://tilwa-4wpxs7zqs-mohamedtarek750s-projects.vercel.app (existing Vercel owner login required). **7/7 real browser checks passed** with zero model calls/errors; temporary automation access was revoked. [Full browser report](evidence/comprehensive-preview-browser.json).
+
+Downloads: [Bilingual HTML map](exports/Tilwa-CET351-approved-map.html) · [CSV](exports/Tilwa-CET351-approved-map.csv) · [JSON](exports/Tilwa-CET351-approved-map.json). [Desktop](evidence/concept-map-desktop-ar.png) · [Mobile](evidence/concept-map-mobile-ar.png).
 
 Open the deployed Preview, sign in using the existing reviewed demo workspace, then choose **خريطة المفاهيم / Concept map**. Search in Arabic or English, filter L1–L6, select a concept and open both source locators. The accessible list contains all concepts. JSON, CSV and bilingual HTML downloads always contain the entire approved map, even while a lecture filter is active.
 
@@ -43,3 +47,5 @@ node scripts/check-map-browser.mjs
 ```
 
 This browser check makes **zero Gemini calls**. Its report is separate from the real Gemini advisory traces and from the [128 offline test results](evidence/comprehensive-offline-tests.json), which use local PostgreSQL/PGlite and injected deterministic model fixtures where needed.
+
+The exact Arabic Recall question was also rerun through the real guarded Neon/Gemini path after the comprehensive publication: **60%**, with L4 pp.18–19 citations and retrieval before generation; one call, 1,635 tokens. This is a direct server-path regression, separate from the zero-model-call browser/export test. [Measured tutor result](evidence/comprehensive-tutor-regression.json).

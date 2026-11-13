@@ -10,6 +10,8 @@ A bilingual university pilot with authenticated, tenant-scoped learning, private
 
 **Vercel Preview:** [Open Tilwa](https://tilwa-git-feat-tilwa-pilot-v1-mohamedtarek750s-projects.vercel.app) — **live acceptance passed** against real Neon and Gemini in Arabic, English and mixed language. Vercel retains its existing login protection. Fresh practice, sign-out persistence, protected exams and assigned-advisor isolation passed on this deployment.
 
+**الخريطة الكاملة:** [HTML ثنائي اللغة](docs/exports/Tilwa-CET351-approved-map.html) · [CSV](docs/exports/Tilwa-CET351-approved-map.csv) · [JSON](docs/exports/Tilwa-CET351-approved-map.json). آخر اختبار فعلي للخريطة على Vercel نجح **7/7**؛ [الرابط المختبَر](https://tilwa-4wpxs7zqs-mohamedtarek750s-projects.vercel.app) و[النتيجة](docs/evidence/comprehensive-preview-browser.json). افتح «خريطة المفاهيم» بنفس مساحة الديمو المراجعة.
+
 ## Run locally / التشغيل المحلي
 
 Node.js 22+ (validated on Node 24), npm, Chromium for browser tests.

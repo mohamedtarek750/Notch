@@ -1,0 +1,29 @@
+{
+  "mode": "live",
+  "model": "gemini-3.5-flash-lite",
+  "disposition": "answered",
+  "answer": "الـ Recall هنا بيساوي 60% لأننا بنحسب نسبة الحالات الإيجابية الحقيقية اللي تم اكتشافها (True Positives) على إجمالي الحالات الإيجابية الفعلية (TP + FN). بناءً على القيم الموجودة، الـ TP يساوي 6 والـ FN يساوي 4، إذن الحساب هو 6 / (6 + 4) = 6 / 10 = 0.6 أو 60%.",
+  "elapsedMs": 16903,
+  "citations": [
+    {
+      "source": "CET351-L4",
+      "page": 19,
+      "section": null
+    },
+    {
+      "source": "CET351-L4",
+      "page": 18,
+      "section": null
+    }
+  ],
+  "trace": {
+    "policyVersion": "1.0.0",
+    "retrievedAt": "2026-11-13T15:38:48.400Z",
+    "generatedAt": "2026-11-13T15:38:49.820Z",
+    "outcome": "answered",
+    "generationCalls": 1,
+    "tokens": 1635,
+    "providerStatus": null
+  },
+  "scope": "Real Neon + Gemini regression after comprehensive map publication; direct guarded server path, not a Vercel browser call."
+}
