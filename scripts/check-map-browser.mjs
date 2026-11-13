@@ -22,13 +22,19 @@ const headers = process.env.VERCEL_AUTOMATION_BYPASS_SECRET
 const browser = await chromium.launch({
   executablePath: process.env.CHROMIUM_PATH || "/usr/bin/chromium",
   args: ["--no-sandbox"],
+  ...(process.env.HTTPS_PROXY
+    ? { proxy: { server: process.env.HTTPS_PROXY } }
+    : {}),
 });
 const context = await browser.newContext({
   baseURL,
   viewport: { width: 1305, height: 936 },
-  extraHTTPHeaders: headers,
   acceptDownloads: true,
 });
+const appOrigin = new URL(baseURL).origin;
+await context.route(`${appOrigin}/**`, (route) =>
+  route.continue({ headers: { ...route.request().headers(), ...headers } }),
+);
 const page = await context.newPage();
 const report = {
   mode: "Real browser + Neon, published map only",
@@ -59,9 +65,11 @@ try {
   await expect(
     page.getByRole("button", { name: "تسجيل الخروج", exact: true }),
   ).toBeVisible();
-  const workspace = await (await context.request.get("/api/workspace")).json();
+  const workspace = await (
+    await context.request.get("/api/workspace", { headers })
+  ).json();
   assert.equal(workspace.mode, "neon");
-  const response = await context.request.get("/api/knowledge/map");
+  const response = await context.request.get("/api/knowledge/map", { headers });
   assert(response.ok(), "Published map API must succeed");
   const map = await response.json();
   assert.equal(map.status, "published");
