@@ -1,0 +1,84 @@
+{
+  "readOnly": {
+    "at": "2026-11-13T13:40:52.522Z",
+    "mode": "Real browser + Neon",
+    "tutorCalls": 0,
+    "checks": [
+      {
+        "name": "instructor browser sign-in on Neon",
+        "status": "passed"
+      },
+      {
+        "name": "Six real lecture versions plus separately registered GFG",
+        "status": "passed",
+        "lectureCount": 6,
+        "gfgTextUsed": false
+      },
+      {
+        "name": "Instructor opens exact L4 page 18–19 extracts; page16 remains quarantined",
+        "status": "passed"
+      },
+      {
+        "name": "Gemini proposal review",
+        "status": "unrun",
+        "cause": "Generation not yet run; read-only browser phase"
+      },
+      {
+        "name": "Private supplement U2 section locator resolves",
+        "status": "passed"
+      },
+      {
+        "name": "student browser sign-in on Neon",
+        "status": "passed"
+      },
+      {
+        "name": "Arabic/English desktop and Arabic mobile dashboards with RTL/LTR and keyboard menu",
+        "status": "passed"
+      },
+      {
+        "name": "Student private L4 approved page opens; quarantined page16 excluded",
+        "status": "passed"
+      }
+    ],
+    "errors": [],
+    "status": "passed"
+  },
+  "review": {
+    "at": "2026-11-13T13:47:29.148Z",
+    "mode": "Real instructor browser UI + Neon",
+    "providerCalls": 0,
+    "practiceAttempts": 0,
+    "checks": [
+      {
+        "name": "Exact graph concept labels and supporting U1/U2 passages visible beside review controls",
+        "status": "passed",
+        "concepts": 2,
+        "edges": 1
+      },
+      {
+        "name": "Reviewed bilingual TP14 FN6 FP9 Recall70 item, rubric and session visible beside cited evidence",
+        "status": "passed"
+      },
+      {
+        "name": "Graph approved through instructor UI",
+        "status": "passed"
+      },
+      {
+        "name": "Teaching session and reviewed bilingual question approved through instructor UI",
+        "status": "passed"
+      },
+      {
+        "name": "Published graph release plus real session/item persisted in Neon without consuming practice",
+        "status": "passed",
+        "releaseId": "da3b49f8-8335-400d-aa76-fac9380970df",
+        "publishedProposals": 2
+      }
+    ],
+    "errors": [],
+    "sessionId": "session-f4248584-48ff-4817-8177-e786fc19edb1",
+    "itemId": "item-f4248584-48ff-4817-8177-e786fc19edb1",
+    "releaseId": "da3b49f8-8335-400d-aa76-fac9380970df",
+    "status": "passed"
+  },
+  "privateSourceScreenshotsCommitted": false
+}

@@ -6,7 +6,9 @@
 
 A bilingual university pilot with authenticated, tenant-scoped learning, private source ingestion/review, objective-level formative evidence, advising and replaceable SIS integration. The original logo, Arabic fonts and dashboard illustration/styles come from the supplied design references.
 
-**Current verification:** local PostgreSQL tests and browser checks are recorded in [verification](docs/verification.md). Live Neon, real Gemini, authentic PDF ingestion and Vercel Preview remain blocked until provider credentials/network/source bytes are available. Local SQL tests and injected model replay are not live provider passes.
+**Current verification — 13 November 2026:** **110/110 unit/integration tests**, TypeScript, production build and **7/7 production browser journeys** passed locally. Real Neon migrations, seed, tenant isolation and all six authentic lecture imports passed. A real guarded `gemini-3.5-flash-lite` tutor answered the L4 Recall question with valid source locators; a real graph and bilingual teaching session/question were generated, reviewed through the instructor UI and published. Seven additional source/browser checks and five instructor approval/publication checks passed against Neon. The final deployed browser also passed the exact Arabic question, source opening, mobile persistence, RTL/LTR and advisor view. See [measured verification](docs/verification.md).
+
+**Vercel Preview:** [Open Tilwa](https://tilwa-6twb3yvyj-mohamedtarek750s-projects.vercel.app) — **live acceptance passed** against real Neon and Gemini in Arabic, English and mixed language. Vercel retains its existing login protection. Fresh practice, sign-out persistence, protected exams and assigned-advisor isolation passed on this deployment.
 
 ## Run locally / التشغيل المحلي
 
@@ -23,8 +25,8 @@ Open the running application using your development environment's browser. The o
 
 ### أسرع تجربة للأدوار
 
-1. اختر **مدرّس** ← **استيراد حزمة CET351** لتسجيل المرجع الخارجي والملحق الأصلي. ارفع المحاضرات PDF واحدة تلو الأخرى. راجع النص والصفحة، واعتمد الصفحات السليمة. بعد إعداد Gemini، اقترح خريطة المفاهيم واعتمدها وانشرها؛ ثم ولّد جلسة وسؤالًا، راجعهما وانشرهما.
-2. سجّل الخروج واختر **طالب** في نفس المتصفح. افتح الجلسة، اسأل بالعربية أو الإنجليزية أو بصيغة مختلطة. تظهر الإجابات المسندة مع روابط لعارض المصادر الخاص. التدريب والواجبات والخطة المهنية تعمل محليًا، وتُحفظ في قاعدة البيانات.
+1. افتح رابط Preview بعد تسجيل الدخول إلى Vercel، ثم أدخل رمز مساحة الديمو المحفوظ محليًا في `.tilwa-private/demo-workspace-code` دون مشاركته علنًا. اختر **مدرّس**: المحاضرات الست والملحق مستوردة بالفعل. افتح مراجعة المصادر والمقترحات، راجع الخريطة والجلسة والسؤال العربي/الإنجليزي، ثم اعتمد المحتوى وانشره. الخريطة والجلسة والسؤال الجديد المعدّل بنتيجة **70%** تمت مراجعتها واعتمادها ونشرها من الواجهة. يمكنك توليد مقترح جديد ومراجعته بنفس المسار. في مساحة جديدة، ابدأ بـ**استيراد حزمة CET351** ورفع الملفات واحدة تلو الأخرى.
+2. سجّل الخروج واختر **طالب** بنفس رمز المساحة. بعد نشر الجلسة، افتحها واسأل «ليه الـRecall هنا 60%؟». افتح مصدر L4 ص18–19، ثم حل سؤال التدريب الجديد. حسابات Preview تحفظ البيانات في Neon؛ التشغيل المحلي الصريح يستخدم PostgreSQL/PGlite.
 3. من التفضيلات احتفظ برمز المساحة للعودة من متصفح آخر؛ هو رمز وصول لحسابات الديمو الثلاثة. سجل الخروج ثم ادخل بنفس الرمز للتحقق من التقدّم.
 4. اختر **مرشد أكاديمي** لمراجعة دليل الطالب المعيّن والتوصية وRubric أعماله. حساب المدرّس يستطيع متابعة الجودة والتدخلات ومراجعة الإجابات المفتوحة.
 
@@ -37,14 +39,14 @@ The database is designed from scratch in [migrations](migrations). **“Migratio
 For the existing Neon database and the Vercel project `mohamedtarek750s-projects/tilwa`, use [deploy to existing resources](docs/existing-deployment.md). This path initializes the tables, creates the demo accounts and deploys a Preview in that project. It does not create another Neon or Vercel project and needs no Neon API key.
 
 ```bash
-DEPLOY_EXISTING=1 npm run deploy:existing
+GEMINI_MODEL=gemini-3.5-flash-lite NEON_TRANSPORT=websocket DEPLOY_EXISTING=1 npm run deploy:existing
 ```
 
 Supply the existing owner connection as `DATABASE_URL`, the Gemini key and authorized Vercel access through secure settings. The deployment command handles the schema and restricted application connection. Course PDFs are uploaded separately through the instructor interface or the private import command.
 
 The alternative provisioner below is only for creating **new** provider resources. With authorized account credentials, the [provisioning runner](docs/preview-provisioning.md) creates isolated Neon and Vercel resources, applies the schema, creates a non-owner pooled runtime login and deploys only to Preview.
 
-Set `NEON_API_KEY`, `VERCEL_TOKEN`, `GEMINI_API_KEY` securely; never put values in chat or Git. The candidate `GEMINI_MODEL=gemini-2.5-flash` is **not yet verified against a Google project**. Provisioning verifies its actual model ID before deploying. If a cloud proxy supplies credential placeholders, use portable raw secret bindings for deployment or set the Gemini secret directly in Vercel Preview.
+Set `NEON_API_KEY`, `VERCEL_TOKEN`, `GEMINI_API_KEY` securely; never put values in chat or Git. The pinned model is **`GEMINI_MODEL=gemini-3.5-flash-lite`**, verified through real guarded tutoring and generation in this project. `gemini-2.5-flash` returned 404 for this project; two bounded `gemini-3.8-flash` graph attempts timed out. Neither is claimed as a successful teaching model here. Preserve the existing server-only Gemini secret in Vercel Preview; cloud-proxy credential placeholders are not portable deployment keys.
 
 ```bash
 PROVISION_PREVIEW=1 npm run provision:preview
@@ -53,11 +55,13 @@ PROVISION_PREVIEW=1 npm run provision:preview
 With an existing non-production database, set server-only `DATABASE_URL` (pooled, non-owner), `MIGRATION_DATABASE_URL` (migration owner), `SESSION_SECRET` (32+ random characters), `GEMINI_API_KEY`, `GEMINI_MODEL`, `DEMO_MODE=true`, `LOCAL_DATABASE=0` in local/Preview settings. For private local `.env.local` files, load them explicitly:
 
 ```bash
-node --env-file=.env.local --import tsx scripts/migrate.ts
-node --env-file=.env.local --import tsx scripts/seed.ts
+NEON_TRANSPORT=websocket node --env-file=.env.local --import tsx scripts/migrate.ts
+NEON_TRANSPORT=websocket node --env-file=.env.local --import tsx scripts/seed.ts
 npm run build
 npm run start
 ```
+
+Use `NEON_TRANSPORT=websocket` for commands from this managed cloud environment; it uses the official Neon driver over verified WSS and retains real transactions/RLS. Vercel uses the default pooled PostgreSQL **TCP** transport. Existing `neon_auth` tables are preserved.
 
 Next loads `.env.local` itself; CLI commands only read process environment unless `--env-file` is supplied. Seed is idempotent, preserving existing learner data. Schema migrations are tracked transactionally. The app fails closed when the database is unavailable.
 
@@ -66,11 +70,11 @@ Next loads `.env.local` itself; CLI commands only read process environment unles
 [Source manifest](pilot/source-manifest.json) is authoritative for six PDF names, SHA-256 checksums and physical page counts. Original PDFs belong in private storage, never Git/public assets. Browser uploads are per-file and capped at 3.5 MB. The resumable CLI accepts a private directory or strictly bounded expected-file ZIP and imports files separately. See [source import](docs/source-import.md).
 
 ```bash
-npm run import:pack -- --tenant TENANT_UUID --user INSTRUCTOR_UUID --directory PRIVATE_DIR --register
+NEON_TRANSPORT=websocket LOCAL_DATABASE=0 npm run import:pack -- --tenant TENANT_UUID --user INSTRUCTOR_UUID --directory PRIVATE_DIR --register
 # or --zip PRIVATE_ZIP instead of --directory
 ```
 
-The GFG URL is registered as link/metadata only. It is **not** retrieved article evidence. Specifically authorized excerpts can be imported with locators/rights. The original bilingual `pilot/umbrella/tilwa-ml-foundations.md` is a separate source. L4 p.16 and L5 pp.18,21–23 are quarantined until corrected/reviewed. L4 pp.18–19 have **not** been checked against original bytes in this environment; no real 60% lecture-grounding pass is claimed.
+The GFG URL is registered as link/metadata only. It is **not** retrieved article evidence. Specifically authorized excerpts can be imported with locators/rights. The original bilingual `pilot/umbrella/tilwa-ml-foundations.md` is a separate source. L4 p.16 and L5 pp.18,21–23 are quarantined until corrected/reviewed. All six authentic PDFs now match their manifest hashes, sizes and page counts and have been imported into Neon: [integrity evidence](docs/evidence/authentic-sources.json). L4 pp.18–19 were visually inspected against the original PDF: TP=6, FN=4 and FP=20 give **60% Recall** and **≈23.1% Precision**. Those two pages and supplement U1–U5 received an agent review through the demo instructor account; this is **not institutional supervisor sign-off**.
 
 Sources are hashed and versioned; duplicate uploads deduplicate, corrections create successor extracts and preserve historical citation IDs. Graph proposals remain pending until review/publication. Hard prerequisites reject cycles, self-loops, duplicate edges and phantom endpoints. Deterministic bilingual aliases retain concept identity. Publication and source access require course permissions.
 
@@ -107,15 +111,17 @@ npm run dev:local       # Separate terminal for browser checks
 npm run test:e2e         # Chromium; set CHROMIUM_PATH if needed
 ```
 
-After real lecture ingestion/review on an actual non-production Neon/Gemini deployment:
+To repeat the actual non-production Preview acceptance:
 
 ```bash
-LIVE_SMOKE=1 LIVE_BASE_URL=https://YOUR-PREVIEW.vercel.app \
+LIVE_SMOKE=1 NEON_TRANSPORT=websocket LOCAL_DATABASE=0 \
+  GEMINI_MODEL=gemini-3.5-flash-lite \
+  LIVE_BASE_URL=https://tilwa-6twb3yvyj-mohamedtarek750s-projects.vercel.app \
   node --env-file=.env.preview.local --import tsx scripts/live-smoke.ts
 ```
 
-Set `LIVE_WORKSPACE_CODE` securely for the reviewed workspace. The live smoke makes three bounded real tutor requests (AR, EN, mixed), checks actual L4 locators/DB-first traces, verifies zero generation on out-of-scope refusal, persists an attempt across sign-out and opens assigned-advisor evidence. Missing prerequisites exit 2 and are reported as blocked. Actual reports and screenshot comparisons: [verification](docs/verification.md).
+Set `LIVE_WORKSPACE_CODE` securely for the reviewed workspace (private local code file above); do not print or commit it. Automated access to this protected Preview also needs its securely configured `VERCEL_AUTOMATION_BYPASS_SECRET`; normal browser visitors use the existing Vercel login. The live smoke makes three bounded real tutor requests (AR, EN, mixed), checks actual L4 locators/DB-first traces, verifies zero generation on out-of-scope refusal, persists an attempt across sign-out and opens assigned-advisor evidence. Missing prerequisites exit 2 and are reported as blocked. Actual reports and screenshot comparisons: [verification](docs/verification.md).
 
 ## Current limits
 
-This is a pilot, not a deployed university service. Institutional history/QMS counts, supplementary reviewed items and SIS events are marked synthetic. Human academic review remains necessary: structured citations and arithmetic checks do not prove entailment. The lexical course-scope gate is a conservative baseline; broad multilingual adversarial coverage and formal learning-model validation require more evaluation. Production SSO, distributed ingestion workers, private object storage at scale and university SIS credentials are integration points. Model availability, authentic lecture accuracy and production platform behavior must be verified with real resources before claiming the complete live acceptance journey.
+This is a pilot, not a deployed university service. Institutional history/QMS counts, supplementary reviewed items and SIS events are marked synthetic. Human academic review remains necessary: structured citations and arithmetic checks do not prove entailment. The lexical course-scope gate is a conservative baseline; broad multilingual adversarial coverage and formal learning-model validation require more evaluation. Production SSO, distributed ingestion workers, private object storage at scale and university SIS credentials are integration points. The verified real tutor result and authentic-source review cover the first L4 example. The core Preview journey passed with real providers; unreviewed lecture pages remain outside approved model evidence. The university SIS is represented by explicit local/external-contract fixtures, not a live university connection.

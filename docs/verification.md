@@ -1,63 +1,46 @@
 # Verification / نتائج التحقق
 
-Run date: **12 November 2026**. This report distinguishes actual local SQL/browser behavior from unavailable live services. Full test names and outcomes are in [verification.json](evidence/verification.json).
+Current results: **13 November 2026**. Local automated tests, real provider calls and Preview readiness are reported separately. All learner/staff records are synthetic.
 
-| Check                                    | Result                           | What actually ran                                                                                                                                        |
-| ---------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Migrations                               | PASS                             | `001_core.sql`, `002_sources.sql`, `004_sis.sql` on a new local PostgreSQL/PGlite database; rerun was idempotent                                         |
-| Demo seed                                | PASS                             | Two seeds reused the same workspace; production browser checks also created separate synthetic workspaces                                                |
-| Unit/integration tests                   | 89 PASS, 0 failed, 0 skipped     | Local SQL, non-owner RLS, deterministic injected model replay, synthetic PDF fixtures; **not Neon/Gemini**                                               |
-| TypeScript                               | PASS                             | `npm run typecheck`                                                                                                                                      |
-| Production build                         | PASS                             | Next.js 16.4.6 / React 19 / Node 24, all application/API routes compiled                                                                                 |
-| Production browser journeys              | 7 PASS                           | System Chromium, real HTTP, signed sessions and production Next.js server; local persistent PostgreSQL, no model simulation in application routes        |
-| Desktop/mobile visual check              | PASS with documented differences | Actual 1305px/390px renders inspected against supplied reference images; no horizontal overflow; actual progress counts replace reference fixture counts |
-| Provisioner prerequisite guard           | PASS                             | Missing credentials return exit 2; no resources created                                                                                                  |
-| Live Neon + Gemini                       | BLOCKED, not run                 | Missing `NEON_API_KEY`/database, `GEMINI_API_KEY` and project model verification                                                                         |
-| Authentic six lecture checksums/pages    | BLOCKED, not run                 | No private attachment bytes available; Drive request returned proxy CONNECT 403                                                                          |
-| Actual L4 pp.18–19 academic verification | BLOCKED, not run                 | Original PDF unavailable. Exact “Recall 60%” request abstains without reviewed L4 evidence                                                               |
-| Vercel Preview                           | BLOCKED, not deployed            | `VERCEL_TOKEN`/authorized account access absent. There is no Preview URL yet                                                                             |
-| University SIS                           | NOT CONNECTED                    | Local-demo / external-contract fixtures only; signed adapter contract and preservation tested                                                            |
+| Check                                   | Result                       | Evidence and scope                                                                                                                                                                                                                  |
+| --------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit/integration suite                  | **110/110 PASS**             | Local PostgreSQL/PGlite, non-owner RLS, injected deterministic model replay and synthetic parser fixtures; these are **offline**, not Neon/Gemini passes                                                                            |
+| TypeScript / production build           | **PASS**                     | `npm run typecheck` and the production Next.js build                                                                                                                                                                                |
+| Production browser journeys             | **7/7 PASS**                 | Real HTTP and Chromium against production Next.js with local PostgreSQL/PGlite; rerun on 13 November                                                                                                                                |
+| Real Neon migration / seed              | **PASS**                     | `001_core.sql`, `002_sources.sql`, `004_sis.sql`; migration rerun idempotent; three demo roles seeded; nine managed `neon_auth` tables preserved                                                                                    |
+| Real Neon runtime isolation             | **PASS**                     | Non-owner runtime role and tenant RLS verified against the actual database                                                                                                                                                          |
+| Authentic source import                 | **6/6 PASS**                 | All PDF SHA-256 hashes, byte sizes and physical page counts match the manifest; all six PDFs plus the original supplement imported into Neon; [integrity report](evidence/authentic-sources.json)                                   |
+| Academic source spot check              | **PASS, limited scope**      | Original L4 pp.18–19 visually inspected: TP=6, FN=4, FP=20, TN=970; Recall 60%, Precision ≈23.1%, Accuracy 97.6%                                                                                                                    |
+| Real Neon browser checks                | **7/7 PASS**                 | Read-only role, material, source-viewer and AR/EN/mobile checks; **zero model calls**                                                                                                                                               |
+| Real guarded Gemini tutor               | **PASS**                     | `gemini-3.5-flash-lite`, exact Arabic Recall question; 19.7 seconds, 1,111 tokens, one call; cites L4 pp.18–19 and supplement U2; DB retrieval precedes generation                                                                  |
+| Real Gemini graph / teaching generation | **PASS: reviewed/published** | Actual graph with two concepts and one edge, bilingual lesson and instructor-edited fresh 70% question; five browser review/publication checks passed on Neon                                                                       |
+| Vercel Preview deployment               | **PASS, protected**          | [Open Preview](https://tilwa-6twb3yvyj-mohamedtarek750s-projects.vercel.app); existing Vercel login required                                                                                                                        |
+| Complete Preview acceptance smoke       | **7/7 PASS**                 | Real Vercel + Neon + Gemini: AR/EN/mixed answers, approved citations, fresh unassisted practice, atomic retry, new-login persistence, cross-session exam protection and advisor isolation                                           |
+| Deployed browser / access cleanup       | **6/6 PASS**                 | Exact Arabic tutor question and source opening, unsupported-evidence abstention, persisted progress in a new mobile context, RTL/LTR and advisor view; temporary test bypass revoked ([report](evidence/live-preview-browser.json)) |
+| University SIS                          | **NOT CONNECTED**            | Demo and external-contract fixtures only; signed events, adapter replacement and history preservation tested locally                                                                                                                |
 
-## Existing project follow-up — 13 November 2026
+## Source and model provenance / حقيقة المصادر والنموذج
 
-The user has now created the Neon database and Vercel project. The new `deploy:existing` command reuses them, initializes empty tables and deploys Preview without a Neon API key or duplicate projects. It accepts `DATABASE_URL_UNPOOLED` and `POSTGRES_URL_NON_POOLING`; session-signing configuration is generated or preserved automatically.
+- **Named GFG reference:** registered as link/metadata. **No GFG article text has been used.** The manual authorized-passage flow is tested with a labelled synthetic passage.
+- **Original Tilwa supplement:** actual repository content imported separately, with U1–U5 locators. It is not relabelled GFG.
+- **Original lectures:** six authentic Drive files verified and imported; all six subsequently uploaded PDFs are byte-for-byte identical ([uploaded-file verification](evidence/uploaded-sources.json)). Private PDFs and rendered lecture pages remain outside Git/public assets; the committed evidence contains integrity metadata only.
+- **Review authority:** L4 pp.18–19 and supplement U1–U5 were approved through the demo instructor account after agent review. This is a pilot content review, **not institutional or supervisor sign-off**. Other pending pages are not approved model evidence.
+- **Quarantine:** L4 p.16 says 60 healthy/40 patients while its cells imply 50/50. It remains quarantined. L5 pp.18,21–23 also remain quarantined pending complete academic correction/review.
+- **Pinned model:** `gemini-3.5-flash-lite` produced the verified real tutor response and teaching/graph drafts. `gemini-2.5-flash` returned 404 for this project. Two bounded graph calls to `gemini-3.8-flash` timed out; that model has no successful teaching claim here.
 
-**98 local tests passed, 0 failed, 0 skipped; TypeScript and production build passed.** Nine added tests cover existing-resource selection, supplied Neon aliases, read-only database inspection and Preview configuration boundaries. These remain offline tests, not a live provider pass. The seven browser journeys above were last executed on 12 November.
+The exact Arabic probe explains that 6 detected frauds out of 10 actual frauds gives 60% Recall: [redacted probe](evidence/live-tutor-probe.json). The separate [live Preview acceptance](evidence/live-smoke.json) passed three real tutor generations totaling **3,877 tokens**, including the corresponding ≈23.1% Precision explanation. A checkpointed rerun verified the remaining steps without repeating successful model calls. The separate deployed-browser test made one further real Arabic call (**1,123 tokens**) and opened its original L4 citation. Fresh practice created exactly one attempt and one answer event, even after retry. [All 110 offline test names/results](evidence/offline-tests-2026-11-13.json) and [actual source review/publication browser results](evidence/neon-browser-source-review.json) remain separate evidence.
 
-The attempted deployment exited 2 before remote changes: secure credentials are not injected into the running environment, Neon/Vercel tools are not exposed in this chat, and current network policy blocks provider access. Database connection details supplied in chat were not placed in code or logs. No remote tables were created and no deployment URL was obtained.
+## Application checks
 
-[Existing-resource setup](existing-deployment.md) · [Measured follow-up result](evidence/existing-deployment-check.json).
+The seven local production browser journeys cover independent calculation/metric-choice evidence, deliberate-error moderation, optional gradient transfer, assignment feedback, reviewed career artifacts, teaching interventions, QMS **18/24 = 75% attainment** and **24/30 = 80% coverage**, sign-out/recovery, protected exams, role isolation, RTL/LTR and 390px mobile navigation. These are real local application checks with synthetic records, not a live university connection.
 
-## Seven production browser journeys
+Security tests cover non-owner RLS, two-tenant isolation, revoked membership/enrollment, unassigned advisors, protected exams, current source versions and rights. Pending sources cannot reach generation. Denials/database outages cause zero generation calls; authorization is checked again before and after provider generation. Historical citations, graph mappings, SIS revisions and user-scoped memory changes preserve longitudinal learning evidence.
 
-1. Calculate Recall correctly, choose a poor metric and retain separate objective evidence in AR/EN.
-2. Identify a deliberate solution error, explain it, moderate the explanation as instructor, then attempt an optional gradient-transfer task.
-3. Submit an assignment, save custom formative feedback, submit a selected career artifact and review its rubric as assigned advisor.
-4. Create a bilingual teaching intervention and verify QMS **18/24 = 75% attainment**, **24/30 = 80% coverage** and small-group suppression.
-5. Student UI login, source lesson, atomic retry, sign-out and recovery in a new browser context; switch RTL/LTR.
-6. Role denial, instructor-controlled protected exam across browser contexts, advisor assignment visibility.
-7. Desktop/mobile dashboard screenshots, mobile navigation and overflow check.
-
-These demonstrate local application behavior. They do not establish live Neon persistence or Gemini answer quality.
-
-## Source truth / حقيقة المصادر
-
-- **GFG reference registration:** verified in SQL tests. It remains link/metadata by default.
-- **Approved GFG article text actually used:** **no**. Manual import of separately authorized passages with section locators and rights attestation is implemented and tested using a synthetic passage, not scraped article content.
-- **Original Tilwa supplement ingestion:** verified from the actual repository file, including hash and section locators.
-- **Supplement plus real lecture ingestion:** blocked by missing original PDF bytes. Parser/ZIP/hash/quarantine behavior uses explicitly synthetic PDF fixtures in tests.
-- **L4 p.16 and L5 pp.18,21–23:** quarantined by ingestion rules, pending academic correction/review.
-- **Gemini model:** candidate `gemini-2.5-flash`; actual project availability and generated teaching answers remain unverified. The provisioner performs a real model lookup before deployment when configured.
-
-## Security evidence
-
-Tests execute under a non-owner `tilwa_runtime` role, including cross-tenant denial, revoked membership/enrollment, unassigned advisor denial, course policy lookup, protected exams, current source versions and rights. Trace tests prove retrieval precedes injected generation and denials/database outages cause zero generation calls. A second authorization check rejects responses if exam/assignment state changes during generation. Shared reviewed items never expose private answer keys in student selection payloads.
-
-Source corrections preserve previous citation IDs. Reviewed graph rename/merge/split operations preserve historical attempts/mastery/recommendations; split successors start unassessed. SIS duplicate/out-of-order/revised/revoked events cannot overwrite formative history. Tutor-memory correction/archive/delete is user-scoped and does not erase mastery.
-
-Scope filtering uses a versioned lexical baseline, structured output validation and bounded arithmetic/academic checks. This is not a general proof of semantic entailment. Real academic spot checks with the original lectures and an actual Gemini model remain necessary.
+Structured references and arithmetic validation do not prove full semantic entailment. The academic checks above cover the stated L4 example; broader multilingual adversarial evaluation and human academic review remain necessary.
 
 ## Rerun / إعادة الاختبار
+
+Local checks:
 
 ```bash
 npm ci
@@ -67,23 +50,22 @@ npm run build
 npm run test:production
 ```
 
-Create external resources after securely supplying `NEON_API_KEY`, `VERCEL_TOKEN`, `GEMINI_API_KEY` and allowing the required destinations:
+For the **existing** non-production Neon/Vercel resources, use [existing-resource deployment](existing-deployment.md); do not create duplicate projects. This managed cloud environment uses `NEON_TRANSPORT=websocket` for verified WSS connections. Vercel retains the default pooled PostgreSQL TCP transport.
 
 ```bash
-PROVISION_PREVIEW=1 npm run provision:preview
+NEON_TRANSPORT=websocket LOCAL_DATABASE=0 npm run db:migrate
+NEON_TRANSPORT=websocket LOCAL_DATABASE=0 npm run db:seed
 ```
 
-Then import the six original PDFs, review/publish L4 pp.18–19 and the supplement, publish bilingual teaching items, set the reviewed workspace's `LIVE_WORKSPACE_CODE`, and run:
+Load `LIVE_WORKSPACE_CODE` securely from `.tilwa-private/demo-workspace-code`, and supply the protected Preview's authorized `VERCEL_AUTOMATION_BYPASS_SECRET` securely for automation. Do not print either value. With server credentials already supplied through secure settings:
 
 ```bash
-LIVE_SMOKE=1 LIVE_BASE_URL=https://YOUR-PREVIEW.vercel.app \
-  node --env-file=.env.preview.local --import tsx scripts/live-smoke.ts
+LIVE_SMOKE=1 NEON_TRANSPORT=websocket LOCAL_DATABASE=0 \
+  GEMINI_MODEL=gemini-3.5-flash-lite \
+  LIVE_BASE_URL=https://tilwa-6twb3yvyj-mohamedtarek750s-projects.vercel.app \
+  npm run test:live
 ```
 
-The provisioner and live integration path are prepared but have **not** been exercised on provider accounts. Consult [provider setup](preview-provisioning.md) for secure credentials, network/TCP access, resumable receipts and deployment protection.
+The opt-in smoke is metered and checkpointed. It verifies AR/EN/mixed tutoring with actual L4 citations, DB-first trace order, protected exam/refusal behavior, attempt persistence after sign-out and assigned-advisor evidence. Successful language traces are checkpointed to avoid repeated paid calls. A new independent run requires an unused, instructor-reviewed question family. The temporary automation bypass used for verification was revoked after testing; normal browser access uses your Vercel login.
 
-## Images
-
-[Desktop render](evidence/dashboard-desktop.png) · [Mobile render](evidence/dashboard-mobile.png) · [Visual comparison notes](evidence/visual-review.md).
-
-Cloud environment draft requirements were saved for review. No cloud environment publication was performed in this implementation turn. Publication, a Vercel deployment and a successful live acceptance run are separate outcomes.
+[Actual Preview desktop](evidence/live-preview-desktop.png) · [Actual Preview mobile](evidence/live-preview-mobile.png) · [Visual comparison notes](evidence/visual-review.md). Deployment, cloud-environment publication and successful live acceptance remain distinct outcomes.
