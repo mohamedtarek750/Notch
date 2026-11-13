@@ -817,6 +817,24 @@ export async function publishKnowledge(ctx: AuthContext) {
             }),
           ],
         );
+      if (p.data.item?.conceptId)
+        // A concept becomes assessable the moment its first reviewed question is published.
+        await tx.query(
+          "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'objective',$3,NULL,$4) ON CONFLICT(tenant_id,id) DO NOTHING",
+          [
+            ctx.tenantId,
+            `objective:${p.data.item.objectiveId}`,
+            COURSE,
+            JSON.stringify({
+              objectiveId: p.data.item.objectiveId,
+              conceptId: p.data.item.conceptId,
+              title:
+                graph.concepts.find((c) => c.id === p.data.item!.conceptId)
+                  ?.label ?? p.data.item.conceptLabel,
+              fixture: false,
+            }),
+          ],
+        );
       if (p.data.item)
         await tx.query(
           "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'item',$3,$4,$5)",

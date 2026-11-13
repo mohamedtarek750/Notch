@@ -115,7 +115,13 @@ const linkJsonSchema = {
 };
 
 export const extractionInput = z.object({
-  lectureSourceKey: z.enum(lectureKeys),
+  lectureSourceKey: z
+    .string()
+    .refine(
+      (key) =>
+        (lectureKeys as readonly string[]).includes(key) ||
+        /^LECTURE-[0-9A-F]{12}$/.test(key),
+    ),
 });
 type Concept = Graph["concepts"][number];
 type Edge = Graph["edges"][number];
@@ -627,6 +633,46 @@ export async function extractPrerequisites(
   return { id, ...data };
 }
 
+/**
+ * How much of what the model proposed survived instructor review: the project's
+ * measurable answer to "are the extracted relationships correct?".
+ */
+export function extractionQuality(
+  proposals: { data: Record<string, any> }[],
+) {
+  const reviewed = proposals.filter(
+    (p) =>
+      p.data.kind === PREREQUISITE_KIND &&
+      ["approved", "published"].includes(p.data.status) &&
+      p.data.extracted,
+  );
+  let extracted = 0,
+    accepted = 0,
+    retyped = 0,
+    autoRejected = 0;
+  for (const p of reviewed) {
+    const kept: Edge[] = p.data.graph?.edges ?? [];
+    for (const e of p.data.extracted.edges as Edge[]) {
+      extracted++;
+      const match = kept.find((k) => k.from === e.from && k.to === e.to);
+      if (match) accepted++;
+      if (match && match.type !== e.type) retyped++;
+    }
+    autoRejected += (p.data.dropped ?? []).filter((d: Dropped) => d.from).length;
+  }
+  return {
+    reviewedRuns: reviewed.length,
+    pendingRuns: proposals.filter(
+      (p) => p.data.kind === PREREQUISITE_KIND && p.data.status === "pending",
+    ).length,
+    extractedRelationships: extracted,
+    acceptedByInstructor: accepted,
+    typeChangedByInstructor: retyped,
+    rejectedByValidation: autoRejected,
+    // Share of model relationships the instructor kept; null until a run is reviewed.
+    precision: extracted ? (100 * accepted) / extracted : null,
+  };
+}
 export const edgeReviewInput = z.object({
   id: z.string().min(1).max(120),
   accept: z

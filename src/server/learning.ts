@@ -51,6 +51,10 @@ const actionSchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("complete-session"), sessionId: str }),
   z.object({
+    action: z.literal("diagnostic"),
+    limit: z.number().int().min(1).max(12).optional(),
+  }),
+  z.object({
     action: z.literal("preferences"),
     lessonLanguage: z.enum(["ar", "en", "mixed"]).optional(),
     presentation: z.enum(["short", "detailed", "steps", "example"]).optional(),
@@ -356,6 +360,150 @@ export async function publishedPrerequisiteSupport(
       }
     : null;
 }
+/** Difficulty to serve next, from independent evidence only. */
+export function targetDifficulty(state?: {
+  status?: string;
+  independentFamilies?: number;
+  correctFamilies?: number;
+}) {
+  if (!state || !state.independentFamilies) return "easy";
+  if (state.status === "secure") return "hard";
+  return (state.correctFamilies ?? 0) > 0 ? "medium" : "easy";
+}
+const difficultyOrder = ["easy", "medium", "hard"];
+/** Prefer the target difficulty, then the nearest available one. */
+function byDifficulty(items: LearningRecord[], target: string) {
+  const at = difficultyOrder.indexOf(target);
+  return [...items].sort(
+    (a, b) =>
+      Math.abs(difficultyOrder.indexOf(a.data.difficulty ?? "medium") - at) -
+      Math.abs(difficultyOrder.indexOf(b.data.difficulty ?? "medium") - at),
+  );
+}
+export type PathNode = {
+  conceptId: string;
+  label: Bilingual;
+  objectiveId: string | null;
+  status: string;
+  blockedBy: { conceptId: string; label: Bilingual; status: string }[];
+};
+/**
+ * The learner's route through the published prerequisite graph: prerequisites first,
+ * one node per concept that is assessable or that an assessable concept depends on.
+ * `next` is the earliest concept that is not secure and whose prerequisites are.
+ */
+export async function learningPath(
+  tx: Queryable,
+  ctx: AuthContext,
+  userId: string,
+): Promise<{ releaseId: string | null; nodes: PathNode[]; next: PathNode | null }> {
+  const release = (
+    await tx.query<Row>(
+      "SELECT * FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release' ORDER BY created_at DESC,id DESC LIMIT 1",
+      [ctx.tenantId, ctx.courseId],
+    )
+  ).rows[0];
+  if (!release?.data.publishedAt) return { releaseId: null, nodes: [], next: null };
+  const concepts: any[] = release.data.graph?.concepts ?? [];
+  const edges: any[] = (release.data.graph?.edges ?? []).filter(
+    (e: any) => e.type === "prerequisite",
+  );
+  const objectives = (
+    await tx.query<Row>(
+      "SELECT * FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='objective'",
+      [ctx.tenantId, ctx.courseId],
+    )
+  ).rows;
+  const states = (
+    await tx.query<Row>(
+      "SELECT * FROM records WHERE tenant_id=$1 AND course_id=$2 AND owner_id=$3 AND kind='state'",
+      [ctx.tenantId, ctx.courseId, userId],
+    )
+  ).rows;
+  const objectiveOf = new Map<string, string>();
+  for (const o of objectives)
+    if (typeof o.data.objectiveId === "string" && o.data.objectiveId.startsWith("c:"))
+      objectiveOf.set(o.data.conceptId, o.data.objectiveId);
+  const statusOf = (conceptId: string) => {
+    const objectiveId = objectiveOf.get(conceptId);
+    if (!objectiveId) return "unassessable";
+    return (
+      states.find((r) => r.data.objectiveId === objectiveId)?.data.status ??
+      "unassessed"
+    );
+  };
+  const relevant = new Set<string>(objectiveOf.keys());
+  for (const e of edges) if (objectiveOf.has(e.to)) relevant.add(e.from);
+  const byId = new Map(concepts.map((c) => [c.id, c]));
+  const included = [...relevant].filter((id) => byId.has(id));
+  // Kahn ordering over hard prerequisites; the release is already cycle-free.
+  const indegree = new Map(included.map((id) => [id, 0]));
+  for (const e of edges)
+    if (indegree.has(e.from) && indegree.has(e.to))
+      indegree.set(e.to, indegree.get(e.to)! + 1);
+  const queue = included.filter((id) => !indegree.get(id));
+  const ordered: string[] = [];
+  while (queue.length) {
+    const id = queue.shift()!;
+    ordered.push(id);
+    for (const e of edges)
+      if (e.from === id && indegree.has(e.to)) {
+        indegree.set(e.to, indegree.get(e.to)! - 1);
+        if (!indegree.get(e.to)) queue.push(e.to);
+      }
+  }
+  const nodes: PathNode[] = ordered.map((id) => ({
+    conceptId: id,
+    label: byId.get(id).label,
+    objectiveId: objectiveOf.get(id) ?? null,
+    status: statusOf(id),
+    blockedBy: edges
+      .filter((e) => e.to === id && byId.has(e.from))
+      .map((e) => ({
+        conceptId: e.from,
+        label: byId.get(e.from).label,
+        status: statusOf(e.from),
+      }))
+      // Only an assessable, not-yet-secure prerequisite can hold a learner back.
+      .filter((p) => p.status !== "secure" && p.status !== "unassessable"),
+  }));
+  const open = nodes.filter((n) => n.objectiveId && n.status !== "secure");
+  return {
+    releaseId: release.id,
+    nodes,
+    next: open.find((n) => !n.blockedBy.length) ?? open[0] ?? null,
+  };
+}
+/** Descriptive first-vs-latest independent performance per objective for course staff. */
+export function learningGain(attempts: LearningRecord[], minimumGroup = 5) {
+  const groups = new Map<string, Map<string, LearningRecord[]>>();
+  for (const a of attempts) {
+    if (a.data.assisted || typeof a.data.correct !== "boolean" || !a.ownerId)
+      continue;
+    const learners = groups.get(a.data.objectiveId) ?? new Map();
+    learners.set(a.ownerId, [...(learners.get(a.ownerId) ?? []), a]);
+    groups.set(a.data.objectiveId, learners);
+  }
+  return [...groups].map(([objectiveId, learners]) => {
+    const pairs = [...learners.values()]
+      .map((list) => list.sort((x, y) => x.data.at.localeCompare(y.data.at)))
+      .filter((list) => list.length >= 2);
+    if (pairs.length < minimumGroup)
+      return { objectiveId, suppressed: true, minimumGroupSize: minimumGroup };
+    const first = pairs.filter((l) => l[0].data.correct).length;
+    const latest = pairs.filter((l) => l.at(-1)!.data.correct).length;
+    return {
+      objectiveId,
+      suppressed: false,
+      learners: pairs.length,
+      firstCorrect: first,
+      latestCorrect: latest,
+      firstRate: (100 * first) / pairs.length,
+      latestRate: (100 * latest) / pairs.length,
+      descriptive: true,
+    };
+  });
+}
 async function recompute(
   tx: Queryable,
   ctx: AuthContext,
@@ -374,6 +522,12 @@ async function recompute(
   await put(tx, ctx, `state:${userId}:${objectiveId}`, "state", state, userId);
   const choose = objectiveId === "metric.choose";
   const transfer = objectiveId === "gradient.transfer";
+  const objectiveTitle = (
+    await tx.query<Row>(
+      "SELECT * FROM records WHERE tenant_id=$1 AND course_id=$2 AND id=$3 AND kind='objective'",
+      [ctx.tenantId, ctx.courseId, `objective:${objectiveId}`],
+    )
+  ).rows[0]?.data.title as Bilingual | undefined;
   const title =
     state.status === "secure"
       ? bi("جرّب هدفًا مستقلًا جديدًا", "Try a new independent objective")
@@ -387,7 +541,12 @@ async function recompute(
               "اربط اتجاه الخطوة بإشارة المشتقة",
               "Connect update direction to derivative sign",
             )
-          : bi("اختيار المقام في Recall", "Choose the denominator in recall");
+          : objectiveId.startsWith("c:") && objectiveTitle
+            ? bi(
+                `تدرّب على: ${objectiveTitle.ar}`,
+                `Practise: ${objectiveTitle.en}`,
+              )
+            : bi("اختيار المقام في Recall", "Choose the denominator in recall");
   const prerequisiteSupport = await publishedPrerequisiteSupport(
     tx,
     ctx,
@@ -580,6 +739,12 @@ export async function workspace(ctx: AuthContext) {
       data: { ...r.data, key: undefined },
     })),
     examMode: protectedExam,
+    path:
+      ctx.role === "student"
+        ? await learningPath(conn, ctx, ctx.userId)
+        : undefined,
+    learningGain:
+      ctx.role === "instructor" ? learningGain(of("attempt")) : undefined,
     fixture: true,
     privateRecords:
       ctx.role === "advisor"
@@ -620,7 +785,10 @@ export async function learningAction(
       return { enrolled: true, courseId: a.courseId };
     });
   }
-  const isPractice = a.action === "select-practice" || a.action === "attempt";
+  const isPractice =
+    a.action === "select-practice" ||
+    a.action === "attempt" ||
+    a.action === "diagnostic";
   const operation = isPractice
     ? "practice"
     : [
@@ -661,9 +829,11 @@ export async function learningAction(
           [ctx.tenantId, ctx.courseId, ctx.userId],
         )
       ).rows;
+      const path = await learningPath(tx, ctx, ctx.userId);
       const targetObjective =
         a.objectiveId ??
         recommendations.find((r) => !r.data.retired)?.data.objectiveId ??
+        path.next?.objectiveId ??
         "recall.calculate";
       const prerequisiteSupport = await publishedPrerequisiteSupport(
         tx,
@@ -685,10 +855,19 @@ export async function learningAction(
               fresh.some((r) => r.data.objectiveId === c.objectiveId),
           )?.objectiveId
         : null;
+      const chosenObjective = supportObjective ?? targetObjective;
+      const state = (
+        await tx.query<Row>(
+          "SELECT * FROM records WHERE tenant_id=$1 AND course_id=$2 AND id=$3 AND kind='state'",
+          [ctx.tenantId, ctx.courseId, `state:${ctx.userId}:${chosenObjective}`],
+        )
+      ).rows[0]?.data;
+      const difficulty = targetDifficulty(state);
       const item =
-        fresh.find(
-          (r) => r.data.objectiveId === (supportObjective ?? targetObjective),
-        ) ?? (!a.objectiveId ? fresh[0] : undefined);
+        byDifficulty(
+          fresh.filter((r) => r.data.objectiveId === chosenObjective),
+          difficulty,
+        )[0] ?? (!a.objectiveId ? fresh[0] : undefined);
       if (!item)
         return {
           item: null,
@@ -713,7 +892,69 @@ export async function learningAction(
         },
         ctx.userId,
       );
-      return { item: publicItem(item), deliveryId, prerequisiteSupport };
+      return {
+        item: publicItem(item),
+        deliveryId,
+        prerequisiteSupport,
+        targetDifficulty: difficulty,
+      };
+    }
+    if (a.action === "diagnostic") {
+      role(ctx, "student");
+      // One fresh auto-scored question per not-yet-assessed concept, prerequisites first.
+      const path = await learningPath(tx, ctx, ctx.userId);
+      const items = (
+        await tx.query<Row>(
+          "SELECT * FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='item' AND data->>'approved'='true' AND COALESCE(data->>'protected','false')='false' AND data->>'kind' IN ('choice','transfer') ORDER BY id",
+          [ctx.tenantId, ctx.courseId],
+        )
+      ).rows.map(toRecord);
+      const seen = new Set(
+        (
+          await tx.query<Row>(
+            "SELECT * FROM records WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind IN ('attempt','delivery')",
+            [ctx.tenantId, ctx.userId, ctx.courseId],
+          )
+        ).rows.map((r) => r.data.familyId),
+      );
+      const picked: { item: LearningRecord; deliveryId: string }[] = [];
+      for (const node of path.nodes) {
+        if (picked.length >= (a.limit ?? 8)) break;
+        if (!node.objectiveId || node.status !== "unassessed") continue;
+        const item = byDifficulty(
+          items.filter(
+            (r) =>
+              r.data.objectiveId === node.objectiveId &&
+              !seen.has(r.data.familyId),
+          ),
+          "medium",
+        )[0];
+        if (!item) continue;
+        const deliveryId = `delivery:${randomUUID()}`;
+        await put(
+          tx,
+          ctx,
+          deliveryId,
+          "delivery",
+          {
+            itemId: item.id,
+            version: item.data.version,
+            familyId: item.data.familyId,
+            objectiveId: item.data.objectiveId,
+            assisted: false,
+            diagnostic: true,
+            at: new Date().toISOString(),
+          },
+          ctx.userId,
+        );
+        picked.push({ item: publicItem(item), deliveryId });
+      }
+      return {
+        items: picked,
+        remainingUnassessed: path.nodes.filter(
+          (n) => n.objectiveId && n.status === "unassessed",
+        ).length,
+      };
     }
     if (a.action === "attempt") {
       role(ctx, "student");

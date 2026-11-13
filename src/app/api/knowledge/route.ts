@@ -13,8 +13,15 @@ import {
 import { knowledgeErrorResponse } from "@/server/coverage";
 import {
   extractPrerequisites,
+  extractionQuality,
   reviewPrerequisiteEdges,
 } from "@/server/prerequisites";
+import {
+  bankCoverage,
+  generateBank,
+  getBankSettings,
+  saveBankSettings,
+} from "@/server/question-bank";
 import { z } from "zod";
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -28,7 +35,11 @@ const input = z.object({
     "stage-comprehensive",
     "extract-prerequisites",
     "review-edges",
+    "bank-settings",
+    "generate-bank",
   ]),
+  settings: z.unknown().optional(),
+  conceptIds: z.unknown().optional(),
   lectureSourceKey: z.string().optional(),
   accept: z.unknown().optional(),
   rejectConcepts: z.unknown().optional(),
@@ -41,9 +52,23 @@ const input = z.object({
 });
 export async function GET(req: Request) {
   try {
-    return Response.json(await getKnowledge(await requireAuth(req)), {
-      headers: { "Cache-Control": "no-store" },
-    });
+    const ctx = await requireAuth(req);
+    const knowledge = await getKnowledge(ctx);
+    return Response.json(
+      ctx.role === "instructor"
+        ? {
+            ...knowledge,
+            extractionQuality: extractionQuality(
+              knowledge.proposals as { data: Record<string, any> }[],
+            ),
+            bank: {
+              settings: await getBankSettings(ctx),
+              coverage: await bankCoverage(ctx),
+            },
+          }
+        : knowledge,
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (e) {
     return knowledgeErrorResponse(
       e,
@@ -71,6 +96,12 @@ export async function POST(req: Request) {
         await extractPrerequisites(ctx, undefined, {
           lectureSourceKey: body.lectureSourceKey,
         }),
+      );
+    if (body.action === "bank-settings")
+      return Response.json(await saveBankSettings(ctx, body.settings));
+    if (body.action === "generate-bank")
+      return Response.json(
+        await generateBank(ctx, undefined, { conceptIds: body.conceptIds }),
       );
     if (body.action === "review-edges")
       return Response.json(

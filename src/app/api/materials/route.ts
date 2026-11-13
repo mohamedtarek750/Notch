@@ -4,6 +4,7 @@ import {
   importAuthorizedPassage,
   importLecture,
   importUmbrella,
+  importCustomLecture,
   listMaterials,
   registerPack,
   sourceErrorResponse,
@@ -36,6 +37,17 @@ export async function POST(req: Request) {
             bytes: new Uint8Array(await file.arrayBuffer()),
             rightsConfirmed: form.get("rightsConfirmed") === "true",
             rightsReference: String(form.get("rightsReference") || ""),
+            sourceKey: form.get("sourceKey")
+              ? String(form.get("sourceKey"))
+              : undefined,
+          }),
+        );
+      if (form.get("kind") === "lecture")
+        return Response.json(
+          await importCustomLecture(ctx, {
+            title: String(form.get("title") || ""),
+            filename: file.name,
+            bytes: new Uint8Array(await file.arrayBuffer()),
             sourceKey: form.get("sourceKey")
               ? String(form.get("sourceKey"))
               : undefined,

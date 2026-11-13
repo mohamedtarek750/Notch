@@ -298,6 +298,37 @@ export async function importUmbrella(
   });
   return { ...result, sourceKey };
 }
+export const LECTURE_PREFIX = "LECTURE-";
+/** Any lecture PDF the instructor teaches from, beyond the fixed pilot pack. */
+export async function importCustomLecture(
+  ctx: AuthContext,
+  input: { title: string; filename: string; bytes: Uint8Array; sourceKey?: string },
+) {
+  await staff(ctx);
+  const title = input.title.trim();
+  if (!title || title.length > 200) throw new SourceError("invalid_review");
+  if (input.sourceKey && !/^LECTURE-[0-9A-F]{12}$/.test(input.sourceKey))
+    throw new SourceError("invalid_review");
+  const sourceKey =
+    input.sourceKey ||
+    LECTURE_PREFIX +
+      hashBytes(title.normalize("NFKC").toLowerCase())
+        .slice(0, 12)
+        .toUpperCase();
+  const pages = await parsePdf(input.bytes);
+  const result = await persistMaterial(ctx, {
+    sourceKey,
+    title,
+    role: "instructor",
+    filename: path.basename(input.filename || "lecture.pdf").normalize("NFC"),
+    mime: "application/pdf",
+    bytes: input.bytes,
+    hash: hashBytes(input.bytes),
+    pages: pages.map((text, i) => ({ text, page: i + 1, section: null })),
+    metadata: { customLecture: true, uploadedBy: ctx.userId },
+  });
+  return { ...result, sourceKey };
+}
 /** Approve every readable pending section of one current umbrella version in a single
  * explicit instructor decision. Quarantined sections still need a corrected extract. */
 export async function approvePendingUmbrella(
@@ -308,7 +339,7 @@ export async function approvePendingUmbrella(
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
     await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
     const current = await tx.query(
-      "SELECT id FROM material_versions WHERE tenant_id=$1 AND id=$2 AND course_id=$3 AND current_version=true AND role='umbrella' FOR UPDATE",
+      "SELECT id FROM material_versions WHERE tenant_id=$1 AND id=$2 AND course_id=$3 AND current_version=true AND (source_key LIKE 'UMBRELLA-%' OR source_key LIKE 'LECTURE-%') FOR UPDATE",
       [ctx.tenantId, versionId, COURSE],
     );
     if (!current.rows.length) throw new SourceError("stale_source", 409);
@@ -345,7 +376,9 @@ export async function listMaterials(ctx: AuthContext) {
       )
   ).rows;
   const umbrellaRows = rows.filter(
-    (r) => r.role === "umbrella" && r.source_key.startsWith(UMBRELLA_PREFIX),
+    (r) =>
+      (r.role === "umbrella" && r.source_key.startsWith(UMBRELLA_PREFIX)) ||
+      (r.role === "instructor" && r.source_key.startsWith(LECTURE_PREFIX)),
   );
   const counts = umbrellaRows.length
     ? (
@@ -357,7 +390,7 @@ export async function listMaterials(ctx: AuthContext) {
           )
       ).rows
     : [];
-  const umbrellas =
+  const uploaded =
     ctx.role !== "instructor"
       ? []
       : [...new Set(umbrellaRows.map((r) => r.source_key))].map((key) => {
@@ -383,7 +416,8 @@ export async function listMaterials(ctx: AuthContext) {
           };
         });
   return {
-    umbrellas,
+    umbrellas: uploaded.filter((u) => u.sourceKey.startsWith(UMBRELLA_PREFIX)),
+    lectures: uploaded.filter((u) => u.sourceKey.startsWith(LECTURE_PREFIX)),
     materials: sourceManifest.map((entry) => ({
       sourceKey: entry.source_key,
       title: "title" in entry ? entry.title : entry.source_key,
