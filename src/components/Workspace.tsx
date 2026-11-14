@@ -36,7 +36,14 @@ import {
 import { FieldArt } from "./FieldArt";
 import { CourseConceptMap } from "./CourseConceptMap";
 import { MaterialsPanel, KnowledgePanel, LaunchPanel } from "./sources";
-import { StudentHome, Learn, type LearnOptions } from "./student";
+import {
+  StudentHome,
+  Learn,
+  DailyReview,
+  ExamReadiness,
+  TutorChat,
+  type LearnOptions,
+} from "./student";
 type Lang = "ar" | "en";
 type Role = "student" | "instructor" | "advisor";
 export type RowData = {
@@ -113,8 +120,8 @@ const STUDENT_NAV = [
   ["home", "الرئيسية", "Home", House],
   ["courses", "المحاضرات", "Lectures", BookOpen],
   ["map", "الخريطة", "Map", Network],
-  ["practice", "التدريب", "Practice", NotebookPen],
-  ["timeline", "ما تعلّمته", "My progress", Clock3],
+  ["review", "المراجعة", "Review", NotebookPen],
+  ["exam", "جاهزية الامتحان", "Exam readiness", GraduationCap],
 ] as const;
 const INSTRUCTOR_NAV = [
   ["materials", "١ · رفع المواد", "1 · Upload materials", Upload],
@@ -194,6 +201,7 @@ export function Workspace({
     } catch {}
     L(next);
   };
+  const [tutorOpen, TO] = useState(false);
   const [learnTarget, LT] = useState<{
     objectiveId: string | null;
     diagnostic: boolean;
@@ -557,6 +565,7 @@ export function Workspace({
                   lang={lang}
                   t={t}
                   learn={learn}
+                  go={go}
                   startDiagnostic={() => {
                     LT({
                       objectiveId: null,
@@ -565,6 +574,23 @@ export function Workspace({
                     });
                     go("learn");
                   }}
+                />
+              )}
+              {view === "review" && (
+                <DailyReview
+                  lang={lang}
+                  t={t}
+                  perform={performQuiet}
+                  back={() => go("home")}
+                />
+              )}
+              {view === "exam" && (
+                <ExamReadiness
+                  data={data}
+                  lang={lang}
+                  t={t}
+                  perform={performQuiet}
+                  learn={learn}
                 />
               )}
               {view === "learn" && learnTarget && (
@@ -927,6 +953,35 @@ export function Workspace({
               ? t("قاعدة محلية للاختبار", "Local test database")
               : t("تقدّم محفوظ على السيرفر", "Progress saved on the server")}
           </footer>
+          {user?.role === "student" && data && !tutorOpen && (
+            <button
+              className="btn primary"
+              onClick={() => TO(true)}
+              style={{
+                position: "fixed",
+                insetInlineEnd: 16,
+                bottom: 16,
+                zIndex: 40,
+                borderRadius: 24,
+              }}
+            >
+              {t("اسأل المساعد", "Ask the tutor")}
+            </button>
+          )}
+          {user?.role === "student" && tutorOpen && (
+            <TutorChat
+              lang={lang}
+              t={t}
+              concept={
+                view === "learn" && learnTarget?.objectiveId
+                  ? (data?.path?.nodes || []).find(
+                      (n: any) => n.objectiveId === learnTarget.objectiveId,
+                    )?.label
+                  : null
+              }
+              close={() => TO(false)}
+            />
+          )}
         </main>
       </div>
       {menu && (

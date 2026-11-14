@@ -1888,7 +1888,171 @@ export function LaunchPanel({
         </div>
         {done && <p role="status">{done}</p>}
       </Box>
+      <CourseRules
+        lang={lang}
+        t={t}
+        onError={onError}
+        concepts={(knowledge.concepts || [])
+          .filter((c: any) => coverage[c.id])
+          .map((c: any) => ({ id: c.id, label: c.data?.label }))}
+      />
     </>
+  );
+}
+/** IN6: the rules the router and the tutor read — exams with concept weights, tutor strictness. */
+function CourseRules({
+  lang,
+  t,
+  onError,
+  concepts,
+}: {
+  lang: Lang;
+  t: Translate;
+  onError: (s: string) => void;
+  concepts: { id: string; label: { ar: string; en: string } }[];
+}) {
+  const [workspace, W] = useState<any>(null),
+    [name, N] = useState("Midterm"),
+    [date, D] = useState(""),
+    [weights, WT] = useState<Record<string, number>>({}),
+    [saved, S] = useState("");
+  const load = () =>
+    request("/api/workspace", undefined, lang)
+      .then(W)
+      .catch((e) => onError(e.message));
+  useEffect(() => {
+    load();
+  }, []);
+  const act = async (body: any, message: string) => {
+    onError("");
+    try {
+      await request("/api/learning", body, lang);
+      S(message);
+      await load();
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
+  const strictness =
+    workspace?.settings?.tutorStrictness || "hints-then-answer";
+  return (
+    <Box cls="end">
+      <h2>{t("قواعد المقرر", "Course rules")}</h2>
+      <label>
+        {t("أسلوب المساعد مع أسئلة الطلاب", "How the tutor answers students")}
+        <select
+          value={strictness}
+          onChange={(e) =>
+            act(
+              { action: "course-settings", tutorStrictness: e.target.value },
+              t("حُفظ أسلوب المساعد.", "Tutor setting saved."),
+            )
+          }
+        >
+          <option value="hints-only">
+            {t(
+              "تلميحات فقط، بلا إجابة مباشرة",
+              "Hints only, never the direct answer",
+            )}
+          </option>
+          <option value="hints-then-answer">
+            {t(
+              "تلميحات ثم الإجابة إن كرّر السؤال",
+              "Hints first, then the answer if asked again",
+            )}
+          </option>
+          <option value="answer-allowed">
+            {t("إجابة مباشرة من أول مرة", "Direct answer straight away")}
+          </option>
+        </select>
+      </label>
+      <h3>{t("الامتحانات", "Exams")}</h3>
+      {(workspace?.exams || []).map((e: any) => (
+        <div className="row" key={e.id}>
+          <strong>{e.data.name}</strong>
+          <span>
+            {e.data.date} · {e.data.concepts.length} {t("مفهومًا", "concepts")}
+          </span>
+        </div>
+      ))}
+      {concepts.length === 0 ? (
+        <p>
+          {t(
+            "انشر أسئلة لبعض المفاهيم أولًا؛ الامتحان يُبنى على مفاهيم لها أسئلة.",
+            "Publish questions for some concepts first; an exam is built from concepts that have questions.",
+          )}
+        </p>
+      ) : (
+        <>
+          <div className="two-columns">
+            <label>
+              {t("اسم الامتحان", "Exam name")}
+              <input value={name} onChange={(e) => N(e.target.value)} />
+            </label>
+            <label>
+              {t("تاريخ الامتحان", "Exam date")}
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => D(e.target.value)}
+              />
+            </label>
+          </div>
+          <p>
+            <small>
+              {t(
+                "وزن كل مفهوم في الامتحان من ٠ (غير داخل) إلى ٥ (الأهم).",
+                "Weight of each concept in the exam, from 0 (not included) to 5 (most important).",
+              )}
+            </small>
+          </p>
+          <div className="two-columns">
+            {concepts.map((c) => (
+              <label key={c.id}>
+                {localized(c.label, lang)}
+                <input
+                  type="number"
+                  min={0}
+                  max={5}
+                  value={weights[c.id] ?? 1}
+                  onChange={(e) =>
+                    WT({ ...weights, [c.id]: Number(e.target.value) })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+          <div className="end">
+            <Button
+              primary
+              disabled={!name.trim() || !date}
+              onClick={() =>
+                act(
+                  {
+                    action: "exam-save",
+                    name: name.trim(),
+                    date,
+                    concepts: concepts
+                      .map((c) => ({
+                        conceptId: c.id,
+                        weight: weights[c.id] ?? 1,
+                      }))
+                      .filter((c) => c.weight > 0),
+                  },
+                  t(
+                    "حُفظ الامتحان. يرى الطلاب جاهزيتهم الآن.",
+                    "Exam saved. Students can see their readiness now.",
+                  ),
+                )
+              }
+            >
+              {t("حفظ الامتحان", "Save exam")}
+            </Button>
+          </div>
+        </>
+      )}
+      {saved && <p role="status">{saved}</p>}
+    </Box>
   );
 }
 function TeachingEditor({
