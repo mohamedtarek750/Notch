@@ -1,0 +1,142 @@
+{
+  "status": "passed",
+  "mode": "LIVE Neon + Gemini",
+  "target": "https://tilwa-6twb3yvyj-mohamedtarek750s-projects.vercel.app",
+  "runId": "5b70af55-25d5-4444-a971-19bf3a5bda82",
+  "at": "2026-11-13T13:53:02.477Z",
+  "model": "gemini-3.5-flash-lite",
+  "results": [
+    {
+      "language": "ar",
+      "requestId": "eeeb8881-3c49-4e9b-b4cf-07888d23da01",
+      "model": "gemini-3.5-flash-lite",
+      "tokens": 1123,
+      "generationCalls": 1,
+      "evidence": [
+        {
+          "source": "CET351-L4",
+          "page": 18,
+          "section": null
+        },
+        {
+          "source": "CET351-L4",
+          "page": 19,
+          "section": null
+        },
+        {
+          "source": "TILWA-PILOT-FOUNDATIONS",
+          "page": null,
+          "section": "U2"
+        }
+      ],
+      "status": "passed"
+    },
+    {
+      "language": "en",
+      "requestId": "e7cd83ed-68e5-4150-9e0d-1c820e5bb60f",
+      "model": "gemini-3.5-flash-lite",
+      "tokens": 1439,
+      "generationCalls": 1,
+      "evidence": [
+        {
+          "source": "CET351-L4",
+          "page": 18,
+          "section": null
+        },
+        {
+          "source": "CET351-L4",
+          "page": 19,
+          "section": null
+        },
+        {
+          "source": "TILWA-PILOT-FOUNDATIONS",
+          "page": null,
+          "section": "U2"
+        }
+      ],
+      "status": "passed"
+    },
+    {
+      "language": "mixed",
+      "requestId": "dd617f42-2525-4aa0-9ce1-6036b479379a",
+      "model": "gemini-3.5-flash-lite",
+      "tokens": 1315,
+      "generationCalls": 1,
+      "evidence": [
+        {
+          "source": "CET351-L4",
+          "page": 18,
+          "section": null
+        },
+        {
+          "source": "CET351-L4",
+          "page": 19,
+          "section": null
+        },
+        {
+          "source": "TILWA-PILOT-FOUNDATIONS",
+          "page": null,
+          "section": "U2"
+        }
+      ],
+      "status": "passed"
+    }
+  ],
+  "checks": [
+    {
+      "name": "neon-backed-published-session",
+      "status": "passed",
+      "details": {
+        "sessionId": "session-f4248584-48ff-4817-8177-e786fc19edb1",
+        "graphVersion": "da3b49f8-8335-400d-aa76-fac9380970df"
+      }
+    },
+    {
+      "name": "real-gemini-three-languages",
+      "status": "passed",
+      "details": {
+        "languages": [
+          "ar",
+          "en",
+          "mixed"
+        ],
+        "realGenerationCalls": 3,
+        "newCallsThisInvocation": 0
+      }
+    },
+    {
+      "name": "bilingual-out-of-scope-zero-generation",
+      "status": "passed"
+    },
+    {
+      "name": "nonfixture-practice-idempotent",
+      "status": "passed",
+      "details": {
+        "itemId": "item-f4248584-48ff-4817-8177-e786fc19edb1",
+        "objective": "recall.calculate",
+        "correct": true,
+        "moderation": "not-required",
+        "assisted": false,
+        "attempts": 1,
+        "answerEvents": 1
+      }
+    },
+    {
+      "name": "neon-progress-after-new-login",
+      "status": "passed"
+    },
+    {
+      "name": "protected-exam-other-session-zero-generation",
+      "status": "passed"
+    },
+    {
+      "name": "advisor-assignment-and-tenant-isolation",
+      "status": "passed"
+    }
+  ],
+  "newGenerationCalls": 0,
+  "totalVerifiedGenerationCalls": 3,
+  "totalProviderTokens": 3877,
+  "environmentPublication": false,
+  "deployment": false
+}

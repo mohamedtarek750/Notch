@@ -1,0 +1,325 @@
+{
+  "sourceKey": "GFG-UMBRELLA",
+  "sourceUrl": "https://www.geeksforgeeks.org/machine-learning/ai-ml-and-data-science-tutorial-learn-ai-ml-and-data-science/",
+  "retrievedAt": "2026-11-13T15:02:56.701761+00:00",
+  "status": "reference_link",
+  "rights": {
+    "link": true,
+    "articleTextImported": false,
+    "sendArticleTextToModel": false
+  },
+  "topics": [
+    {
+      "title": "Python for Machine Learning",
+      "href": "https://www.geeksforgeeks.org/machine-learning/python-for-machine-learning/"
+    },
+    {
+      "title": "Machine Learning with R",
+      "href": "https://www.geeksforgeeks.org/r-machine-learning/introduction-to-machine-learning-in-r/"
+    },
+    {
+      "title": "Machine Learning Algorithms",
+      "href": "https://www.geeksforgeeks.org/machine-learning/machine-learning-algorithms/"
+    },
+    {
+      "title": "Math for Machine Learning",
+      "href": "https://www.geeksforgeeks.org/machine-learning/machine-learning-mathematics/"
+    },
+    {
+      "title": "Machine Learning Interview Questions",
+      "href": "https://www.geeksforgeeks.org/machine-learning/machine-learning-interview-questions/"
+    },
+    {
+      "title": "ML Projects",
+      "href": "https://www.geeksforgeeks.org/machine-learning/machine-learning-projects/"
+    },
+    {
+      "title": "Deep Learning",
+      "href": "https://www.geeksforgeeks.org/deep-learning/deep-learning-tutorial/"
+    },
+    {
+      "title": "Data Science",
+      "href": "https://www.geeksforgeeks.org/data-science/data-science-for-beginners/"
+    },
+    {
+      "title": "Python Tutorial",
+      "href": "https://www.geeksforgeeks.org/python/python-programming-language-tutorial/"
+    },
+    {
+      "title": "Python Quizzes",
+      "href": "https://www.geeksforgeeks.org/python/python-quizzes/"
+    },
+    {
+      "title": "Python Interview Questions",
+      "href": "https://www.geeksforgeeks.org/python/python-interview-questions/"
+    },
+    {
+      "title": "Linear Algebra for Data Science",
+      "href": "https://www.geeksforgeeks.org/machine-learning/ml-linear-algebra-operations/"
+    },
+    {
+      "title": "Statistics for Data Science",
+      "href": "https://www.geeksforgeeks.org/data-science/statistics-for-data-science/"
+    },
+    {
+      "title": "Probability for Data Science",
+      "href": "https://www.geeksforgeeks.org/data-science/probability-distributions-in-data-science/"
+    },
+    {
+      "title": "Calculus for Data Science",
+      "href": "https://www.geeksforgeeks.org/machine-learning/calculus-for-machine-learning-key-concepts-and-applications/"
+    },
+    {
+      "title": "Linear Algebra",
+      "href": "https://www.geeksforgeeks.org/quizzes/linear-algebra-gq/"
+    },
+    {
+      "title": "Statistics",
+      "href": "https://www.geeksforgeeks.org/maths/statistics-questions/"
+    },
+    {
+      "title": "Probability",
+      "href": "https://www.geeksforgeeks.org/quizzes/probability-gq/"
+    },
+    {
+      "title": "Data Visualization Tutorial",
+      "href": "https://www.geeksforgeeks.org/data-visualization/python-data-visualization-tutorial/"
+    },
+    {
+      "title": "Machine Learning Tutorial",
+      "href": "https://www.geeksforgeeks.org/machine-learning/machine-learning/"
+    },
+    {
+      "title": "MLOps Tutorial",
+      "href": "https://www.geeksforgeeks.org/machine-learning/mlops-tutorial/"
+    },
+    {
+      "title": "Machine Learning Quiz",
+      "href": "https://www.geeksforgeeks.org/quizzes/machine-learning-quiz-questions-and-answers/"
+    },
+    {
+      "title": "Data Science Tutorial",
+      "href": "https://www.geeksforgeeks.org/data-science/data-science-with-python-tutorial/"
+    },
+    {
+      "title": "Data Science Projects",
+      "href": "https://www.geeksforgeeks.org/data-science/top-data-science-projects/"
+    },
+    {
+      "title": "Data Science Quiz",
+      "href": "https://www.geeksforgeeks.org/quizzes/data-science-quiz/"
+    },
+    {
+      "title": "Data Science Interview Questions",
+      "href": "https://www.geeksforgeeks.org/data-science/data-science-interview-questions-and-answers/"
+    },
+    {
+      "title": "Data Science Tutorial",
+      "href": "https://www.geeksforgeeks.org/r-language/data-science-with-r-tutorial/"
+    },
+    {
+      "title": "Machine Learning with R",
+      "href": "https://www.geeksforgeeks.org/machine-learning/machine-learning-with-r/"
+    },
+    {
+      "title": "Deep Learning with R",
+      "href": "https://www.geeksforgeeks.org/r-language/deep-learning-in-r-programming/"
+    },
+    {
+      "title": "Deep Learning Projects",
+      "href": "https://www.geeksforgeeks.org/deep-learning/deep-learning-projects/"
+    },
+    {
+      "title": "Deep Learning Quiz",
+      "href": "https://www.geeksforgeeks.org/quizzes/introduction-to-deep-learning-and-neural-networks-1/"
+    },
+    {
+      "title": "LLM Tutorial",
+      "href": "https://www.geeksforgeeks.org/deep-learning/large-language-model-llm-tutorial/"
+    },
+    {
+      "title": "FastAPI Tutorial",
+      "href": "https://www.geeksforgeeks.org/python/fastapi-tutorial/"
+    },
+    {
+      "title": "Flask Tutorial",
+      "href": "https://www.geeksforgeeks.org/python/flask-tutorial/"
+    },
+    {
+      "title": "Streamlit Tutorial",
+      "href": "https://www.geeksforgeeks.org/python/a-beginners-guide-to-streamlit/"
+    },
+    {
+      "title": "Gradio Tutorial",
+      "href": "https://www.geeksforgeeks.org/artificial-intelligence/python-creating-user-interfaces-for-ai-models-using-gradio/"
+    },
+    {
+      "title": "Deploying Models using AutoML",
+      "href": "https://www.geeksforgeeks.org/machine-learning/evaluate-test-and-deploy-your-model-with-automl/"
+    },
+    {
+      "title": "Introduction 3 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/introduction-machine-learning/"
+    },
+    {
+      "title": "Types 7 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/types-of-machine-learning/"
+    },
+    {
+      "title": "ML Pipeline 4 min read",
+      "href": "https://www.geeksforgeeks.org/blogs/machine-learning-pipeline/"
+    },
+    {
+      "title": "Applications 2 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/machine-learning-introduction/"
+    },
+    {
+      "title": "ML with Python 3 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/machine-learning-with-python/"
+    },
+    {
+      "title": "Numpy 3 min read",
+      "href": "https://www.geeksforgeeks.org/python/numpy-tutorial/"
+    },
+    {
+      "title": "Data Preprocessing 4 min read",
+      "href": "https://www.geeksforgeeks.org/data-analysis/data-preprocessing-machine-learning-python/"
+    },
+    {
+      "title": "EDA 6 min read",
+      "href": "https://www.geeksforgeeks.org/data-analysis/exploratory-data-analysis-in-python/"
+    },
+    {
+      "title": "Feature Engineering 4 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/what-is-feature-engineering/"
+    },
+    {
+      "title": "Dimensionality Reduction 3 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/dimensionality-reduction/"
+    },
+    {
+      "title": "Feature Selection 4 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/feature-selection-techniques-in-machine-learning/"
+    },
+    {
+      "title": "Supervised Learning 4 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/supervised-machine-learning/"
+    },
+    {
+      "title": "Linear Regression 10 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/ml-linear-regression/"
+    },
+    {
+      "title": "Logistic Regression 9 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/understanding-logistic-regression/"
+    },
+    {
+      "title": "Decision Tree 8 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/decision-tree-introduction-example/"
+    },
+    {
+      "title": "Random Forest 4 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/random-forest-algorithm-in-machine-learning/"
+    },
+    {
+      "title": "KNN 7 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/k-nearest-neighbours/"
+    },
+    {
+      "title": "SVM 9 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/support-vector-machine-algorithm/"
+    },
+    {
+      "title": "Naive Bayes 6 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/naive-bayes-classifiers/"
+    },
+    {
+      "title": "Unsupervised Learning 5 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/unsupervised-learning/"
+    },
+    {
+      "title": "K means Clustering 7 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/k-means-clustering-introduction/"
+    },
+    {
+      "title": "Hierarchical Clustering 6 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/hierarchical-clustering/"
+    },
+    {
+      "title": "DBSCAN Clustering 6 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/dbscan-clustering-in-ml-density-based-clustering/"
+    },
+    {
+      "title": "Apriori Algorithm 5 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/apriori-algorithm/"
+    },
+    {
+      "title": "FP Growth Algorithm 4 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/frequent-pattern-growth-algorithm/"
+    },
+    {
+      "title": "ECLAT Algorithm 5 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/ml-eclat-algorithm/"
+    },
+    {
+      "title": "Evaluation Metrics 9 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/metrics-for-machine-learning-model/"
+    },
+    {
+      "title": "Regularization 5 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/regularization-in-machine-learning/"
+    },
+    {
+      "title": "Cross Validation 5 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/cross-validation-machine-learning/"
+    },
+    {
+      "title": "Hyperparameter Tuning 5 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/hyperparameter-tuning/"
+    },
+    {
+      "title": "Underfitting and Overfitting 3 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/underfitting-and-overfitting-in-machine-learning/"
+    },
+    {
+      "title": "Bias and Variance 6 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/bias-vs-variance-in-machine-learning/"
+    },
+    {
+      "title": "Reinforcement Learning 8 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/what-is-reinforcement-learning/"
+    },
+    {
+      "title": "Semi-Supervised Learning 5 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/ml-semi-supervised-learning/"
+    },
+    {
+      "title": "Self-Supervised Learning 5 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/self-supervised-learning-ssl/"
+    },
+    {
+      "title": "Ensemble Learning 6 min read",
+      "href": "https://www.geeksforgeeks.org/machine-learning/a-comprehensive-guide-to-ensemble-learning/"
+    },
+    {
+      "title": "Data Science 360 Course 2 min read",
+      "href": "https://www.geeksforgeeks.org/courses/complete-data-science-course-with-machine-learning"
+    },
+    {
+      "title": "AI, ML & Data Science",
+      "href": "https://www.geeksforgeeks.org/machine-learning/ai-ml-and-data-science-tutorial-learn-ai-ml-and-data-science/"
+    },
+    {
+      "title": "ML and Data Science",
+      "href": "https://www.geeksforgeeks.org/courses/category/machine-learning-data-science"
+    },
+    {
+      "title": "Python",
+      "href": "https://www.geeksforgeeks.org/videos/category/python/"
+    },
+    {
+      "title": "Data Science",
+      "href": "https://www.geeksforgeeks.org/videos/category/data-science/"
+    }
+  ]
+}

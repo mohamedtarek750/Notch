@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-11-13T15:35:44.421Z",
+  "releaseId": "939e6558-5036-40d1-8435-4ef7f058a0c5",
+  "environment": "real-postgresql",
+  "title": {
+    "ar": "خريطة مفاهيم المحاضرات الست ومصادر الأساسيات",
+    "en": "Six-lecture concept map and foundational sources"
+  },
+  "reviewBasis": {
+    "ar": "جرد أكاديمي لجميع الصفحات الـ137، مع مراجعة بصرية للتصحيحات ومراجعة تأليف للمادة الأصلية المساندة. مقترحات Gemini محدودة السياق ومحفوظة للمراجعة؛ الخريطة الشاملة مبنية على الجرد المراجع. هذه مراجعة تنفيذية وليست توقيعًا مؤسسيًا.",
+    "en": "Academic inventory of all 137 pages, visually reviewed corrections, and author review of the original supplementary foundations. Bounded Gemini proposals are retained for review; the comprehensive graph is assembled from the reviewed inventory. This is an implementation review, not institutional sign-off."
+  },
+  "totals": {
+    "concepts": 225,
+    "linkedConcepts": 225,
+    "edges": 259,
+    "pages": 137,
+    "reviewedPages": 137,
+    "teachingPages": 103,
+    "mappedTeachingPages": 103
+  },
+  "coverage": [
+    {
+      "sourceKey": "CET351-L1",
+      "totalPages": 18,
+      "pageCount": 18,
+      "reviewedPages": 18,
+      "approvedPageCount": 12,
+      "teachingPages": 12,
+      "mappedTeachingPages": 12,
+      "conceptCount": 55,
+      "status": "complete"
+    },
+    {
+      "sourceKey": "CET351-L2",
+      "totalPages": 24,
+      "pageCount": 24,
+      "reviewedPages": 24,
+      "approvedPageCount": 19,
+      "teachingPages": 19,
+      "mappedTeachingPages": 19,
+      "conceptCount": 76,
+      "status": "complete"
+    },
+    {
+      "sourceKey": "CET351-L3",
+      "totalPages": 18,
+      "pageCount": 18,
+      "reviewedPages": 18,
+      "approvedPageCount": 12,
+      "teachingPages": 12,
+      "mappedTeachingPages": 12,
+      "conceptCount": 22,
+      "status": "complete"
+    },
+    {
+      "sourceKey": "CET351-L4",
+      "totalPages": 25,
+      "pageCount": 25,
+      "reviewedPages": 25,
+      "approvedPageCount": 19,
+      "teachingPages": 19,
+      "mappedTeachingPages": 19,
+      "conceptCount": 40,
+      "status": "complete"
+    },
+    {
+      "sourceKey": "CET351-L5",
+      "totalPages": 26,
+      "pageCount": 26,
+      "reviewedPages": 26,
+      "approvedPageCount": 21,
+      "teachingPages": 21,
+      "mappedTeachingPages": 21,
+      "conceptCount": 44,
+      "status": "complete"
+    },
+    {
+      "sourceKey": "CET351-L6",
+      "totalPages": 26,
+      "pageCount": 26,
+      "reviewedPages": 26,
+      "approvedPageCount": 21,
+      "teachingPages": 20,
+      "mappedTeachingPages": 20,
+      "conceptCount": 31,
+      "status": "complete"
+    }
+  ],
+  "sourceVersions": [
+    {
+      "sourceKey": "CET351-L6",
+      "hash": "a48d31b85fd7c4ef5156aa48258b70e76d6635d9d1fa5689754135b54f27412e",
+      "status": "published"
+    },
+    {
+      "sourceKey": "CET351-L5",
+      "hash": "052675274009033c6a9e314a5115e1ff4d392eb53df58a25947b8824510e66a1",
+      "status": "published"
+    },
+    {
+      "sourceKey": "CET351-L1",
+      "hash": "131f64018e26b5ac373648ef01a9d56660cf27d3a5044dade16b397948c323b7",
+      "status": "published"
+    },
+    {
+      "sourceKey": "CET351-L2",
+      "hash": "86966d547c7b7ffb825cb934e04892058541e80b2927997d129f8da674c57386",
+      "status": "published"
+    },
+    {
+      "sourceKey": "CET351-L3",
+      "hash": "f63b01b6c17967462e948529a0b0055f096d1244d75f7931e85a1fbc87ab464c",
+      "status": "published"
+    },
+    {
+      "sourceKey": "CET351-L4",
+      "hash": "d6a48106e07392a1bf45034c0381b9becf854b8306bfddf0c0a995851cf042b0",
+      "status": "published"
+    },
+    {
+      "sourceKey": "TILWA-PILOT-FOUNDATIONS",
+      "hash": "315ee669733045af80791213afa1f3a3e590512c9613cb03f82ebc6eaebc8fb0",
+      "status": "published"
+    }
+  ],
+  "sourceReview": {
+    "lecturePages": 137,
+    "revisedLectures": 6,
+    "correctedPages": 82,
+    "umbrellaSections": 45,
+    "institutionalSignoff": false
+  },
+  "gemini": {
+    "mode": "real-bounded-advisory",
+    "modelId": "gemini-3.5-flash-lite",
+    "successfulLectureCalls": 6,
+    "status": "pending-review",
+    "comprehensiveGraphOrigin": "reviewed-instructor-inventory"
+  },
+  "preservation": {
+    "unchangedExisting": true,
+    "beforeCount": 14,
+    "afterCount": 14,
+    "addedCount": 0,
+    "changedCount": 0,
+    "missingCount": 0
+  },
+  "references": {
+    "gfgMode": "reference_link",
+    "gfgTextUsed": false,
+    "supplementaryEvidenceDistinct": true
+  },
+  "exports": {
+    "authenticatedMapEndpoint": "/api/knowledge/map",
+    "privateMapFile": ".tilwa-private/comprehensive/published-map.json"
+  }
+}

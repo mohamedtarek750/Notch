@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "stage": "staged",
+  "target": "https://tilwa-4blvdxyy2-mohamedtarek750s-projects.vercel.app",
+  "startedAt": "2026-11-13T20:25:45.597Z",
+  "status": "passed",
+  "checks": [
+    {
+      "name": "unauthenticated-map-denied",
+      "status": "passed"
+    },
+    {
+      "name": "missing-invitation-denied-ar",
+      "status": "passed"
+    },
+    {
+      "name": "missing-invitation-denied-en",
+      "status": "passed"
+    },
+    {
+      "name": "invalid-invitation-denied",
+      "status": "passed"
+    },
+    {
+      "name": "denied-signins-create-no-neon-tenant",
+      "status": "passed"
+    },
+    {
+      "name": "three-server-roles-in-existing-invited-workspace",
+      "status": "passed",
+      "details": {
+        "cookieOnlyRoleSwitches": 2
+      }
+    },
+    {
+      "name": "valid-signins-create-no-neon-tenant",
+      "status": "passed"
+    },
+    {
+      "name": "student-comprehensive-approved-map",
+      "status": "passed",
+      "details": {
+        "releaseId": "939e6558-5036-40d1-8435-4ef7f058a0c5",
+        "concepts": 225,
+        "edges": 259,
+        "reviewedPages": 137,
+        "completeLectures": 6
+      }
+    },
+    {
+      "name": "instructor-current-materials-and-gfg-reference",
+      "status": "passed",
+      "details": {
+        "publishedSources": 7,
+        "gfgArticleTextUsed": false
+      }
+    },
+    {
+      "name": "student-cannot-propose-or-import-curriculum",
+      "status": "passed",
+      "details": {
+        "deniedOperations": 2
+      }
+    },
+    {
+      "name": "all-map-locators-match-approved-material-api",
+      "status": "passed",
+      "details": {
+        "uniqueApprovedLocators": 149,
+        "sourceApis": 7,
+        "sourceViewerHtmlPages": 7
+      }
+    },
+    {
+      "name": "assigned-advisor-sees-existing-evidence-and-recommendation",
+      "status": "passed",
+      "details": {
+        "assignedStudents": 1,
+        "evidenceRecords": 5
+      }
+    },
+    {
+      "name": "logout-revokes-session-and-new-context-preserves-progress",
+      "status": "passed",
+      "details": {
+        "fingerprint": "eb2e0ae1de8e27a174d4be98a23278432b425362fe8a98ce891fc09bc0efb640",
+        "persistedRecordCounts": {
+          "states": 1,
+          "events": 3,
+          "recommendations": 1,
+          "progress": 1,
+          "attempts": 1,
+          "submissions": 0,
+          "portfolio": 0,
+          "grades": 2,
+          "preferences": 1
+        }
+      }
+    },
+    {
+      "name": "one-real-gemini-arabic-recall-with-openable-evidence",
+      "status": "passed",
+      "details": {
+        "model": "gemini-3.5-flash-lite",
+        "tokens": 2023,
+        "generationCalls": 1,
+        "sourceSnapshotAt": "2026-11-13T20:26:08.533Z",
+        "retrievedAt": "2026-11-13T20:26:09.093Z",
+        "generatedAt": "2026-11-13T20:26:09.108Z",
+        "databaseFirstVerification": "persisted-neon-trace-and-precall-snapshot",
+        "citations": [
+          {
+            "sourceKey": "CET351-L4",
+            "page": 19,
+            "section": null
+          },
+          {
+            "sourceKey": "TILWA-PILOT-FOUNDATIONS",
+            "page": null,
+            "section": "U29"
+          }
+        ],
+        "progressUnchanged": true
+      }
+    }
+  ],
+  "tutorRequests": 1,
+  "verification": {
+    "http": "real",
+    "database": "real-neon-read-only",
+    "browser": "not-run-by-this-script",
+    "model": "real-gemini-verified"
+  },
+  "boundaries": [
+    "This script verifies real HTTP responses. Source viewer HTML responses are checked; rendering and RTL/LTR interaction require the separate browser runner.",
+    "Sign-in/sign-out creates and revokes authentication sessions. No workspace, curriculum, attempt, completion, exam or mastery mutation is requested.",
+    "One actual tutor request is explicitly enabled; it can write a model trace and tutor memory. No provider retry is performed.",
+    "Direct SQL checks use the configured Neon connection and never write application records."
+  ],
+  "finishedAt": "2026-11-13T20:26:15.217Z"
+}

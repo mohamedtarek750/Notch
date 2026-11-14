@@ -1,0 +1,606 @@
+{
+  "verifiedAt": "2026-11-13T15:26:23.885031+00:00",
+  "mode": "offline: local PostgreSQL/PGlite; deterministic injected model where required, not Gemini",
+  "passed": 128,
+  "failed": 0,
+  "success": true,
+  "productionBuild": "passed",
+  "typecheck": "passed within Next production build",
+  "suites": [
+    {
+      "file": "ai-knowledge.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model registers GFG as link only, six pending PDFs and distinct original supplement",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model deduplicates identical supplement and preserves pending status",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model student and advisor cannot view pending source or get unapproved AI evidence",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model instructor graph proposals cannot send pending source text to a model",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model requires explicit review and publication before tutoring",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model proposes, reviews and publishes a grounded graph with stable bilingual identities",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model generates bilingual item/session drafts and publishes course-shared delivery content",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model denies unrelated and prompt-injection requests without generation",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model abstains on educational claims without matching permitted source",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model enforces protected exam across tabs and causes zero provider calls",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model revoked course and cross-tenant object access fail closed",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model database outage causes zero provider calls and localized recoverable status",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model RLS hides material bytes and chunks from a different tenant under non-owner role",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model provider outage exposes only a reviewed extract after successful DB authorization",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model does not substitute supplement text for the unverified L4 60% example",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model withholds a generated answer if a protected exam begins while generation is in flight",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model resolves AR/EN followups only from own current authorized chat and clear resets continuity",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model correction versions source extract and preserves original citation text",
+          "status": "passed"
+        },
+        {
+          "name": "database-first AI using actual local PostgreSQL and injected deterministic model deduplicates simultaneous reuploads under a per-source transaction lock",
+          "status": "passed"
+        },
+        {
+          "name": "graph governance and output validation bilingual conditional probability has one stable application-owned concept ID",
+          "status": "passed"
+        },
+        {
+          "name": "graph governance and output validation rejects phantom endpoints, self loops, duplicate edges and prerequisite cycles",
+          "status": "passed"
+        },
+        {
+          "name": "graph governance and output validation rejects fabricated citations and mathematically wrong worked examples",
+          "status": "passed"
+        },
+        {
+          "name": "graph governance and output validation accepts correct numeric and exact authorized evidence membership",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "auth-db.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "signed sessions and database-first authorization (local PostgreSQL) verifies a real DB session and ignores role headers",
+          "status": "passed"
+        },
+        {
+          "name": "signed sessions and database-first authorization (local PostgreSQL) denies tampering and unsigned role claims",
+          "status": "passed"
+        },
+        {
+          "name": "signed sessions and database-first authorization (local PostgreSQL) denies an unauthorized role and course",
+          "status": "passed"
+        },
+        {
+          "name": "signed sessions and database-first authorization (local PostgreSQL) enforces RLS as a non-owner runtime DB role",
+          "status": "passed"
+        },
+        {
+          "name": "signed sessions and database-first authorization (local PostgreSQL) blocks tutor in protected mode from any session",
+          "status": "passed"
+        },
+        {
+          "name": "signed sessions and database-first authorization (local PostgreSQL) revoked enrollment takes effect without a new token",
+          "status": "passed"
+        },
+        {
+          "name": "signed sessions and database-first authorization (local PostgreSQL) revoked membership takes effect without a new token",
+          "status": "passed"
+        },
+        {
+          "name": "sandbox role login and new-browser persistence gates demo mode before creating any account",
+          "status": "passed"
+        },
+        {
+          "name": "sandbox role login and new-browser persistence refuses demo account creation in a production deployment",
+          "status": "passed"
+        },
+        {
+          "name": "sandbox role login and new-browser persistence reuses private synthetic workspace with a recovery code after logout",
+          "status": "passed"
+        },
+        {
+          "name": "sandbox role login and new-browser persistence accepts browser Host when Next exposes an internal hostname",
+          "status": "passed"
+        },
+        {
+          "name": "sandbox role login and new-browser persistence rejects cross-origin mutation before authenticating",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "comprehensive-map.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "comprehensive course-to-umbrella map against actual local SQL, no provider keeps a relevant permitted umbrella foundation when many lectures match, within four passages",
+          "status": "passed"
+        },
+        {
+          "name": "comprehensive course-to-umbrella map against actual local SQL, no provider rejects students and advisors before staging any shared curriculum",
+          "status": "passed"
+        },
+        {
+          "name": "comprehensive course-to-umbrella map against actual local SQL, no provider requires real approved umbrella evidence; a GFG link alone cannot satisfy it",
+          "status": "passed"
+        },
+        {
+          "name": "comprehensive course-to-umbrella map against actual local SQL, no provider rejects missing pages, false quarantined claims and dangling page concepts",
+          "status": "passed"
+        },
+        {
+          "name": "comprehensive course-to-umbrella map against actual local SQL, no provider rejects duplicate bilingual identities and hard-prerequisite cycles",
+          "status": "passed"
+        },
+        {
+          "name": "comprehensive course-to-umbrella map against actual local SQL, no provider fails closed for foreign, unapproved, expired-rights and stale-version evidence",
+          "status": "passed"
+        },
+        {
+          "name": "comprehensive course-to-umbrella map against actual local SQL, no provider stages idempotently, requires review, then publishes full safe provenance and all 137 pages",
+          "status": "passed"
+        },
+        {
+          "name": "comprehensive course-to-umbrella map against actual local SQL, no provider retains IDs and immutable releases on replacement, with no top-30 ceiling or history rewriting",
+          "status": "passed"
+        },
+        {
+          "name": "comprehensive course-to-umbrella map against actual local SQL, no provider rechecks approval at publication and withdraws stale source locators without exposing text",
+          "status": "passed"
+        },
+        {
+          "name": "comprehensive course-to-umbrella map against actual local SQL, no provider bounds a scoped model proposal to the requested reviewed lecture and umbrella, with DB-first trace",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "comprehensive-publication.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "resumable comprehensive publication pure validation; no live providers resolves full ledger and real umbrella IDs while keeping reference metadata separate",
+          "status": "passed"
+        },
+        {
+          "name": "resumable comprehensive publication pure validation; no live providers excludes quarantined provenance and fails when it is a concept's only lecture evidence",
+          "status": "passed"
+        },
+        {
+          "name": "resumable comprehensive publication pure validation; no live providers fails closed for revoked evidence and missing actual umbrella mappings",
+          "status": "passed"
+        },
+        {
+          "name": "resumable comprehensive publication pure validation; no live providers uses only reviewed GFG index URLs and labels an unmatched term as a general index",
+          "status": "passed"
+        },
+        {
+          "name": "resumable comprehensive publication pure validation; no live providers detects changed/deleted historical rows without mistaking new learner work for a rewrite",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "deploy-existing.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "existing-resource deployment guard (offline) requires injected secrets, target and opt-in without any provider requests",
+          "status": "passed"
+        },
+        {
+          "name": "existing-resource deployment guard (offline) accepts one existing owner URL and optionally the same-branch migration alias",
+          "status": "passed"
+        },
+        {
+          "name": "existing-resource deployment guard (offline) uses supplied Neon aliases in order without requesting a new credential",
+          "status": "passed"
+        },
+        {
+          "name": "existing-resource deployment guard (offline) preserves an existing Preview session secret or generates one only for initial setup",
+          "status": "passed"
+        },
+        {
+          "name": "existing-resource deployment guard (offline) accepts an empty PostgreSQL database using read-only inventory",
+          "status": "passed"
+        },
+        {
+          "name": "existing-resource deployment guard (offline) excludes provider-managed Neon Auth metadata and never reads or changes its rows",
+          "status": "passed"
+        },
+        {
+          "name": "existing-resource deployment guard (offline) preserves a remote Gemini Preview key without forwarding the local proxy value",
+          "status": "passed"
+        },
+        {
+          "name": "existing-resource deployment guard (offline) uses an existing private CLI token when present and rejects malformed auth without exposing it",
+          "status": "passed"
+        },
+        {
+          "name": "existing-resource deployment guard (offline) refuses unrelated tables and overlapping names without a Tilwa migration ledger",
+          "status": "passed"
+        },
+        {
+          "name": "existing-resource deployment guard (offline) recognizes the actual applied Tilwa SQL and refuses drift, unknown migrations or real tenants",
+          "status": "passed"
+        },
+        {
+          "name": "existing-resource deployment guard (offline) creates only Preview variable entries and leaves Production-only values untouched",
+          "status": "passed"
+        },
+        {
+          "name": "existing-resource deployment guard (offline) adds a feature-branch Preview override without changing a shared Production variable",
+          "status": "passed"
+        },
+        {
+          "name": "existing-resource deployment guard (offline) uses keys from the selected branch or default Preview scope, never another branch",
+          "status": "passed"
+        },
+        {
+          "name": "existing-resource deployment guard (offline) refuses shared Production/Preview variables or branch overrides before changing any value",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "learning.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "learning evidence, LMS and private advising — local PostgreSQL; no model mock used keeps unknown evidence unassessed; ignores assistance, repeated families and stale evidence",
+          "status": "passed"
+        },
+        {
+          "name": "learning evidence, LMS and private advising — local PostgreSQL; no model mock used scores fresh families and separates calculation from metric choice; retry is exactly once",
+          "status": "passed"
+        },
+        {
+          "name": "learning evidence, LMS and private advising — local PostgreSQL; no model mock used persists across sign-out and fresh signed server session",
+          "status": "passed"
+        },
+        {
+          "name": "learning evidence, LMS and private advising — local PostgreSQL; no model mock used requires critique explanation and instructor moderation, records first wrong step separately",
+          "status": "passed"
+        },
+        {
+          "name": "learning evidence, LMS and private advising — local PostgreSQL; no model mock used offers optional transfer and a targeted recommendation for update direction",
+          "status": "passed"
+        },
+        {
+          "name": "learning evidence, LMS and private advising — local PostgreSQL; no model mock used enforces cross-tenant object ownership and assigned-advisor views",
+          "status": "passed"
+        },
+        {
+          "name": "learning evidence, LMS and private advising — local PostgreSQL; no model mock used blocks practice in a protected exam across sessions and hides bank keys",
+          "status": "passed"
+        },
+        {
+          "name": "learning evidence, LMS and private advising — local PostgreSQL; no model mock used supports assignment feedback, reviewed career artifacts and student visibility choice",
+          "status": "passed"
+        },
+        {
+          "name": "learning evidence, LMS and private advising — local PostgreSQL; no model mock used saves intervention wording and reversible instructor overrides",
+          "status": "passed"
+        },
+        {
+          "name": "learning evidence, LMS and private advising — local PostgreSQL; no model mock used redacts intervention identities and suppresses small-group after comparisons",
+          "status": "passed"
+        },
+        {
+          "name": "learning evidence, LMS and private advising — local PostgreSQL; no model mock used persists enrollment through an allowed catalog instead of granting role claims",
+          "status": "passed"
+        },
+        {
+          "name": "learning evidence, LMS and private advising — local PostgreSQL; no model mock used uses only a published graph with current approved evidence for prerequisite support",
+          "status": "passed"
+        },
+        {
+          "name": "learning evidence, LMS and private advising — local PostgreSQL; no model mock used reports correct QMS denominators with synthetic labels",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "postgres-pool.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "explicit official Neon transport and TLS/proxy policy retains TCP by default and requires explicit websocket selection",
+          "status": "passed"
+        },
+        {
+          "name": "explicit official Neon transport and TLS/proxy policy cannot weaken certificate verification through DSN sslmode",
+          "status": "passed"
+        },
+        {
+          "name": "explicit official Neon transport and TLS/proxy policy routes WSS through inherited HTTPS proxy and keeps certificate checks",
+          "status": "passed"
+        },
+        {
+          "name": "explicit official Neon transport and TLS/proxy policy honors NO_PROXY without disabling secure WSS",
+          "status": "passed"
+        },
+        {
+          "name": "explicit official Neon transport and TLS/proxy policy rejects plaintext WebSockets and unrelated endpoints before credentials can be used",
+          "status": "passed"
+        },
+        {
+          "name": "explicit official Neon transport and TLS/proxy policy supports multiple Neon host pools without capturing another pool host in the global constructor",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "provision.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "non-production provisioning prerequisite guard (offline) blocks missing secrets and has no network side effects when imported",
+          "status": "passed"
+        },
+        {
+          "name": "non-production provisioning prerequisite guard (offline) blocks production even with credentials and explicit opt-in",
+          "status": "passed"
+        },
+        {
+          "name": "non-production provisioning prerequisite guard (offline) permits only explicitly opted-in nonproduction setup",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "runtime-security.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "complete module boundary under a non-owner runtime database role uses tilwa_runtime, not table owner or superuser",
+          "status": "passed"
+        },
+        {
+          "name": "complete module boundary under a non-owner runtime database role permits instructor source approval and publication while blocking student review",
+          "status": "passed"
+        },
+        {
+          "name": "complete module boundary under a non-owner runtime database role hides other tenant material, evidence, learning and integration rows even without SQL filters",
+          "status": "passed"
+        },
+        {
+          "name": "complete module boundary under a non-owner runtime database role produces DB-first grounded tutoring through an explicitly injected model",
+          "status": "passed"
+        },
+        {
+          "name": "complete module boundary under a non-owner runtime database role persists one learning event under retry and exposes it only to assigned staff",
+          "status": "passed"
+        },
+        {
+          "name": "complete module boundary under a non-owner runtime database role never exposes protected item key or unapproved graph drafts to the student",
+          "status": "passed"
+        },
+        {
+          "name": "complete module boundary under a non-owner runtime database role reads isolated official grade projections without rewriting learning state",
+          "status": "passed"
+        },
+        {
+          "name": "reviewed concept governance with historical evidence preservation requires course reviewer authority and rejects phantom split evidence",
+          "status": "passed"
+        },
+        {
+          "name": "reviewed concept governance with historical evidence preservation renames only after review and preserves the stable identity and former release",
+          "status": "passed"
+        },
+        {
+          "name": "reviewed concept governance with historical evidence preservation splits into unassessed successors without inheriting prerequisite edges or learner evidence",
+          "status": "passed"
+        },
+        {
+          "name": "reviewed concept governance with historical evidence preservation merges into a reviewed target without rewriting historical decisions and refuses a stale mapping",
+          "status": "passed"
+        },
+        {
+          "name": "reviewed concept governance with historical evidence preservation rejects duplicate concept aliases instead of creating ambiguous stable identities",
+          "status": "passed"
+        },
+        {
+          "name": "reviewed concept governance with historical evidence preservation records rejected review without publishing another graph",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "sis.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "SIS contract and local PostgreSQL integration (offline, synthetic registrar) rejects invalid grades, revoked values, extra private payloads and missing version",
+          "status": "passed"
+        },
+        {
+          "name": "SIS contract and local PostgreSQL integration (offline, synthetic registrar) authenticates exact body and timestamp, rejects forgery, expired replay and missing secret",
+          "status": "passed"
+        },
+        {
+          "name": "SIS contract and local PostgreSQL integration (offline, synthetic registrar) applies approved grade once and audits only one update under retries",
+          "status": "passed"
+        },
+        {
+          "name": "SIS contract and local PostgreSQL integration (offline, synthetic registrar) handles revised, out-of-order and revoked results without restoring a stale grade",
+          "status": "passed"
+        },
+        {
+          "name": "SIS contract and local PostgreSQL integration (offline, synthetic registrar) adapter replacement preserves learning history, mastery and recommendations byte-for-byte",
+          "status": "passed"
+        },
+        {
+          "name": "SIS contract and local PostgreSQL integration (offline, synthetic registrar) tenant RLS and student mappings isolate an identical registrar identifier under a non-owner role",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "source-batch-review.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "explicit source review and immutable batch extraction under non-owner PostgreSQL preserves distinct multidigit umbrella locators and rejects duplicates",
+          "status": "passed"
+        },
+        {
+          "name": "explicit source review and immutable batch extraction under non-owner PostgreSQL denies students, cross-tenant corrections and foreign chunks without partial updates",
+          "status": "passed"
+        },
+        {
+          "name": "explicit source review and immutable batch extraction under non-owner PostgreSQL retains original text and bytes, requires a separate explicit review, and refuses stale decisions",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "sources.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "CET351 import manifest and bounded ZIP (synthetic fixtures) requires six pinned real-document hashes and physical page counts",
+          "status": "passed"
+        },
+        {
+          "name": "CET351 import manifest and bounded ZIP (synthetic fixtures) extracts expected entries without writing public files",
+          "status": "passed"
+        },
+        {
+          "name": "CET351 import manifest and bounded ZIP (synthetic fixtures) rejects path traversal before decompressing",
+          "status": "passed"
+        },
+        {
+          "name": "CET351 import manifest and bounded ZIP (synthetic fixtures) rejects unexpected entries before decompressing",
+          "status": "passed"
+        },
+        {
+          "name": "CET351 import manifest and bounded ZIP (synthetic fixtures) rejects archives with more than six entries",
+          "status": "passed"
+        },
+        {
+          "name": "CET351 import manifest and bounded ZIP (synthetic fixtures) rejects decompression bombs from metadata before allocating an inflater",
+          "status": "passed"
+        },
+        {
+          "name": "CET351 import manifest and bounded ZIP (synthetic fixtures) checks actual decompressed bytes even when metadata understates the size",
+          "status": "passed"
+        },
+        {
+          "name": "CET351 import manifest and bounded ZIP (synthetic fixtures) rejects duplicate normalized expected names",
+          "status": "passed"
+        },
+        {
+          "name": "CET351 import manifest and bounded ZIP (synthetic fixtures) rejects invalid archive and altered originals",
+          "status": "passed"
+        },
+        {
+          "name": "CET351 import manifest and bounded ZIP (synthetic fixtures) rejects central/local filename disagreement",
+          "status": "passed"
+        },
+        {
+          "name": "PDF parser using synthetic, explicitly non-lecture bytes extracts the actual page text and physical page count",
+          "status": "passed"
+        },
+        {
+          "name": "PDF parser using synthetic, explicitly non-lecture bytes rejects a non-PDF before invoking the parser",
+          "status": "passed"
+        }
+      ]
+    },
+    {
+      "file": "tutor-memory.test.ts",
+      "status": "passed",
+      "tests": [
+        {
+          "name": "private tutor memory against actual local PostgreSQL (no model calls) returns only the authenticated learner memory within their tenant",
+          "status": "passed"
+        },
+        {
+          "name": "private tutor memory against actual local PostgreSQL (no model calls) rejects corrections and deletions of another owner or tenant memory",
+          "status": "passed"
+        },
+        {
+          "name": "private tutor memory against actual local PostgreSQL (no model calls) retains an explicit correctable private note without rewriting learning evidence",
+          "status": "passed"
+        },
+        {
+          "name": "private tutor memory against actual local PostgreSQL (no model calls) clears current conversation while preserving archived memory, mastery and learning history",
+          "status": "passed"
+        },
+        {
+          "name": "private tutor memory against actual local PostgreSQL (no model calls) deletes only an owned memory and records a minimal audit event",
+          "status": "passed"
+        },
+        {
+          "name": "private tutor memory against actual local PostgreSQL (no model calls) prevents historical tutor answers being reopened during a protected exam",
+          "status": "passed"
+        },
+        {
+          "name": "authorized passage rights (synthetic original passage) requires a meaningful explicit permission reference before importing",
+          "status": "passed"
+        },
+        {
+          "name": "authorized passage rights (synthetic original passage) denies student import and keeps an authorized original passage pending instructor review",
+          "status": "passed"
+        }
+      ]
+    }
+  ],
+  "finalPublicationRegression": {
+    "passed": 46,
+    "failed": 0,
+    "scope": "comprehensive-map, ai-knowledge and runtime-security rerun after bulk publication upsert; real local PostgreSQL, no provider"
+  }
+}

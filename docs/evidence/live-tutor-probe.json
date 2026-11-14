@@ -1,0 +1,33 @@
+{
+  "mode": "live",
+  "model": "gemini-3.5-flash-lite",
+  "disposition": "answered",
+  "answer": "الـ Recall بيساوي 60% لأن النموذج اكتشف 6 حالات احتيال صحيحة (TP = 6) من إجمالي 10 حالات احتيال فعلية (TP + FN = 6 + 4 = 10). إذن الحساب هو 6 تقسيم 10 ويساوي 60%.",
+  "elapsedMs": 19669,
+  "citations": [
+    {
+      "source": "CET351-L4",
+      "page": 18,
+      "section": null
+    },
+    {
+      "source": "CET351-L4",
+      "page": 19,
+      "section": null
+    },
+    {
+      "source": "TILWA-PILOT-FOUNDATIONS",
+      "page": null,
+      "section": "U2"
+    }
+  ],
+  "trace": {
+    "policyVersion": "1.0.0",
+    "retrievedAt": "2026-11-13T13:42:16.616Z",
+    "generatedAt": "2026-11-13T13:42:18.393Z",
+    "outcome": "answered",
+    "generationCalls": 1,
+    "tokens": 1111,
+    "providerStatus": null
+  }
+}

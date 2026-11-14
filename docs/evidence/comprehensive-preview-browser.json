@@ -1,0 +1,156 @@
+{
+  "mode": "Real browser + Neon, published map only",
+  "at": "2026-11-13T15:40:42.842Z",
+  "checks": [
+    {
+      "name": "All published concepts render without the former twelve-node cap",
+      "status": "passed",
+      "concepts": 225,
+      "edges": 259
+    },
+    {
+      "name": "L1–L6 filters show every matching concept and select a matching detail",
+      "status": "passed"
+    },
+    {
+      "name": "Arabic and English search select a concept with working exact lecture and Umbrella locators",
+      "status": "passed"
+    },
+    {
+      "name": "Accessible table contains the complete published concept map",
+      "status": "passed"
+    },
+    {
+      "name": "English/LTR retains the selected concept and map state",
+      "status": "passed"
+    },
+    {
+      "name": "Arabic mobile map renders at 390px without horizontal viewport overflow",
+      "status": "passed"
+    },
+    {
+      "name": "Filtered UI exports the entire approved map as JSON, CSV and bilingual HTML with absolute source URLs and no private source text/keys",
+      "status": "passed",
+      "approvedConcepts": 225,
+      "approvedRelationships": 259
+    }
+  ],
+  "downloads": [
+    "docs/exports/Tilwa-CET351-approved-map.json",
+    "docs/exports/Tilwa-CET351-approved-map.csv",
+    "docs/exports/Tilwa-CET351-approved-map.html"
+  ],
+  "screenshots": [
+    "docs/evidence/concept-map-desktop-ar.png",
+    "docs/evidence/concept-map-desktop-en.png",
+    "docs/evidence/concept-map-mobile-ar.png"
+  ],
+  "errors": [],
+  "providerCalls": 0,
+  "releaseId": "939e6558-5036-40d1-8435-4ef7f058a0c5",
+  "concepts": 225,
+  "relationships": 259,
+  "status": "passed",
+  "target": "https://tilwa-4wpxs7zqs-mohamedtarek750s-projects.vercel.app",
+  "deployedCommit": "0c3f229842d91358578150433be0e28f5df694c6",
+  "artifacts": [
+    {
+      "file": "docs/exports/Tilwa-CET351-approved-map.json",
+      "bytes": 1086079,
+      "sha256": "fbbe47e2a638d08edcf5aa120f1d282b5cd86cf4334f212627f8bd7992030db2"
+    },
+    {
+      "file": "docs/exports/Tilwa-CET351-approved-map.csv",
+      "bytes": 234055,
+      "sha256": "a5cf03403a9d631990c9177d0b65848e8047f77c84e34fc86df320778eada73a"
+    },
+    {
+      "file": "docs/exports/Tilwa-CET351-approved-map.html",
+      "bytes": 765192,
+      "sha256": "2c557851b93706b88290dbfa371b29167df97ec7349d18643ec050db1bf98227"
+    }
+  ],
+  "reviewedPages": 137,
+  "totalPages": 137,
+  "teachingPages": 103,
+  "mappedTeachingPages": 103,
+  "coverage": [
+    {
+      "sourceKey": "CET351-L1",
+      "conceptCount": 55,
+      "pageCount": 18,
+      "reviewedPages": 18,
+      "approvedPageCount": 12,
+      "teachingPages": 12,
+      "mappedTeachingPages": 12,
+      "totalPages": 18,
+      "status": "complete"
+    },
+    {
+      "sourceKey": "CET351-L2",
+      "conceptCount": 76,
+      "pageCount": 24,
+      "reviewedPages": 24,
+      "approvedPageCount": 19,
+      "teachingPages": 19,
+      "mappedTeachingPages": 19,
+      "totalPages": 24,
+      "status": "complete"
+    },
+    {
+      "sourceKey": "CET351-L3",
+      "conceptCount": 22,
+      "pageCount": 18,
+      "reviewedPages": 18,
+      "approvedPageCount": 12,
+      "teachingPages": 12,
+      "mappedTeachingPages": 12,
+      "totalPages": 18,
+      "status": "complete"
+    },
+    {
+      "sourceKey": "CET351-L4",
+      "conceptCount": 40,
+      "pageCount": 25,
+      "reviewedPages": 25,
+      "approvedPageCount": 19,
+      "teachingPages": 19,
+      "mappedTeachingPages": 19,
+      "totalPages": 25,
+      "status": "complete"
+    },
+    {
+      "sourceKey": "CET351-L5",
+      "conceptCount": 44,
+      "pageCount": 26,
+      "reviewedPages": 26,
+      "approvedPageCount": 21,
+      "teachingPages": 21,
+      "mappedTeachingPages": 21,
+      "totalPages": 26,
+      "status": "complete"
+    },
+    {
+      "sourceKey": "CET351-L6",
+      "conceptCount": 31,
+      "pageCount": 26,
+      "reviewedPages": 26,
+      "approvedPageCount": 21,
+      "teachingPages": 20,
+      "mappedTeachingPages": 20,
+      "totalPages": 26,
+      "status": "complete"
+    }
+  ],
+  "accessCleanup": {
+    "target": "https://tilwa-4wpxs7zqs-mohamedtarek750s-projects.vercel.app",
+    "at": "2026-11-13T15:40:41.741Z",
+    "temporaryBypassCreated": true,
+    "temporaryBypassRevoked": true,
+    "unauthenticatedPreviewStatus": 302,
+    "protectionRetained": true
+  },
+  "approvedEvidencePages": 104,
+  "pairedConcepts": 225,
+  "usedUmbrellaSections": 45
+}

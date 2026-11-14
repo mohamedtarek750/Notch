@@ -1,0 +1,90 @@
+{
+  "checked_at_utc": "2026-11-13T13:51:23.935819+00:00",
+  "status": "passed",
+  "course": "CET351",
+  "input_kind": "user_uploaded_original_pdfs",
+  "verification": "SHA-256, byte length and full byte equality against manifest and previously verified imported originals",
+  "database_mutated": false,
+  "reimported_files": 0,
+  "reparsed_files": 0,
+  "files": [
+    {
+      "filename": "Lec 1-ML.pdf",
+      "source_key": "CET351-L1",
+      "sha256": "44b6fe4dd0ee5648707ec92ceb14417e43683809b9f54818606938c658ab6789",
+      "bytes": 2133813,
+      "manifest_sha256_match": true,
+      "manifest_bytes_match": true,
+      "previously_imported_sha256": "44b6fe4dd0ee5648707ec92ceb14417e43683809b9f54818606938c658ab6789",
+      "current_import_byte_equivalent": true,
+      "physical_pages_previously_verified": 18,
+      "page_count_reused_from_identical_verified_original": true,
+      "action": "deduplicated_no_reimport"
+    },
+    {
+      "filename": "Lec 2-ML.pdf",
+      "source_key": "CET351-L2",
+      "sha256": "b40bedc19946ed38a9a13662a3ce520134020b529d3b5758ab2b2d4a96af4773",
+      "bytes": 2964013,
+      "manifest_sha256_match": true,
+      "manifest_bytes_match": true,
+      "previously_imported_sha256": "b40bedc19946ed38a9a13662a3ce520134020b529d3b5758ab2b2d4a96af4773",
+      "current_import_byte_equivalent": true,
+      "physical_pages_previously_verified": 24,
+      "page_count_reused_from_identical_verified_original": true,
+      "action": "deduplicated_no_reimport"
+    },
+    {
+      "filename": "Lec 3-ML.pdf",
+      "source_key": "CET351-L3",
+      "sha256": "657c18769ae11e2e53b06d9e417555e688f0fe5fa5005266e365b78af6483d4f",
+      "bytes": 1328632,
+      "manifest_sha256_match": true,
+      "manifest_bytes_match": true,
+      "previously_imported_sha256": "657c18769ae11e2e53b06d9e417555e688f0fe5fa5005266e365b78af6483d4f",
+      "current_import_byte_equivalent": true,
+      "physical_pages_previously_verified": 18,
+      "page_count_reused_from_identical_verified_original": true,
+      "action": "deduplicated_no_reimport"
+    },
+    {
+      "filename": "Lec 4-ML.pdf",
+      "source_key": "CET351-L4",
+      "sha256": "ac0a7d6913e04f4ff4e85fe6215b66fc5fd300559e3587deec42444295853391",
+      "bytes": 1762148,
+      "manifest_sha256_match": true,
+      "manifest_bytes_match": true,
+      "previously_imported_sha256": "ac0a7d6913e04f4ff4e85fe6215b66fc5fd300559e3587deec42444295853391",
+      "current_import_byte_equivalent": true,
+      "physical_pages_previously_verified": 25,
+      "page_count_reused_from_identical_verified_original": true,
+      "action": "deduplicated_no_reimport"
+    },
+    {
+      "filename": "Lec 5-ML.pdf",
+      "source_key": "CET351-L5",
+      "sha256": "d06b2ee66a18f745fefbd29c1b262a4ab475a36b83c7578e69768373aa66b2e4",
+      "bytes": 2054323,
+      "manifest_sha256_match": true,
+      "manifest_bytes_match": true,
+      "previously_imported_sha256": "d06b2ee66a18f745fefbd29c1b262a4ab475a36b83c7578e69768373aa66b2e4",
+      "current_import_byte_equivalent": true,
+      "physical_pages_previously_verified": 26,
+      "page_count_reused_from_identical_verified_original": true,
+      "action": "deduplicated_no_reimport"
+    },
+    {
+      "filename": "Lec 6-ML.pdf",
+      "source_key": "CET351-L6",
+      "sha256": "343822dbb89b5bc9dbc0ccc18461221708563fefb150c25b30a57a4e86e0eb75",
+      "bytes": 1308765,
+      "manifest_sha256_match": true,
+      "manifest_bytes_match": true,
+      "previously_imported_sha256": "343822dbb89b5bc9dbc0ccc18461221708563fefb150c25b30a57a4e86e0eb75",
+      "current_import_byte_equivalent": true,
+      "physical_pages_previously_verified": 26,
+      "page_count_reused_from_identical_verified_original": true,
+      "action": "deduplicated_no_reimport"
+    }
+  ]
+}
