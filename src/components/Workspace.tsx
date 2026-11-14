@@ -36,6 +36,7 @@ import {
 import { FieldArt } from "./FieldArt";
 import { CourseConceptMap } from "./CourseConceptMap";
 import { MaterialsPanel, KnowledgePanel, LaunchPanel } from "./sources";
+import { StudentHome, Learn, type LearnOptions } from "./student";
 type Lang = "ar" | "en";
 type Role = "student" | "instructor" | "advisor";
 export type RowData = {
@@ -134,7 +135,8 @@ export function Workspace({
 }: {
   inviteOnlyPilot?: boolean;
 }) {
-  const [lang, L] = useState<Lang>("ar"),
+  // English by default; a person's own choice is remembered on their device.
+  const [lang, L] = useState<Lang>("en"),
     [user, U] = useState<any>(null),
     [data, D] = useState<any>(null),
     [view, V] = useState("home"),
@@ -176,9 +178,44 @@ export function Workspace({
     };
   }, []);
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem("tilwa_lang");
+      if (saved === "ar" || saved === "en") L(saved);
+    } catch {}
+  }, []);
+  useEffect(() => {
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
   }, [lang]);
+  const switchLanguage = () => {
+    const next = lang === "ar" ? "en" : "ar";
+    try {
+      localStorage.setItem("tilwa_lang", next);
+    } catch {}
+    L(next);
+  };
+  const [learnTarget, LT] = useState<{
+    objectiveId: string | null;
+    diagnostic: boolean;
+    options?: LearnOptions;
+    nonce: number;
+  } | null>(null);
+  const learn = (objectiveId: string, options?: LearnOptions) => {
+    LT({ objectiveId, diagnostic: false, options, nonce: Date.now() });
+    go("learn");
+  };
+  /** Like perform, without the "saved" banner after every answer. */
+  const performQuiet = async (action: string, body: any = {}) => {
+    E("");
+    try {
+      const r = await request("/api/learning", { action, ...body }, lang);
+      await refresh();
+      return r;
+    } catch (e) {
+      E((e as Error).message);
+      return null;
+    }
+  };
   const go = (v: string) => {
     V(v);
     M(false);
@@ -323,7 +360,7 @@ export function Workspace({
           <button
             className="textbtn"
             onClick={() => {
-              L(lang === "ar" ? "en" : "ar");
+              switchLanguage();
               E("");
             }}
           >
@@ -472,7 +509,7 @@ export function Workspace({
             </strong>
           </div>
           <div className="toolbar">
-            <button onClick={() => L(lang === "ar" ? "en" : "ar")}>
+            <button onClick={switchLanguage}>
               <Languages size={17} />
               {lang === "ar" ? "English" : "العربية"}
             </button>
@@ -514,7 +551,38 @@ export function Workspace({
             </Box>
           ) : (
             <>
-              {view === "home" && (
+              {view === "home" && user?.role === "student" && (
+                <StudentHome
+                  data={data}
+                  lang={lang}
+                  t={t}
+                  learn={learn}
+                  startDiagnostic={() => {
+                    LT({
+                      objectiveId: null,
+                      diagnostic: true,
+                      nonce: Date.now(),
+                    });
+                    go("learn");
+                  }}
+                />
+              )}
+              {view === "learn" && learnTarget && (
+                <Learn
+                  key={learnTarget.nonce}
+                  objectiveId={learnTarget.objectiveId}
+                  diagnostic={learnTarget.diagnostic}
+                  returnTo={learnTarget.options?.returnTo}
+                  resume={learnTarget.options?.resume}
+                  data={data}
+                  lang={lang}
+                  t={t}
+                  perform={performQuiet}
+                  back={() => go("home")}
+                  learn={learn}
+                />
+              )}
+              {view === "home" && user?.role !== "student" && (
                 <Home
                   data={data}
                   user={user}
