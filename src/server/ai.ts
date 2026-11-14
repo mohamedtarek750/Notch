@@ -530,7 +530,7 @@ export async function retrieveEvidence(
     await db.tenant(ctx.tenantId).query<Evidence>(
       `SELECT c.id,c.version_id,c.page,c.section,c.text_content,c.language,c.status,c.review_note,v.source_key,v.title,v.role,v.hash FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND v.current_version=true AND v.rights->>'sendToModel'='true' AND v.rights->>'displayExcerpt'='true' AND c.status='approved' ${staffDraft ? "" : "AND v.status='published'"}
         AND ($3::text IS NULL OR (v.source_key=$3 AND ($4::int[] IS NULL OR c.page=ANY($4::int[]))) OR (v.role='umbrella' AND ($5::text[] IS NULL OR c.section=ANY($5::text[]))))
-        ORDER BY v.source_key,c.page,c.section LIMIT 600`,
+        ORDER BY (v.role='instructor') DESC,v.source_key,c.page,c.section LIMIT 2500`,
       [
         ctx.tenantId,
         COURSE,
@@ -568,7 +568,7 @@ export async function retrieveEvidence(
   const similarity = new Map<string, number>();
   if (operation === "tutor" && gateway?.embed && rows.length) {
     try {
-      await indexEmbeddings(ctx, gateway, 100);
+      await indexEmbeddings(ctx, gateway, 40);
       const [queryVector] = await gateway.embed([question], "query");
       const stored = (
         await db

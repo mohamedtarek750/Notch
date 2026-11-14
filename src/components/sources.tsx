@@ -67,18 +67,20 @@ export function MaterialsPanel({
       ST((s) => ({ ...s, [file.name]: t("جارٍ الاستيراد…", "Importing…") }));
       const form = new FormData();
       form.append("file", file);
-      const r = await act(() => request("/api/materials", form, lang));
-      ST((s) => ({
-        ...s,
-        [file.name]: r
-          ? t("تم الاستيراد", "Imported")
-          : t(
-              "تعذّر الاستيراد — أعد اختيار الملف للمحاولة",
-              "Import failed — select the file again to retry",
-            ),
-      }));
+      let outcome = t("تم الاستيراد", "Imported");
+      B(true);
+      try {
+        await request("/api/materials", form, lang);
+      } catch (error) {
+        // Say why, per file: this box only takes the six original pack files.
+        outcome = `${t("لم يُستورد", "Not imported")}: ${(error as Error).message}`;
+      } finally {
+        B(false);
+      }
+      ST((s) => ({ ...s, [file.name]: outcome }));
     }
     e.target.value = "";
+    await refresh();
   };
   const open = async (id: string) => {
     const r = await act(() => request(`/api/materials/${id}`, undefined, lang));
@@ -162,8 +164,8 @@ export function MaterialsPanel({
           </label>
           <small>
             {t(
-              "تتم معالجة كل ملف في طلب مستقل. يُتحقق من الاسم والبصمة وعدد الصفحات.",
-              "Each file is processed in a separate request. Filename, checksum and page count are verified.",
+              "هذه الخانة للملفات الستة الأصلية فقط بأسمائها (Lec 1-ML.pdf إلى Lec 6-ML.pdf). لأي محاضرة أخرى استخدم «محاضرات إضافية»، وللكتاب أو المرجع استخدم «المرجع الشامل للمقرر» أسفل الصفحة.",
+              "This box takes only the six original files by name (Lec 1-ML.pdf to Lec 6-ML.pdf). For any other lecture use “Additional lectures”, and for a textbook or reference use “Course umbrella reference” further down.",
             )}
           </small>
         </div>
@@ -501,6 +503,66 @@ export function MaterialsPanel({
     </>
   );
 }
+const LARGE_PDF_BYTES = 3_000_000;
+const PART_PAGES = 150;
+/** Read a large PDF's text in the browser and send it as page text, part by part, so the
+ * upload size and page limits do not apply. Scanned pages come through empty. */
+async function uploadLargePdf(
+  file: File,
+  options: {
+    mode: "umbrella" | "lecture";
+    title: string;
+    rights: string;
+    confirmed: boolean;
+    lang: Lang;
+    progress: (done: number, total: number) => void;
+  },
+) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+  const task = pdfjs.getDocument({ data: await file.arrayBuffer() });
+  const pdf = await task.promise;
+  const total = pdf.numPages;
+  let parts = 0,
+    empty = 0;
+  for (let start = 1; start <= total; start += PART_PAGES) {
+    const end = Math.min(total, start + PART_PAGES - 1);
+    const pages: { page: number; text: string }[] = [];
+    for (let n = start; n <= end; n++) {
+      const page = await pdf.getPage(n);
+      const content = await page.getTextContent();
+      const text = content.items
+        .map((item) => ("str" in item ? item.str : ""))
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 30000);
+      if (text.length < 20) empty++;
+      pages.push({ page: n, text });
+      page.cleanup();
+      if (n % 10 === 0 || n === end) options.progress(n, total);
+    }
+    await request(
+      "/api/materials",
+      {
+        action: "extracted-pages",
+        mode: options.mode,
+        title:
+          total > PART_PAGES
+            ? `${options.title} (${start}–${end})`
+            : options.title,
+        filename: file.name,
+        rightsConfirmed: options.confirmed,
+        rightsReference: options.rights,
+        pages,
+      },
+      options.lang,
+    );
+    parts++;
+  }
+  await task.destroy();
+  return { pages: total, parts, empty };
+}
 function UmbrellaUpload({
   mode,
   lang,
@@ -547,6 +609,33 @@ function UmbrellaUpload({
         onSubmit={async (e) => {
           e.preventDefault();
           if (!file) return;
+          if (/\.pdf$/i.test(file.name) && file.size > LARGE_PDF_BYTES) {
+            DN("");
+            const result = await act(() =>
+              uploadLargePdf(file, {
+                mode,
+                title,
+                rights,
+                confirmed,
+                lang,
+                progress: (done, total) =>
+                  DN(
+                    t(
+                      `ملف كبير: يُقرأ داخل المتصفح… ${done} من ${total} صفحة`,
+                      `Large file: reading in your browser… ${done} of ${total} pages`,
+                    ),
+                  ),
+              }),
+            );
+            if (result)
+              DN(
+                t(
+                  `تم الاستيراد: ${result.pages} صفحة في ${result.parts} جزءًا، كلها بانتظار المراجعة. الصفحات المصوّرة بلا نص: ${result.empty}.`,
+                  `Imported: ${result.pages} pages in ${result.parts} parts, all pending review. Image-only pages without text: ${result.empty}.`,
+                ),
+              );
+            return;
+          }
           const form = new FormData();
           form.append("kind", mode);
           form.append("file", file);
@@ -637,8 +726,8 @@ function UmbrellaUpload({
         </div>
         <small>
           {t(
-            "الحد الأقصى ٣٫٥ ميجابايت و١٠٠ صفحة للملف؛ ارفع الكتاب الكبير فصلًا فصلًا. الصفحات المصوّرة تُعزل حتى ترفق نصًّا لها.",
-            "Up to 3.5 MB and 100 pages per file; upload a large book chapter by chapter. Image-only pages are quarantined until you attach their text.",
+            "الملف الأكبر من ٣ ميجابايت (كتاب كامل مثلًا) يُقرأ نصّه داخل متصفحك ويُرفع أجزاءً من ١٥٠ صفحة دون حد للحجم، ولا يُحفظ الملف الأصلي. الصفحات المصوّرة تُعزل حتى يُرفق نصّها.",
+            "A file over 3 MB (a whole textbook, for example) has its text read in your browser and is uploaded in parts of 150 pages with no size limit; the original file is not stored. Image-only pages are quarantined until their text is attached.",
           )}
         </small>
         {!isLecture && (

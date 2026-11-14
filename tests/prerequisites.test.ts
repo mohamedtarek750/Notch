@@ -48,7 +48,10 @@ import {
 import { extractionQuality } from "../src/server/prerequisites";
 import { transcribeSparsePages } from "../src/server/ocr";
 import { segments } from "../src/server/ai";
-import { importCustomLecture } from "../src/server/sources";
+import {
+  importCustomLecture,
+  importExtractedPages,
+} from "../src/server/sources";
 import { syntheticPdf } from "./fixtures/synthetic-pdf";
 
 const tenant = randomUUID();
@@ -883,5 +886,82 @@ describe("image-only pages and crowded pages", () => {
       await transcribeSparsePages(instructor, result.versionId, reader),
     ).toMatchObject({ transcribed: 0 });
     expect(asked).toEqual([]);
+  });
+});
+
+describe("large references read in the browser", () => {
+  const pages = Array.from({ length: 150 }, (_, i) => ({
+    page: i + 151,
+    text:
+      i === 3 ? "" : `Backpropagation derivation, page ${i + 151}. `.repeat(20),
+  }));
+  it("stores page text as a reviewable part with real page numbers", async () => {
+    await expect(
+      importExtractedPages(instructor, {
+        mode: "umbrella",
+        title: "Neural Networks (151–300)",
+        pages,
+      }),
+    ).rejects.toMatchObject({ code: "permission_required" });
+    await expect(
+      importExtractedPages(student, {
+        mode: "lecture",
+        title: "Big lecture",
+        pages,
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    const part = await importExtractedPages(instructor, {
+      mode: "umbrella",
+      title: "Neural Networks (151–300)",
+      filename: "haykin.pdf",
+      rightsConfirmed: true,
+      rightsReference: "Course textbook",
+      pages,
+    });
+    expect(part.sourceKey).toMatch(/^UMBRELLA-/);
+    const material = await getMaterial(instructor, part.id);
+    expect(material.chunks).toHaveLength(150);
+    expect(material.chunks[0].page).toBe(151);
+    // A scanned page arrives empty and is quarantined, never silently approved.
+    expect(
+      material.chunks
+        .filter((c) => c.status === "quarantined")
+        .map((c) => c.page),
+    ).toEqual([154]);
+    expect(await approvePendingUmbrella(instructor, part.id)).toMatchObject({
+      approved: 149,
+    });
+    // The same part sent again creates nothing new.
+    expect(
+      await importExtractedPages(instructor, {
+        mode: "umbrella",
+        title: "Neural Networks (151–300)",
+        rightsConfirmed: true,
+        rightsReference: "Course textbook",
+        pages,
+      }),
+    ).toMatchObject({ id: part.id, deduplicated: true });
+  });
+  it("rejects more than 200 pages or repeated page numbers in one part", async () => {
+    await expect(
+      importExtractedPages(instructor, {
+        mode: "lecture",
+        title: "Too long",
+        pages: Array.from({ length: 201 }, (_, i) => ({
+          page: i + 1,
+          text: "x",
+        })),
+      }),
+    ).rejects.toBeTruthy();
+    await expect(
+      importExtractedPages(instructor, {
+        mode: "lecture",
+        title: "Repeated",
+        pages: [
+          { page: 1, text: "a" },
+          { page: 1, text: "b" },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "invalid_review" });
   });
 });
