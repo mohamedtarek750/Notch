@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import { FieldArt } from "./FieldArt";
 import { CourseConceptMap } from "./CourseConceptMap";
-import { MaterialsPanel, KnowledgePanel } from "./sources";
+import { MaterialsPanel, KnowledgePanel, LaunchPanel } from "./sources";
 type Lang = "ar" | "en";
 type Role = "student" | "instructor" | "advisor";
 export type RowData = {
@@ -107,23 +107,28 @@ export function Button({
     </button>
   );
 }
-const NAV = [
+// Navigation follows the journey document: each role sees only its own path.
+const STUDENT_NAV = [
   ["home", "الرئيسية", "Home", House],
-  ["courses", "المقرر الدراسي", "Courses", BookOpen],
-  ["map", "خريطة المفاهيم", "Concept map", Network],
-  ["timeline", "سجل التعلّم", "Learning history", Clock3],
-  ["assignments", "التكليفات", "Assignments", ClipboardList],
-  ["practice", "الاختبارات والتدريب", "Quizzes & practice", NotebookPen],
-  ["calendar", "التقويم", "Calendar", CalendarDays],
-  ["grades", "الدرجات", "Grades", GraduationCap],
-  ["career", "الخطة المهنية", "Career plan", Compass],
+  ["courses", "المحاضرات", "Lectures", BookOpen],
+  ["map", "الخريطة", "Map", Network],
+  ["practice", "التدريب", "Practice", NotebookPen],
+  ["timeline", "ما تعلّمته", "My progress", Clock3],
 ] as const;
-const STAFF = [
-  ["materials", "المصادر والاستيراد", "Materials & import", Upload],
-  ["knowledge", "مراجعة المعرفة", "Knowledge review", GitBranch],
-  ["teaching", "المحاضرة القادمة", "Next class", Users],
-  ["qms", "الجودة التعليمية", "Learning quality", ShieldCheck],
+const INSTRUCTOR_NAV = [
+  ["materials", "١ · رفع المواد", "1 · Upload materials", Upload],
+  [
+    "knowledge",
+    "٢ · المفاهيم والمتطلبات",
+    "2 · Concepts & prerequisites",
+    GitBranch,
+  ],
+  ["bank", "٣ · بنك الأسئلة", "3 · Question bank", NotebookPen],
+  ["launch", "٤ · الإطلاق", "4 · Launch", ShieldCheck],
+  ["teaching", "متابعة الفصل", "Class dashboard", Users],
+  ["map", "خريطة المقرر", "Course map", Network],
 ] as const;
+const ADVISOR_NAV = [["advising", "طلابي", "My students", Users]] as const;
 export function Workspace({
   inviteOnlyPilot = false,
 }: {
@@ -244,13 +249,12 @@ export function Workspace({
     if (s) SI(s.id);
     go("session");
   };
-  const nav = [
-    ...NAV,
-    ...(user?.role === "instructor" ? STAFF : []),
-    ...(user?.role === "advisor"
-      ? [["advising", "الطلاب المعيّنون", "Assigned students", Users] as const]
-      : []),
-  ];
+  const nav: readonly (readonly [string, string, string, any])[] =
+    user?.role === "instructor"
+      ? INSTRUCTOR_NAV
+      : user?.role === "advisor"
+        ? ADVISOR_NAV
+        : STUDENT_NAV;
   const roleName = (r: string) =>
     r === "student"
       ? t("الطالب", "Student")
@@ -267,29 +271,25 @@ export function Workspace({
         aria-label={t("التنقل الرئيسي", "Main navigation")}
       >
         <span className="navlabel">{t("مساحة العمل", "Workspace")}</span>
-        {nav
-          .filter(([id]) =>
-            user?.role === "advisor"
-              ? ["home", "advising", "timeline", "career", "grades"].includes(
-                  id,
-                )
-              : true,
-          )
-          .map(([id, a, b, Icon], i) => (
-            <div
-              key={id}
-              className={i === 4 ? "navgroup sectionbreak" : "navitem"}
+        {nav.map(([id, a, b, Icon], i) => (
+          <div
+            key={id}
+            className={
+              user?.role === "instructor" && i === 4
+                ? "navgroup sectionbreak"
+                : "navitem"
+            }
+          >
+            <button
+              className={view === id ? "active" : ""}
+              onClick={() => go(id)}
+              aria-current={view === id ? "page" : undefined}
             >
-              <button
-                className={view === id ? "active" : ""}
-                onClick={() => go(id)}
-                aria-current={view === id ? "page" : undefined}
-              >
-                <Icon size={18} />
-                {t(a, b)}
-              </button>
-            </div>
-          ))}
+              <Icon size={18} />
+              {t(a, b)}
+            </button>
+          </div>
+        ))}
       </nav>
       <div className="railfoot">
         <span className="avatar">{tr(user?.name).slice(0, 1) || "س"}</span>
@@ -625,12 +625,23 @@ export function Workspace({
               {view === "materials" && (
                 <MaterialsPanel lang={lang} t={t} onError={E} />
               )}
-              {view === "knowledge" && (
+              {(view === "knowledge" || view === "bank") && (
                 <KnowledgePanel
+                  key={view}
+                  section={view === "bank" ? "bank" : "graph"}
                   lang={lang}
                   t={t}
                   onError={E}
                   onChanged={refresh}
+                />
+              )}
+              {view === "launch" && (
+                <LaunchPanel
+                  lang={lang}
+                  t={t}
+                  onError={E}
+                  onPreview={() => login("student")}
+                  go={go}
                 />
               )}
               {view === "map" && (
