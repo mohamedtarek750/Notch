@@ -1010,6 +1010,37 @@ export async function tutor(
       ? await learnerContextFor(ctx, graph, prepared.evidence)
       : undefined;
     const ladderKey = plain(prepared.effectiveQuestion).trim();
+    // An answer the instructor wrote for this question is reused as it is.
+    const approved = (
+      await db
+        .tenant(ctx.tenantId)
+        .query<{ data: { answer: string; citations?: string[] } }>(
+          "SELECT data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='approved_answer' AND data->>'ladderKey'=$3 LIMIT 1",
+          [ctx.tenantId, COURSE, ladderKey],
+        )
+    ).rows[0];
+    if (approved) {
+      await saveTrace(ctx, { ...base, outcome: "approved_answer" });
+      return {
+        disposition: "answered",
+        answer: approved.data.answer,
+        answerMode: "direct",
+        memoryId: null,
+        approvedByInstructor: true,
+        citations: prepared.evidence
+          .filter((e) => (approved.data.citations ?? []).includes(e.id))
+          .map((e) => ({
+            id: e.id,
+            sourceKey: e.source_key,
+            title: e.title,
+            page: e.page,
+            section: e.section,
+            url: `/sources/${e.version_id}?${e.page ? `page=${e.page}` : `section=${e.section}`}`,
+            text: e.text_content,
+          })),
+        trace: { ...base, outcome: "approved_answer", generationCalls: 0 },
+      };
+    }
     let answerMode: (typeof HINT_LADDER)[number] = "direct";
     if (input.mode === "chat" && ctx.role === "student") {
       const scoped = db.tenant(ctx.tenantId);

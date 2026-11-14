@@ -53,6 +53,12 @@ import { extractionQuality } from "../src/server/prerequisites";
 import { transcribeSparsePages } from "../src/server/ocr";
 import { segments } from "../src/server/ai";
 import {
+  dashboardAction,
+  gapTopic,
+  instructorDashboard,
+  studentView,
+} from "../src/server/dashboard";
+import {
   importCustomLecture,
   importExtractedPages,
 } from "../src/server/sources";
@@ -1341,5 +1347,120 @@ describe("daily review, exam readiness, mock quiz and the tutor ladder", () => {
     ).rows;
     expect(gaps.length).toBeGreaterThanOrEqual(1);
     expect(gaps.at(-1)!.data).toMatchObject({ status: "open" });
+  });
+});
+
+describe("instructor class dashboard", () => {
+  const naive = stableConceptId("Naive Bayes");
+  it("is for the instructor only", async () => {
+    await expect(instructorDashboard(student)).rejects.toMatchObject({
+      status: 403,
+    });
+    await expect(
+      dashboardAction(student, {
+        action: "nudge",
+        studentIds: [student.userId],
+        text: "hello there",
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+  it("reports class status, the heat map and roadblocks from the record, with counts", async () => {
+    const d = await instructorDashboard(instructor);
+    expect(d.students).toBeGreaterThanOrEqual(3);
+    expect(d.heatmap.map((c) => c.conceptId)).toContain(naive);
+    const bayes = d.heatmap.find(
+      (c) => c.conceptId === stableConceptId("Bayes theorem"),
+    )!;
+    expect(bayes.ready).toBeGreaterThanOrEqual(1);
+    expect(bayes.readyShare).toBeGreaterThan(0);
+    // Fewer than five assessed students: flagged as thin data.
+    expect(bayes.thinData).toBe(true);
+    // The learner who failed Naive Bayes and was diagnosed shows up as a roadblock with its cause.
+    const block = d.roadblocks.find((r) => r.conceptId === naive)!;
+    expect(block.diagnosisEpisodes).toBeGreaterThanOrEqual(1);
+    expect(Object.keys(block.causes)).toContain("prerequisite");
+    expect(d.helpRequests).toHaveLength(1);
+    expect(d.atRisk.some((s) => s.reasons[0].kind === "asked-for-help")).toBe(
+      true,
+    );
+  });
+  it("groups repeated unanswered questions and lets the instructor decide", async () => {
+    expect(gapTopic("What is gradient boosting?")).toBe(
+      gapTopic("what is  Gradient Boosting"),
+    );
+    const before = await instructorDashboard(instructor);
+    expect(before.contentGaps.length).toBeGreaterThanOrEqual(1);
+    const gap = before.contentGaps[0];
+    expect(gap.status).toBe("open");
+    await dashboardAction(instructor, {
+      action: "gap-status",
+      ids: gap.ids,
+      status: "out-of-scope",
+    });
+    const after = await instructorDashboard(instructor);
+    expect(after.contentGaps.find((g) => g.topic === gap.topic)?.status).toBe(
+      "out-of-scope",
+    );
+  });
+  it("shows one student without tutor transcripts and delivers a nudge to them only", async () => {
+    const view = await studentView(instructor, student.userId);
+    expect(view.map.length).toBeGreaterThan(0);
+    expect(view.recent.length).toBeGreaterThan(0);
+    expect(view.tutorTranscripts).toBe("not-available");
+    expect(JSON.stringify(view)).not.toContain("how does naive bayes decide");
+    await expect(studentView(instructor, "nobody")).rejects.toMatchObject({
+      status: 404,
+    });
+    const sent = await dashboardAction(instructor, {
+      action: "nudge",
+      studentIds: [student.userId, "nobody"],
+      text: "Five minutes today is enough to get back.",
+    });
+    expect(sent).toEqual({ sent: 1 });
+    expect((await workspace(student)).nudges).toHaveLength(1);
+    expect((await studentView(instructor, student.userId)).nudges).toHaveLength(
+      1,
+    );
+  });
+  it("reuses an instructor-approved answer for the same question without calling the model", async () => {
+    const d = await instructorDashboard(instructor);
+    const answer = d.tutorAnswers.find(
+      (a) => a.question === "how does naive bayes decide",
+    )!;
+    // Audited without naming who asked.
+    expect(JSON.stringify(d.tutorAnswers)).not.toContain(student.userId);
+    await dashboardAction(instructor, {
+      action: "audit",
+      id: answer.id,
+      verdict: "wrong",
+      approvedAnswer: "It multiplies the prior by each feature likelihood.",
+    });
+    let called = 0;
+    const model: ModelGateway = {
+      modelId: "deterministic-audit-replay-NOT-GEMINI",
+      async generate() {
+        called++;
+        throw new Error("must not be called");
+      },
+    };
+    const reply = await tutor(
+      student,
+      tutorInput.parse({
+        question: "How does Naive Bayes decide?",
+        mode: "chat",
+      }),
+      model,
+    );
+    expect(called).toBe(0);
+    expect(reply).toMatchObject({
+      disposition: "answered",
+      answer: "It multiplies the prior by each feature likelihood.",
+      approvedByInstructor: true,
+    });
+    expect(
+      (await instructorDashboard(instructor)).tutorAnswers.find(
+        (a) => a.id === answer.id,
+      )?.audit?.verdict,
+    ).toBe("wrong");
   });
 });

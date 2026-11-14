@@ -34,6 +34,7 @@ import {
   X,
 } from "lucide-react";
 import { FieldArt } from "./FieldArt";
+import { ClassDashboard } from "./instructor";
 import { CourseConceptMap } from "./CourseConceptMap";
 import { MaterialsPanel, KnowledgePanel, LaunchPanel } from "./sources";
 import {
@@ -566,6 +567,7 @@ export function Workspace({
                   t={t}
                   learn={learn}
                   go={go}
+                  perform={performQuiet}
                   startDiagnostic={() => {
                     LT({
                       objectiveId: null,
@@ -853,13 +855,7 @@ export function Workspace({
                 </>
               )}
               {view === "teaching" && (
-                <Teaching
-                  data={data}
-                  t={t}
-                  lang={lang}
-                  perform={perform}
-                  busy={busy}
-                />
+                <ClassDashboard lang={lang} t={t} onError={E} go={go} />
               )}
               {view === "qms" && <Quality data={data} t={t} lang={lang} />}
               {view === "advising" && (
