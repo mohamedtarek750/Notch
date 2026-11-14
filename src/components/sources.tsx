@@ -243,6 +243,42 @@ export function MaterialsPanel({
                   </button>
                 ))}
               </div>
+              {selected.material.current_version &&
+                selected.chunks.filter(
+                  (c: any) => c.page && (c.text_content || "").length < 60,
+                ).length > 0 && (
+                  <p className="notice">
+                    {t(
+                      `في هذه النسخة ${selected.chunks.filter((c: any) => c.page && (c.text_content || "").length < 60).length} صفحة مصوّرة أو شبه فارغة من النص.`,
+                      `This version has ${selected.chunks.filter((c: any) => c.page && (c.text_content || "").length < 60).length} image-only or nearly text-free pages.`,
+                    )}{" "}
+                    <Button
+                      disabled={busy}
+                      onClick={async () => {
+                        const r = await act(() =>
+                          request(
+                            `/api/materials/${selected.material.id}`,
+                            { action: "transcribe" },
+                            lang,
+                          ),
+                        );
+                        if (r?.versionId) await open(r.versionId);
+                      }}
+                    >
+                      {t(
+                        "قراءة الصفحات المصوّرة بالنموذج",
+                        "Read image pages with the model",
+                      )}
+                    </Button>
+                    <small>
+                      {" "}
+                      {t(
+                        "حتى ٨ صفحات في كل مرة. تُنشأ نسخة جديدة وكل صفحاتها تنتظر مراجعتك مقابل الأصل.",
+                        "Up to 8 pages per run. A new version is created and every page awaits your check against the original.",
+                      )}
+                    </small>
+                  </p>
+                )}
               <span className="badge lavender">
                 {t("صفحة / قسم", "Page / section")} {page.page || page.section}{" "}
                 · {statusLabel(page.status, t)}
@@ -527,10 +563,15 @@ function UmbrellaUpload({
                     "هذا الملف مرفوع من قبل؛ لم تُنشأ نسخة جديدة.",
                     "This file was already uploaded; no new version was created.",
                   )
-                : t(
-                    `تم الاستيراد: ${r.pages} قسمًا بانتظار المراجعة.`,
-                    `Imported: ${r.pages} sections pending review.`,
-                  ),
+                : isLecture
+                  ? t(
+                      `تم الاستيراد: ${r.pages} صفحة بانتظار المراجعة.`,
+                      `Imported: ${r.pages} pages pending review.`,
+                    )
+                  : t(
+                      `تم الاستيراد: ${r.pages} قسمًا بانتظار المراجعة.`,
+                      `Imported: ${r.pages} sections pending review.`,
+                    ),
             );
         }}
       >
@@ -1344,6 +1385,16 @@ export function KnowledgePanel({
                     </h3>
                     <p dir="rtl">{d.item.stem.ar}</p>
                     <p dir="ltr">{d.item.stem.en}</p>
+                    {d.item.steps?.length > 0 && (
+                      <ol>
+                        {d.item.steps.map((step: any, i: number) => (
+                          <li key={i}>
+                            <span dir="rtl">{step.ar}</span> /{" "}
+                            <span dir="ltr">{step.en}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
                     {d.item.options?.map((o: any) => (
                       <p key={o.id}>
                         <bdi>{o.id}</bdi> · {o.label.ar} / {o.label.en}

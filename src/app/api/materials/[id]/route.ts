@@ -6,11 +6,14 @@ import {
   sourceErrorResponse,
 } from "@/server/sources";
 import { z } from "zod";
+import { transcribeSparsePages } from "@/server/ocr";
 const review = z.object({
   chunkId: z.string(),
   status: z.enum(["approved", "rejected", "quarantined"]),
   correctedText: z.string().min(20).max(30000).optional(),
 });
+export const runtime = "nodejs";
+export const maxDuration = 60;
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -31,6 +34,10 @@ export async function POST(
     const ctx = await requireAuth(req, ["instructor"]);
     const material = await getMaterial(ctx, (await params).id);
     const raw = await req.json();
+    if (raw?.action === "transcribe")
+      return Response.json(
+        await transcribeSparsePages(ctx, material.material.id),
+      );
     if (raw?.action === "approve-pending")
       return Response.json(
         await approvePendingUmbrella(ctx, material.material.id),

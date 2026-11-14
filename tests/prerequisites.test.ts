@@ -46,6 +46,8 @@ import {
   conceptsNamed,
 } from "../src/server/ai";
 import { extractionQuality } from "../src/server/prerequisites";
+import { transcribeSparsePages } from "../src/server/ocr";
+import { segments } from "../src/server/ai";
 import { importCustomLecture } from "../src/server/sources";
 import { syntheticPdf } from "./fixtures/synthetic-pdf";
 
@@ -811,5 +813,75 @@ describe("retrieval by meaning and by concept words", () => {
         )
       ).disposition,
     ).toBe("out_of_scope");
+  });
+});
+
+describe("image-only pages and crowded pages", () => {
+  it("splits a crowded page into topic-sized segments and leaves short pages whole", () => {
+    expect(segments("Short slide text.")).toEqual(["Short slide text."]);
+    const crowded =
+      "Advantages are speed and simplicity. ".repeat(20) +
+      "Zero frequency is solved by Laplace smoothing.";
+    const parts = segments(crowded);
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.at(-1)).toContain("Laplace smoothing");
+    expect(parts.every((p) => p.length <= 900)).toBe(true);
+  });
+  it("transcribes a text-free page into a new pending revision the instructor must review", async () => {
+    const lecture = await importCustomLecture(instructor, {
+      title: "Week 10 - Image slides",
+      filename: "week10.pdf",
+      bytes: syntheticPdf("fig 1"),
+    });
+    const before = await getMaterial(instructor, lecture.id);
+    expect(before.chunks[0].status).toBe("quarantined");
+    let asked: number[] = [];
+    const reader: ModelGateway = {
+      modelId: "deterministic-transcription-replay-NOT-GEMINI",
+      async generate() {
+        throw new Error("not used");
+      },
+      async transcribe(_pdf, pages) {
+        asked = pages;
+        return {
+          tokens: 90,
+          pages: [
+            {
+              page: 1,
+              text: "Decision boundary. [Figure: two classes separated by a line]",
+            },
+          ],
+        };
+      },
+    };
+    await expect(
+      transcribeSparsePages(student, lecture.id, reader),
+    ).rejects.toMatchObject({ status: 403 });
+    const result = await transcribeSparsePages(instructor, lecture.id, reader);
+    expect(asked).toEqual([1]);
+    expect(result).toMatchObject({ transcribed: 1, remaining: 0 });
+    expect(result.versionId).not.toBe(lecture.id);
+    const after = await getMaterial(instructor, result.versionId);
+    expect(after.chunks[0].text_content).toContain("Decision boundary");
+    // Never approved automatically, and the original extract is preserved.
+    expect(after.chunks[0].status).toBe("pending");
+    expect(
+      (await getMaterial(instructor, lecture.id)).chunks[0].text_content,
+    ).toBe("fig 1");
+    const trace = (
+      await db
+        .tenant(tenant)
+        .query<{ outcome: string }>(
+          "SELECT outcome FROM model_traces WHERE tenant_id=$1 AND operation='transcribe-pages'",
+          [tenant],
+        )
+    ).rows;
+    expect(trace).toEqual([{ outcome: "pending_review" }]);
+    // Nothing left to read: no provider call, no new version.
+    asked = [];
+    expect(
+      await transcribeSparsePages(instructor, result.versionId, reader),
+    ).toMatchObject({ transcribed: 0 });
+    expect(asked).toEqual([]);
   });
 });
