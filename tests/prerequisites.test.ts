@@ -30,6 +30,8 @@ import {
   targetDifficulty,
   learningGain,
   deriveObjective,
+  nextReviewInterval,
+  workspace,
 } from "../src/server/learning";
 import {
   allocate,
@@ -45,6 +47,7 @@ import {
   tutorInput,
   isEducational,
   conceptsNamed,
+  ladderStep,
 } from "../src/server/ai";
 import { extractionQuality } from "../src/server/prerequisites";
 import { transcribeSparsePages } from "../src/server/ocr";
@@ -1137,5 +1140,206 @@ describe("hints, honest unknowns and the diagnosis ladder", () => {
         new Date("2026-11-02"),
       ).status,
     ).toBe("secure");
+  });
+});
+
+describe("daily review, exam readiness, mock quiz and the tutor ladder", () => {
+  const naive = stableConceptId("Naive Bayes");
+  const bayes = stableConceptId("Bayes theorem");
+  it("schedules reviews from recall, and a wrong pick overrides an optimistic rating", async () => {
+    expect(nextReviewInterval(0, "easy", null)).toBe(4);
+    expect(nextReviewInterval(4, "easy", true)).toBe(12);
+    expect(nextReviewInterval(4, "medium", null)).toBe(8);
+    expect(nextReviewInterval(30, "easy", true)).toBe(60);
+    expect(nextReviewInterval(12, "easy", false)).toBe(1);
+    expect(nextReviewInterval(12, "hard", true)).toBe(1);
+    const due = await learningAction(student, { action: "review-due" });
+    expect(due.cards.length).toBeGreaterThanOrEqual(2);
+    const card = due.cards[0];
+    expect(card.data.key).toBeUndefined();
+    const shown = await learningAction(student, {
+      action: "review-show",
+      itemId: card.id,
+    });
+    expect(shown.key).toBe("a");
+    const rated = await learningAction(student, {
+      action: "review-rate",
+      itemId: card.id,
+      rating: "easy",
+      picked: "b",
+    });
+    expect(rated).toMatchObject({ interval: 1, lastCorrect: false });
+    // Rated today: no longer due, and the count on the home screen drops.
+    const after = await learningAction(student, { action: "review-due" });
+    expect(after.cards.map((c: any) => c.id)).not.toContain(card.id);
+    expect((await workspace(student)).reviewsDue).toBe(after.cards.length);
+    // Answers are never shown for a question the learner has not met.
+    const stranger: AuthContext = { ...student, userId: instructor.userId };
+    await expect(
+      learningAction(stranger, { action: "review-show", itemId: card.id }),
+    ).rejects.toBeTruthy();
+  });
+  it("shows exam readiness as a soft weighted estimate set by the instructor", async () => {
+    await expect(
+      learningAction(student, {
+        action: "exam-save",
+        name: "Midterm",
+        date: "2027-01-10",
+        concepts: [{ conceptId: naive, weight: 3 }],
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    await learningAction(instructor, {
+      action: "exam-save",
+      name: "Midterm",
+      date: "2027-01-10",
+      concepts: [
+        { conceptId: naive, weight: 3 },
+        { conceptId: bayes, weight: 1 },
+      ],
+    });
+    const view = await workspace(student);
+    expect(view.readiness).toHaveLength(1);
+    const r = view.readiness![0];
+    expect(r.about % 5).toBe(0);
+    expect(r.about).toBeLessThanOrEqual(95);
+    expect(r.about).toBeGreaterThanOrEqual(5);
+    // Naive Bayes is heavier and not yet secure, so it costs the most.
+    expect(r.costliest[0].conceptId).toBe(naive);
+    expect(r.daysLeft).toBeGreaterThan(0);
+    expect(r.suggestedMinutesPerDay).toBeGreaterThanOrEqual(10);
+  });
+  it("runs a mock quiz from unseen reviewed questions and counts unanswered ones only in its result", async () => {
+    // A learner who has not met the bank yet, so every reviewed question is fresh.
+    const fresh: AuthContext = { ...student, userId: randomUUID() };
+    await db.tenant(tenant).transaction(async (tx) => {
+      await tx.query("INSERT INTO users(tenant_id,id,name) VALUES($1,$2,$3)", [
+        tenant,
+        fresh.userId,
+        '{"ar":"جديد","en":"Fresh"}',
+      ]);
+      await tx.query(
+        "INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,'student')",
+        [tenant, fresh.userId],
+      );
+      await tx.query(
+        "INSERT INTO course_access(tenant_id,user_id,course_id,access_role) VALUES($1,$2,'CET351','student')",
+        [tenant, fresh.userId],
+      );
+    });
+    const examId = (await workspace(fresh)).exams[0].id;
+    const mock = await learningAction(fresh, { action: "mock-start", examId });
+    expect(mock.items.length).toBe(4);
+    expect(mock.secondsAllowed).toBe(mock.items.length * 90);
+    expect(mock.items[0].item.data.key).toBeUndefined();
+    // Heaviest concept first, then alternating: one concept cannot fill the quiz.
+    expect(mock.items[0].item.data.conceptId).toBe(naive);
+    expect(mock.items[1].item.data.conceptId).toBe(bayes);
+    await learningAction(fresh, {
+      action: "attempt",
+      deliveryId: mock.items[0].deliveryId,
+      answer: "a",
+      idempotencyKey: "mock-attempt-1",
+      elapsedMs: 15000,
+    });
+    const result = await learningAction(fresh, {
+      action: "mock-finish",
+      examId,
+      deliveryIds: mock.items.map((i: any) => i.deliveryId),
+    });
+    expect(result).toMatchObject({ served: 4, answered: 1, correct: 1 });
+    // Only the answered question became an attempt.
+    expect((await workspace(fresh)).attempts).toHaveLength(1);
+    // A second mock has nothing fresh left to serve.
+    expect(
+      (await learningAction(fresh, { action: "mock-start", examId })).items,
+    ).toHaveLength(0);
+  });
+  it("walks the hint ladder by code and respects the instructor's strictness", async () => {
+    expect(ladderStep(0, "hints-then-answer")).toBe("guiding-question");
+    expect(ladderStep(1, "hints-then-answer")).toBe("stronger-hint");
+    expect(ladderStep(2, "hints-then-answer")).toBe("worked-example");
+    expect(ladderStep(7, "hints-then-answer")).toBe("direct");
+    expect(ladderStep(7, "hints-only")).toBe("worked-example");
+    expect(ladderStep(0, "answer-allowed")).toBe("direct");
+    const modes: string[] = [];
+    const model: ModelGateway = {
+      modelId: "deterministic-ladder-replay-NOT-GEMINI",
+      async generate(request) {
+        const payload = request.payload as any;
+        modes.push(payload.answerMode);
+        return {
+          tokens: 20,
+          value: {
+            disposition: "answered",
+            answer: "جواب.",
+            evidenceIds: [payload.authorizedEvidence[0].id],
+            calculations: [],
+          },
+        };
+      },
+    };
+    const ask = (mode: "chat" | "explain") =>
+      tutor(
+        student,
+        tutorInput.parse({ question: "how does naive bayes decide", mode }),
+        model,
+      );
+    const first = await ask("chat");
+    expect(first).toMatchObject({ answerMode: "guiding-question" });
+    await ask("chat");
+    // "Explain differently" always answers directly and does not move the ladder back.
+    await ask("explain");
+    await learningAction(instructor, {
+      action: "course-settings",
+      tutorStrictness: "answer-allowed",
+    });
+    await ask("chat");
+    expect(modes).toEqual([
+      "guiding-question",
+      "stronger-hint",
+      "direct",
+      "direct",
+    ]);
+  });
+  it("puts a question the material cannot answer on the content-gap list", async () => {
+    const model: ModelGateway = {
+      modelId: "deterministic-gap-replay-NOT-GEMINI",
+      async generate() {
+        throw new Error("must not be called without evidence");
+      },
+    };
+    const answer = await tutor(
+      student,
+      tutorInput.parse({
+        question: "explain gradient boosting in naive bayes terms xyzzy",
+        mode: "chat",
+      }),
+      {
+        ...model,
+        async generate(request) {
+          const payload = request.payload as any;
+          return {
+            tokens: 10,
+            value: {
+              disposition: "insufficient_evidence",
+              answer: "غير مغطّى.",
+              evidenceIds: [],
+              calculations: [],
+            },
+          };
+        },
+      },
+    );
+    expect(answer.disposition).toBe("insufficient_evidence");
+    const gaps = (
+      await db
+        .tenant(tenant)
+        .query<{ data: any }>(
+          "SELECT data FROM records WHERE tenant_id=$1 AND kind='content_gap'",
+          [tenant],
+        )
+    ).rows;
+    expect(gaps.length).toBeGreaterThanOrEqual(1);
+    expect(gaps.at(-1)!.data).toMatchObject({ status: "open" });
   });
 });

@@ -17,50 +17,42 @@ export async function readMemory(ctx: AuthContext, includeArchived = false) {
   );
   const sources = ids.length
     ? (
-        await db
-          .tenant(ctx.tenantId)
-          .query<{
-            id: string;
-            source_key: string;
-            page: number | null;
-            section: string | null;
-            version_id: string;
-            text_content: string;
-          }>(
-            `SELECT c.id,c.version_id,c.page,c.section,c.text_content,v.source_key FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND c.id=ANY($3::text[]) AND c.status='approved' AND v.rights->>'displayExcerpt'='true'`,
-            [ctx.tenantId, COURSE, ids],
-          )
+        await db.tenant(ctx.tenantId).query<{
+          id: string;
+          source_key: string;
+          page: number | null;
+          section: string | null;
+          version_id: string;
+          text_content: string;
+        }>(`SELECT c.id,c.version_id,c.page,c.section,c.text_content,v.source_key FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND c.id=ANY($3::text[]) AND c.status='approved' AND v.rights->>'displayExcerpt'='true'`, [ctx.tenantId, COURSE, ids])
       ).rows
     : [];
   return {
-    messages: rows
-      .reverse()
-      .map((r) => ({
-        ...r,
-        data: {
-          ...r.data,
-          citations: sources
-            .filter((c) =>
-              ((r.data.citations as string[]) || []).includes(c.id),
-            )
-            .map((c) => ({
-              id: c.id,
-              sourceKey: c.source_key,
-              page: c.page,
-              section: c.section,
-              text: c.text_content,
-              url: `/sources/${c.version_id}?${c.page ? `page=${c.page}` : `section=${c.section}`}`,
-            })),
-        },
-      })),
+    messages: rows.reverse().map((r) => ({
+      ...r,
+      data: {
+        ...r.data,
+        citations: sources
+          .filter((c) => ((r.data.citations as string[]) || []).includes(c.id))
+          .map((c) => ({
+            id: c.id,
+            sourceKey: c.source_key,
+            page: c.page,
+            section: c.section,
+            text: c.text_content,
+            url: `/sources/${c.version_id}?${c.page ? `page=${c.page}` : `section=${c.section}`}`,
+          })),
+      },
+    })),
   };
 }
 export async function updateMemory(
   ctx: AuthContext,
   input: {
-    action: "correct" | "delete" | "clear-current";
+    action: "correct" | "delete" | "clear-current" | "rate";
     id?: string;
     correction?: string;
+    rating?: "up" | "down";
   },
 ) {
   await authorizeCourse(ctx, COURSE, "read");
@@ -90,10 +82,14 @@ export async function updateMemory(
             ctx.tenantId,
             input.id,
             ctx.userId,
-            JSON.stringify({
-              correction: input.correction,
-              correctedAt: new Date().toISOString(),
-            }),
+            JSON.stringify(
+              input.action === "rate"
+                ? { rating: input.rating, ratedAt: new Date().toISOString() }
+                : {
+                    correction: input.correction,
+                    correctedAt: new Date().toISOString(),
+                  },
+            ),
           ],
         );
     }

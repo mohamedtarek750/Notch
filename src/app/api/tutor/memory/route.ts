@@ -5,6 +5,11 @@ import { sourceErrorResponse } from "@/server/sources";
 const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("clear-current") }),
   z.object({
+    action: z.literal("rate"),
+    id: z.string().min(1),
+    rating: z.enum(["up", "down"]),
+  }),
+  z.object({
     action: z.literal("correct"),
     id: z.string().min(1),
     correction: z.string().trim().min(1).max(3000),

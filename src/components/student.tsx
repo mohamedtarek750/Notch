@@ -68,15 +68,18 @@ export function StudentHome({
   t,
   learn,
   startDiagnostic,
+  go,
 }: {
   data: any;
   lang: Lang;
   t: Translate;
   learn: (objectiveId: string) => void;
   startDiagnostic: () => void;
+  go: (view: string) => void;
 }) {
   const nodes: Node[] = data.path?.nodes || [];
   const next: Node | null = data.path?.next || null;
+  const exam = (data.readiness || [])[0];
   const assessable = nodes.filter((n) => n.objectiveId);
   const answered = (data.attempts || []).length > 0;
   const [skipped, SK] = useState(false);
@@ -188,6 +191,37 @@ export function StudentHome({
           </p>
         </Box>
       )}
+      <div className="split end">
+        <Box>
+          <h2>{t("مراجعات مستحقة", "Reviews due")}</h2>
+          <p>
+            {data.reviewsDue
+              ? t(
+                  `${data.reviewsDue} سؤالًا للمراجعة اليوم.`,
+                  `${data.reviewsDue} questions to review today.`,
+                )
+              : t("لا مراجعات مستحقة الآن.", "You're all caught up.")}
+          </p>
+          {data.reviewsDue > 0 && (
+            <Button onClick={() => go("review")}>
+              {t("ابدأ المراجعة", "Start review")}
+            </Button>
+          )}
+        </Box>
+        {exam && (
+          <Box>
+            <h2>{t("جاهزية الامتحان", "Exam readiness")}</h2>
+            <p>
+              {exam.name}: {t(`نحو ${exam.about}٪`, `about ${exam.about}%`)}
+              {exam.daysLeft > 0 &&
+                ` · ${t(`باقٍ ${exam.daysLeft} يومًا`, `${exam.daysLeft} days to go`)}`}
+            </p>
+            <Button onClick={() => go("exam")}>
+              {t("افتح الجاهزية", "Open readiness")}
+            </Button>
+          </Box>
+        )}
+      </div>
       <Box cls="end">
         <h2>{t("خريطة مهاراتك", "Your skill map")}</h2>
         <p>
@@ -930,5 +964,627 @@ export function Learn({
         </Box>
       )}
     </>
+  );
+}
+
+/** ST16: a few minutes of recall on questions already met. */
+export function DailyReview({
+  lang,
+  t,
+  perform,
+  back,
+}: {
+  lang: Lang;
+  t: Translate;
+  perform: Perform;
+  back: () => void;
+}) {
+  const [cards, C] = useState<any[] | null>(null),
+    [index, I] = useState(0),
+    [picked, P] = useState(""),
+    [shown, S] = useState<any>(null),
+    [tally, T] = useState({ easy: 0, medium: 0, hard: 0 });
+  useEffect(() => {
+    perform("review-due", {}).then((r) => C(r?.cards || []));
+  }, []);
+  if (!cards) return <p role="status">{t("جارٍ التحميل…", "Loading…")}</p>;
+  const card = cards[index];
+  const finished = cards.length > 0 && index >= cards.length;
+  return (
+    <>
+      <div className="pageHead">
+        <h1>{t("المراجعة اليومية", "Daily review")}</h1>
+        <p>
+          {t(
+            "أسئلة قابلتها من قبل، لتثبيت ما تعلّمته. أجب من الذاكرة ثم اكشف الإجابة.",
+            "Questions you have met before, to keep what you learned. Answer from memory, then show the answer.",
+          )}
+        </p>
+      </div>
+      {cards.length === 0 && (
+        <Box>
+          <h2>{t("لا مراجعات مستحقة الآن", "You're all caught up")}</h2>
+          <p>
+            {t(
+              "عُد غدًا، أو واصل التعلّم من الرئيسية.",
+              "Come back tomorrow, or keep learning from Home.",
+            )}
+          </p>
+          <Button primary onClick={back}>
+            {t("إلى الرئيسية", "To Home")}
+          </Button>
+        </Box>
+      )}
+      {finished && (
+        <Box>
+          <h2>{t("انتهت مراجعة اليوم", "Today's review is done")}</h2>
+          <p>
+            {t(
+              `راجعتَ ${cards.length} سؤالًا: سهل ${tally.easy}، متوسط ${tally.medium}، صعب ${tally.hard}. الصعبة تعود غدًا.`,
+              `You reviewed ${cards.length} questions: ${tally.easy} easy, ${tally.medium} medium, ${tally.hard} hard. The hard ones come back tomorrow.`,
+            )}
+          </p>
+          <Button primary onClick={back}>
+            {t("إلى الرئيسية", "To Home")}
+          </Button>
+        </Box>
+      )}
+      {card && (
+        <Box cls="practice">
+          <p>
+            <small>
+              {t(
+                `${index + 1} من ${cards.length}`,
+                `${index + 1} of ${cards.length}`,
+              )}
+            </small>
+          </p>
+          <h2 dir="auto">{localized(card.data.stem, lang)}</h2>
+          <fieldset className="answer-options">
+            <legend>
+              {t("ما تتذكّره (اختياري)", "What you remember (optional)")}
+            </legend>
+            {(card.data.options || []).map((o: any) => (
+              <label
+                key={o.id}
+                className={
+                  shown && o.id === shown.key
+                    ? "selected"
+                    : picked === o.id
+                      ? "selected"
+                      : ""
+                }
+              >
+                <input
+                  type="radio"
+                  name="review"
+                  checked={picked === o.id}
+                  onChange={() => P(o.id)}
+                  disabled={!!shown}
+                />
+                <span dir="auto">
+                  {localized(o.label, lang)}
+                  {shown && o.id === shown.key && ` ✓`}
+                </span>
+              </label>
+            ))}
+          </fieldset>
+          {!shown && (
+            <Button
+              primary
+              onClick={async () =>
+                S(await perform("review-show", { itemId: card.id }))
+              }
+            >
+              {t("أظهر الإجابة", "Show answer")}
+            </Button>
+          )}
+          {shown && (
+            <div className="feedback" role="status">
+              <p dir="auto">{localized(shown.feedback, lang)}</p>
+              {shown.sourceKey && (
+                <small>
+                  {t("المصدر", "Source")}: {shown.sourceKey} {shown.locator}
+                </small>
+              )}
+              <p>{t("كم كان تذكّرها سهلًا؟", "How easy was it to recall?")}</p>
+              <div className="actions">
+                {(
+                  [
+                    ["easy", "سهل", "Easy"],
+                    ["medium", "متوسط", "Medium"],
+                    ["hard", "صعب", "Hard"],
+                  ] as const
+                ).map(([rating, ar, en]) => (
+                  <Button
+                    key={rating}
+                    onClick={async () => {
+                      await perform("review-rate", {
+                        itemId: card.id,
+                        rating,
+                        ...(picked ? { picked } : {}),
+                      });
+                      T((x) => ({ ...x, [rating]: x[rating] + 1 }));
+                      P("");
+                      S(null);
+                      I(index + 1);
+                    }}
+                  >
+                    {t(ar, en)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+        </Box>
+      )}
+    </>
+  );
+}
+
+/** ST14 + ST15: a soft readiness estimate and a timed mock quiz. */
+export function ExamReadiness({
+  data,
+  lang,
+  t,
+  perform,
+  learn,
+}: {
+  data: any;
+  lang: Lang;
+  t: Translate;
+  perform: Perform;
+  learn: (objectiveId: string) => void;
+}) {
+  const readiness: any[] = data.readiness || [];
+  const [mock, M] = useState<any>(null),
+    [index, I] = useState(0),
+    [answer, A] = useState(""),
+    [left, L] = useState(0),
+    [result, R] = useState<any>(null),
+    [flagged, F] = useState<number[]>([]);
+  const answered = useRef(new Set<number>());
+  const shownAt = useRef(0);
+  const finish = async (examId: string, items: any[]) => {
+    const r = await perform("mock-finish", {
+      examId,
+      deliveryIds: items.map((i) => i.deliveryId),
+    });
+    M(null);
+    R(r);
+  };
+  useEffect(() => {
+    if (!mock) return;
+    const timer = setInterval(() => {
+      const remaining = Math.max(
+        0,
+        mock.secondsAllowed - Math.round((Date.now() - mock.startedAt) / 1000),
+      );
+      L(remaining);
+      // Time is up: submit what was answered.
+      if (remaining === 0) void finish(mock.examId, mock.items);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [mock]);
+  if (!readiness.length)
+    return (
+      <>
+        <div className="pageHead">
+          <h1>{t("جاهزية الامتحان", "Exam readiness")}</h1>
+        </div>
+        <Box>
+          <p>
+            {t(
+              "لم يحدد مدرّسك موعد امتحان بعد. ستظهر جاهزيتك هنا عند تحديده.",
+              "Your instructor has not set an exam date yet. Your readiness will appear here once they do.",
+            )}
+          </p>
+        </Box>
+      </>
+    );
+  if (mock) {
+    const current = mock.items[index];
+    const item = current.item.data;
+    const next = () => {
+      A("");
+      shownAt.current = Date.now();
+      const remaining = mock.items
+        .map((_: any, i: number) => i)
+        .filter((i: number) => !answered.current.has(i));
+      if (!remaining.length) return void finish(mock.examId, mock.items);
+      I(remaining.find((i: number) => i > index) ?? remaining[0]);
+    };
+    return (
+      <>
+        <div className="pageHead">
+          <h1>{t("اختبار تجريبي", "Mock quiz")}</h1>
+          <p role="timer">
+            {t("الوقت المتبقي", "Time left")}: {Math.floor(left / 60)}:
+            {String(left % 60).padStart(2, "0")} ·{" "}
+            {t(
+              `أُجيب ${answered.current.size} من ${mock.items.length}`,
+              `${answered.current.size} of ${mock.items.length} answered`,
+            )}
+          </p>
+        </div>
+        <Box cls="practice">
+          <p>
+            <small>
+              {t(`سؤال ${index + 1}`, `Question ${index + 1}`)}
+              {flagged.includes(index) && ` · ${t("مؤشَّر للعودة", "flagged")}`}
+            </small>
+          </p>
+          <h2 dir="auto">{localized(item.stem, lang)}</h2>
+          <fieldset className="answer-options">
+            <legend>{t("إجابتك", "Your answer")}</legend>
+            {(item.options || []).map((o: any) => (
+              <label key={o.id} className={answer === o.id ? "selected" : ""}>
+                <input
+                  type="radio"
+                  name="mock"
+                  checked={answer === o.id}
+                  onChange={() => A(o.id)}
+                />
+                <span dir="auto">{localized(o.label, lang)}</span>
+              </label>
+            ))}
+          </fieldset>
+          <div className="actions">
+            <Button
+              primary
+              disabled={!answer}
+              onClick={async () => {
+                await perform("attempt", {
+                  deliveryId: current.deliveryId,
+                  answer,
+                  elapsedMs: Date.now() - shownAt.current,
+                  idempotencyKey: crypto.randomUUID(),
+                });
+                answered.current.add(index);
+                next();
+              }}
+            >
+              {t("ثبّت الإجابة", "Save answer")}
+            </Button>
+            <Button
+              onClick={() => {
+                F((x) => (x.includes(index) ? x : [...x, index]));
+                next();
+              }}
+            >
+              {t("أشّر وعُد لاحقًا", "Flag and come back")}
+            </Button>
+            <Button onClick={() => finish(mock.examId, mock.items)}>
+              {t("سلّم الاختبار", "Submit quiz")}
+            </Button>
+          </div>
+        </Box>
+      </>
+    );
+  }
+  return (
+    <>
+      <div className="pageHead">
+        <h1>{t("جاهزية الامتحان", "Exam readiness")}</h1>
+        <p>
+          {t(
+            "تقدير تقريبي من تدريبك، وليس توقّعًا لدرجتك.",
+            "A rough estimate from your practice, not a prediction of your grade.",
+          )}
+        </p>
+      </div>
+      {result && (
+        <Box>
+          <h2>{t("نتيجة الاختبار التجريبي", "Mock quiz result")}</h2>
+          <p>
+            {t(
+              `أجبت ${result.answered} من ${result.served}، منها ${result.correct} صحيحة. ما لم تُجب عنه يُحسب هنا فقط، لا في إتقانك.`,
+              `You answered ${result.answered} of ${result.served}, ${result.correct} correctly. Unanswered questions count here only, not in your mastery.`,
+            )}
+          </p>
+          {result.concepts.map((c: any) => {
+            const label = (data.objectives || []).find(
+              (o: any) => o.data.objectiveId === c.objectiveId,
+            )?.data.title;
+            return (
+              <div className="row" key={c.objectiveId}>
+                <span>
+                  <strong>{localized(label, lang)}</strong>
+                  <br />
+                  <small>
+                    {t(
+                      `${c.correct} من ${c.served}`,
+                      `${c.correct} of ${c.served}`,
+                    )}
+                  </small>
+                </span>
+                {c.correct < c.served && (
+                  <Button onClick={() => learn(c.objectiveId)}>
+                    {t("تدرّب على هذا", "Practise this")}
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </Box>
+      )}
+      {readiness.map((r) => (
+        <Box key={r.examId} cls={result ? "end" : ""}>
+          <h2>
+            {r.name} · {r.date}
+          </h2>
+          <p style={{ fontSize: 28, margin: "8px 0" }}>
+            <strong>{t(`نحو ${r.about}٪`, `about ${r.about}%`)}</strong>
+          </p>
+          <p>
+            {r.daysLeft > 0
+              ? t(
+                  `باقٍ ${r.daysLeft} يومًا. ${r.suggestedMinutesPerDay ? `اقتراح: نحو ${r.suggestedMinutesPerDay} دقيقة يوميًّا.` : ""}`,
+                  `${r.daysLeft} days to go. ${r.suggestedMinutesPerDay ? `Suggested: about ${r.suggestedMinutesPerDay} minutes a day.` : ""}`,
+                )
+              : t(
+                  "موعد الامتحان حلّ أو مضى.",
+                  "The exam date is here or has passed.",
+                )}
+          </p>
+          <small>
+            {t(
+              `مدى الثقة: هذا التقدير مبني على تدريبك في ${r.assessedShare}٪ من وزن مفاهيم الامتحان. كلما تدرّبت أكثر صار أدقّ.`,
+              `How sure this is: the estimate rests on your practice in ${r.assessedShare}% of the exam's concept weight. The more you practise, the firmer it gets.`,
+            )}
+          </small>
+          <h3>
+            {t(
+              "المفاهيم الأكثر تأثيرًا على جاهزيتك",
+              "The concepts costing you the most",
+            )}
+          </h3>
+          {r.costliest.map((c: any) => (
+            <div className="row" key={c.conceptId}>
+              <strong>{localized(c.label, lang) || c.conceptId}</strong>
+              {c.objectiveId && (
+                <Button onClick={() => learn(c.objectiveId)}>
+                  {t("تدرّب على هذا", "Practise this")}
+                </Button>
+              )}
+            </div>
+          ))}
+          <div className="actions">
+            <Button
+              primary
+              onClick={async () => {
+                const m = await perform("mock-start", { examId: r.examId });
+                if (m?.items?.length) {
+                  answered.current = new Set();
+                  shownAt.current = Date.now();
+                  I(0);
+                  A("");
+                  F([]);
+                  R(null);
+                  L(m.secondsAllowed);
+                  M({ ...m, examId: r.examId, startedAt: Date.now() });
+                } else
+                  R({
+                    served: 0,
+                    answered: 0,
+                    correct: 0,
+                    concepts: [],
+                    empty: true,
+                  });
+              }}
+            >
+              {t("ابدأ اختبارًا تجريبيًّا", "Take mock quiz")}
+            </Button>
+          </div>
+          {result?.empty && (
+            <p role="status">
+              {t(
+                "لا توجد أسئلة جديدة معتمدة لمفاهيم هذا الامتحان الآن.",
+                "There are no fresh reviewed questions for this exam's concepts right now.",
+              )}
+            </p>
+          )}
+        </Box>
+      ))}
+    </>
+  );
+}
+
+/** ST17: the tutor, reachable from every student screen. */
+export function TutorChat({
+  lang,
+  t,
+  concept,
+  close,
+}: {
+  lang: Lang;
+  t: Translate;
+  concept?: { ar: string; en: string } | null;
+  close: () => void;
+}) {
+  const [thread, T] = useState<any[]>([]),
+    [question, Q] = useState(""),
+    [busy, B] = useState(false);
+  const ask = async (text: string, style = "short", mode = "chat") => {
+    if (!text.trim()) return;
+    B(true);
+    try {
+      const r = await request(
+        "/api/tutor",
+        {
+          question: text,
+          // The tutor replies in the language the student actually typed.
+          language: /[\u0600-\u06ff]/.test(text)
+            ? /[a-z]{3,}/i.test(text)
+              ? "mixed"
+              : "ar"
+            : "en",
+          style,
+          mode,
+          courseId: "CET351",
+        },
+        lang,
+      );
+      T((x) => [...x, { question: text, style, ...r }]);
+      Q("");
+    } catch (e) {
+      T((x) => [
+        ...x,
+        { question: text, answer: (e as Error).message, citations: [] },
+      ]);
+    } finally {
+      B(false);
+    }
+  };
+  const modeLabel = (m: string) =>
+    ({
+      "guiding-question": t("سؤال يوجّهك", "A guiding question"),
+      "stronger-hint": t("تلميح أقوى", "A stronger hint"),
+      "worked-example": t("مثال محلول مشابه", "A similar worked example"),
+    })[m];
+  return (
+    <aside
+      role="dialog"
+      aria-label={t("المساعد", "Tutor")}
+      style={{
+        position: "fixed",
+        insetInlineEnd: 16,
+        bottom: 16,
+        width: "min(440px, calc(100vw - 32px))",
+        maxHeight: "min(640px, calc(100vh - 32px))",
+        display: "flex",
+        flexDirection: "column",
+        background: "#fff",
+        border: "1px solid #dcdfe8",
+        borderRadius: 16,
+        boxShadow: "0 12px 40px rgba(20,24,60,.18)",
+        zIndex: 50,
+      }}
+    >
+      <div className="sectionTop" style={{ padding: "12px 16px" }}>
+        <strong>{t("المساعد", "Tutor")}</strong>
+        <button className="textbtn" onClick={close}>
+          {t("إغلاق", "Close")}
+        </button>
+      </div>
+      <div style={{ overflowY: "auto", padding: "0 16px", flex: 1 }}>
+        {concept && (
+          <p>
+            <span className="badge lavender">{localized(concept, lang)}</span>
+          </p>
+        )}
+        {thread.length === 0 && (
+          <p>
+            <small>
+              {t(
+                "اسأل بالعربية أو الإنجليزية أو بخليط منهما. أجيب من مواد مقررك فقط، وأبدأ بتلميح قبل الإجابة المباشرة.",
+                "Ask in Arabic, English or a mix. I answer only from your course material, and start with a hint before the direct answer.",
+              )}
+            </small>
+          </p>
+        )}
+        {thread.map((m, i) => (
+          <div key={i}>
+            <p dir="auto">
+              <strong>{m.question}</strong>
+            </p>
+            <div className="feedback">
+              {m.answerMode && m.answerMode !== "direct" && (
+                <small>{modeLabel(m.answerMode)}</small>
+              )}
+              <p dir="auto">{m.answer}</p>
+              {(m.citations || []).map((c: any) => (
+                <a
+                  key={c.id}
+                  href={c.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="textbtn"
+                  style={{ marginInlineEnd: 10 }}
+                >
+                  {c.title || c.sourceKey}{" "}
+                  {c.page ? `${t("ص", "p.")} ${c.page}` : c.section} ↗
+                </a>
+              ))}
+              {m.disposition === "insufficient_evidence" && (
+                <small>
+                  {t(
+                    "هذا غير مغطّى في مواد مقررك. أبلغتُ مدرّسك به.",
+                    "This isn't covered in your course material. I've flagged it for your instructor.",
+                  )}
+                </small>
+              )}
+              {m.disposition === "answered" && (
+                <div className="actions">
+                  {m.answerMode !== "direct" && (
+                    <Button disabled={busy} onClick={() => ask(m.question)}>
+                      {t("إجابة أوضح", "More direct")}
+                    </Button>
+                  )}
+                  {FORMATS.slice(0, 3).map(([id, ar, en]) => (
+                    <Button
+                      key={id}
+                      disabled={busy}
+                      onClick={() => ask(m.question, id, "explain")}
+                    >
+                      {t(ar, en)}
+                    </Button>
+                  ))}
+                  {m.memoryId && !m.rated && (
+                    <>
+                      {(["up", "down"] as const).map((rating) => (
+                        <button
+                          key={rating}
+                          className="textbtn"
+                          aria-label={
+                            rating === "up"
+                              ? t("إجابة مفيدة", "Helpful")
+                              : t("إجابة غير مفيدة", "Not helpful")
+                          }
+                          onClick={async () => {
+                            await request(
+                              "/api/tutor/memory",
+                              { action: "rate", id: m.memoryId, rating },
+                              lang,
+                            ).catch(() => undefined);
+                            T((x) =>
+                              x.map((y, j) =>
+                                j === i ? { ...y, rated: rating } : y,
+                              ),
+                            );
+                          }}
+                        >
+                          {rating === "up" ? "👍" : "👎"}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {busy && <p role="status">{t("جارٍ التفكير…", "Thinking…")}</p>}
+      </div>
+      <form
+        style={{ display: "flex", gap: 8, padding: 12 }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          ask(question);
+        }}
+      >
+        <input
+          dir="auto"
+          value={question}
+          onChange={(e) => Q(e.target.value)}
+          placeholder={t("اكتب سؤالك…", "Type your question…")}
+          aria-label={t("سؤالك", "Your question")}
+          style={{ flex: 1 }}
+        />
+        <Button primary type="submit" disabled={busy || !question.trim()}>
+          {t("إرسال", "Send")}
+        </Button>
+      </form>
+    </aside>
   );
 }

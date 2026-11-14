@@ -53,6 +53,42 @@ const actionSchema = z.discriminatedUnion("action", [
     elapsedMs: z.number().int().min(0).max(3_600_000).optional(),
   }),
   z.object({ action: z.literal("hint"), deliveryId: str }),
+  z.object({ action: z.literal("review-due") }),
+  z.object({ action: z.literal("review-show"), itemId: str }),
+  z.object({
+    action: z.literal("review-rate"),
+    itemId: str,
+    rating: z.enum(["easy", "medium", "hard"]),
+    picked: z.string().max(100).optional(),
+  }),
+  z.object({
+    action: z.literal("exam-save"),
+    name: z.string().trim().min(1).max(120),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    concepts: z
+      .array(
+        z.object({
+          conceptId: str,
+          weight: z.number().int().min(1).max(5),
+        }),
+      )
+      .min(1)
+      .max(200),
+  }),
+  z.object({
+    action: z.literal("course-settings"),
+    tutorStrictness: z.enum([
+      "hints-only",
+      "hints-then-answer",
+      "answer-allowed",
+    ]),
+  }),
+  z.object({ action: z.literal("mock-start"), examId: str }),
+  z.object({
+    action: z.literal("mock-finish"),
+    examId: str,
+    deliveryIds: z.array(str).min(1).max(20),
+  }),
   z.object({
     action: z.literal("diagnose"),
     objectiveId: str,
@@ -582,6 +618,119 @@ export function learningGain(attempts: LearningRecord[], minimumGroup = 5) {
     };
   });
 }
+/**
+ * Exam readiness: the learner's estimated chance of success on each exam concept, weighted
+ * by the instructor's concept weights. Always a soft figure, never a promise or a grade.
+ */
+export function examReadiness(
+  exams: LearningRecord[],
+  states: LearningRecord[],
+  objectives: LearningRecord[],
+  now = new Date(),
+) {
+  return exams.map((exam) => {
+    const concepts = (exam.data.concepts as any[]).map((c) => {
+      const objective = objectives.find(
+        (o) => o.data.objectiveId === `c:${c.conceptId}`,
+      );
+      const state = states.find(
+        (s) => s.data.objectiveId === `c:${c.conceptId}`,
+      )?.data;
+      return {
+        conceptId: c.conceptId,
+        label: objective?.data.title ?? c.label ?? null,
+        objectiveId: objective ? `c:${c.conceptId}` : null,
+        weight: c.weight,
+        // No evidence yet: the same prior the tracer starts from.
+        probability: state?.bkt?.probability ?? 0.2,
+        assessed: !!state && state.status !== "unassessed",
+      };
+    });
+    const total = concepts.reduce((n, c) => n + c.weight, 0) || 1;
+    const raw =
+      concepts.reduce((n, c) => n + c.weight * c.probability, 0) / total;
+    const assessedShare =
+      concepts.filter((c) => c.assessed).reduce((n, c) => n + c.weight, 0) /
+      total;
+    const daysLeft = Math.ceil(
+      (new Date(`${exam.data.date}T00:00:00Z`).getTime() - now.getTime()) /
+        86400000,
+    );
+    const costliest = [...concepts]
+      .sort(
+        (a, b) =>
+          b.weight * (1 - b.probability) - a.weight * (1 - a.probability),
+      )
+      .slice(0, 4);
+    const weak = concepts.filter((c) => c.probability < 0.85).length;
+    return {
+      examId: exam.id,
+      name: exam.data.name,
+      date: exam.data.date,
+      daysLeft,
+      // Rounded to the nearest five and never shown as certain.
+      about: Math.min(95, Math.max(5, Math.round((raw * 100) / 5) * 5)),
+      assessedShare: Math.round(assessedShare * 100),
+      costliest,
+      suggestedMinutesPerDay:
+        daysLeft > 0
+          ? Math.min(
+              60,
+              Math.max(10, Math.round((weak * 20) / daysLeft / 5) * 5),
+            )
+          : null,
+      concepts: concepts.length,
+    };
+  });
+}
+/** Review cards: questions the learner has already met, due now. Missed ones come first. */
+async function dueReviews(tx: Queryable, ctx: AuthContext) {
+  const attempts = (
+    await tx.query<Row>(
+      "SELECT * FROM records WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind='attempt' ORDER BY created_at",
+      [ctx.tenantId, ctx.userId, ctx.courseId],
+    )
+  ).rows;
+  if (!attempts.length) return [];
+  const reviews = new Map(
+    (
+      await tx.query<Row>(
+        "SELECT * FROM records WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind='review'",
+        [ctx.tenantId, ctx.userId, ctx.courseId],
+      )
+    ).rows.map((r) => [r.data.itemId as string, r.data]),
+  );
+  const last = new Map<string, Row>();
+  for (const a of attempts) last.set(a.data.itemId, a);
+  const now = Date.now();
+  return [...last.values()]
+    .filter((a) => {
+      const review = reviews.get(a.data.itemId);
+      return !review || new Date(review.dueAt).getTime() <= now;
+    })
+    .map((a) => ({
+      itemId: a.data.itemId as string,
+      missed:
+        reviews.get(a.data.itemId)?.lastCorrect === false ||
+        (!reviews.has(a.data.itemId) && a.data.correct === false),
+      dueAt: reviews.get(a.data.itemId)?.dueAt ?? a.data.at,
+    }))
+    .sort(
+      (a, b) =>
+        Number(b.missed) - Number(a.missed) || a.dueAt.localeCompare(b.dueAt),
+    );
+}
+/** Next interval in days. A wrong pick overrides an optimistic self-rating. */
+export function nextReviewInterval(
+  previous: number,
+  rating: "easy" | "medium" | "hard",
+  pickedCorrectly: boolean | null,
+) {
+  if (pickedCorrectly === false || rating === "hard") return 1;
+  const next =
+    rating === "easy" ? Math.max(4, previous * 3) : Math.max(2, previous * 2);
+  return Math.min(60, next);
+}
 async function recompute(
   tx: Queryable,
   ctx: AuthContext,
@@ -765,6 +914,7 @@ export async function workspace(ctx: AuthContext) {
     };
   });
   const safePrivate = new Set([
+    "mock_result",
     "state",
     "event",
     "recommendation",
@@ -823,6 +973,17 @@ export async function workspace(ctx: AuthContext) {
       ctx.role === "student"
         ? await learningPath(conn, ctx, ctx.userId)
         : undefined,
+    exams: of("exam"),
+    readiness:
+      ctx.role === "student"
+        ? examReadiness(of("exam"), of("state"), of("objective"))
+        : undefined,
+    reviewsDue:
+      ctx.role === "student" ? (await dueReviews(conn, ctx)).length : undefined,
+    settings: of("course_settings")[0]?.data ?? {
+      tutorStrictness: "hints-then-answer",
+    },
+    mockResults: of("mock_result"),
     learningGain:
       ctx.role === "instructor" ? learningGain(of("attempt")) : undefined,
     fixture: true,
@@ -871,7 +1032,12 @@ export async function learningAction(
     a.action === "diagnostic" ||
     a.action === "hint" ||
     a.action === "diagnose" ||
-    a.action === "diagnosis-outcome";
+    a.action === "diagnosis-outcome" ||
+    a.action === "review-due" ||
+    a.action === "review-show" ||
+    a.action === "review-rate" ||
+    a.action === "mock-start" ||
+    a.action === "mock-finish";
   const operation = isPractice
     ? "practice"
     : [
@@ -881,6 +1047,8 @@ export async function learningAction(
           "override",
           "undo-override",
           "review-attempt",
+          "exam-save",
+          "course-settings",
           "start-exam",
           "end-exam",
         ].includes(a.action)
@@ -1124,6 +1292,7 @@ export async function learningAction(
         lowConfidence,
         hintsUsed: delivery.data.hintsUsed ?? 0,
         diagnostic: delivery.data.diagnostic === true,
+        mock: delivery.data.mock === true,
       };
       await put(tx, ctx, id, "attempt", data, ctx.userId);
       await put(
@@ -1291,6 +1460,197 @@ export async function learningAction(
           ctx.userId,
         );
       return { episodeId: episode.id, ...data };
+    }
+    if (a.action === "review-due") {
+      role(ctx, "student");
+      const due = (await dueReviews(tx, ctx)).slice(0, 10);
+      const cards: LearningRecord[] = [];
+      for (const d of due) {
+        const item = (
+          await tx.query<Row>(
+            "SELECT * FROM records WHERE tenant_id=$1 AND course_id=$2 AND id=$3 AND kind='item' AND data->>'approved'='true' AND COALESCE(data->>'protected','false')='false'",
+            [ctx.tenantId, ctx.courseId, d.itemId],
+          )
+        ).rows[0];
+        if (item && ["choice", "transfer"].includes(item.data.kind))
+          cards.push(publicItem(toRecord(item)));
+      }
+      return { cards };
+    }
+    if (a.action === "review-show" || a.action === "review-rate") {
+      role(ctx, "student");
+      // Answers are shown only for questions this learner has already attempted.
+      const met = await tx.query(
+        "SELECT id FROM records WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind='attempt' AND data->>'itemId'=$4 LIMIT 1",
+        [ctx.tenantId, ctx.userId, ctx.courseId, a.itemId],
+      );
+      if (!met.rows.length) throw new AppError(403, "FORBIDDEN");
+      const item = await get(tx, ctx, a.itemId, "item");
+      if (!item.data.approved || item.data.protected)
+        throw new AppError(403, "FORBIDDEN");
+      if (a.action === "review-show")
+        return {
+          key: item.data.key,
+          keyLabel:
+            (item.data.options ?? []).find((o: any) => o.id === item.data.key)
+              ?.label ?? null,
+          feedback: item.data.feedback ?? null,
+          sourceKey: item.data.sourceKey ?? null,
+          locator: item.data.locator ?? null,
+        };
+      const id = `review:${ctx.userId}:${a.itemId}`;
+      const previous =
+        (
+          await tx.query<Row>(
+            "SELECT * FROM records WHERE tenant_id=$1 AND id=$2",
+            [ctx.tenantId, id],
+          )
+        ).rows[0]?.data ?? {};
+      const pickedCorrectly =
+        a.picked === undefined ? null : a.picked === item.data.key;
+      const interval = nextReviewInterval(
+        Number(previous.interval ?? 0),
+        a.rating,
+        pickedCorrectly,
+      );
+      const data = {
+        itemId: a.itemId,
+        objectiveId: item.data.objectiveId,
+        interval,
+        dueAt: new Date(Date.now() + interval * 86400000).toISOString(),
+        lastRating: a.rating,
+        lastCorrect: pickedCorrectly,
+        count: Number(previous.count ?? 0) + 1,
+        at: new Date().toISOString(),
+      };
+      await put(tx, ctx, id, "review", data, ctx.userId);
+      return data;
+    }
+    if (a.action === "exam-save") {
+      role(ctx, "instructor");
+      const id = `exam:${a.name.toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]+/g, "-")}`;
+      return put(tx, ctx, id, "exam", {
+        name: a.name,
+        date: a.date,
+        concepts: a.concepts,
+        setBy: ctx.userId,
+        at: new Date().toISOString(),
+      });
+    }
+    if (a.action === "course-settings") {
+      role(ctx, "instructor");
+      return put(tx, ctx, "course-settings", "course_settings", {
+        tutorStrictness: a.tutorStrictness,
+        setBy: ctx.userId,
+        at: new Date().toISOString(),
+      });
+    }
+    if (a.action === "mock-start") {
+      role(ctx, "student");
+      const exam = await get(tx, ctx, a.examId, "exam");
+      const wanted = (exam.data.concepts as any[])
+        .sort((x, y) => y.weight - x.weight)
+        .map((c) => `c:${c.conceptId}`);
+      const items = (
+        await tx.query<Row>(
+          "SELECT * FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='item' AND data->>'approved'='true' AND COALESCE(data->>'protected','false')='false' AND data->>'kind' IN ('choice','transfer') ORDER BY id",
+          [ctx.tenantId, ctx.courseId],
+        )
+      ).rows.map(toRecord);
+      const seen = new Set(
+        (
+          await tx.query<Row>(
+            "SELECT * FROM records WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind IN ('attempt','delivery')",
+            [ctx.tenantId, ctx.userId, ctx.courseId],
+          )
+        ).rows.map((r) => r.data.familyId),
+      );
+      const pools = wanted.map((objectiveId) =>
+        items.filter(
+          (i) =>
+            i.data.objectiveId === objectiveId && !seen.has(i.data.familyId),
+        ),
+      );
+      // Round-robin across the exam's concepts, heaviest first, so one concept cannot fill the quiz.
+      const picked: LearningRecord[] = [];
+      for (let round = 0; picked.length < 10; round++) {
+        const before = picked.length;
+        for (const pool of pools)
+          if (pool[round] && picked.length < 10) picked.push(pool[round]);
+        if (picked.length === before) break;
+      }
+      const served: { item: LearningRecord; deliveryId: string }[] = [];
+      for (const item of picked) {
+        const deliveryId = `delivery:${randomUUID()}`;
+        await put(
+          tx,
+          ctx,
+          deliveryId,
+          "delivery",
+          {
+            itemId: item.id,
+            version: item.data.version,
+            familyId: item.data.familyId,
+            objectiveId: item.data.objectiveId,
+            assisted: false,
+            mock: true,
+            examId: exam.id,
+            at: new Date().toISOString(),
+          },
+          ctx.userId,
+        );
+        served.push({ item: publicItem(item), deliveryId });
+      }
+      return { items: served, secondsAllowed: served.length * 90 };
+    }
+    if (a.action === "mock-finish") {
+      role(ctx, "student");
+      const byConcept = new Map<
+        string,
+        { objectiveId: string; served: number; correct: number }
+      >();
+      let answered = 0;
+      for (const deliveryId of a.deliveryIds) {
+        const delivery = await get(tx, ctx, deliveryId, "delivery");
+        if (
+          delivery.ownerId !== ctx.userId ||
+          delivery.data.examId !== a.examId
+        )
+          throw new AppError(403, "FORBIDDEN");
+        const attempt = (
+          await tx.query<Row>(
+            "SELECT * FROM records WHERE tenant_id=$1 AND owner_id=$2 AND kind='attempt' AND data->>'deliveryId'=$3",
+            [ctx.tenantId, ctx.userId, deliveryId],
+          )
+        ).rows[0];
+        const entry = byConcept.get(delivery.data.objectiveId) ?? {
+          objectiveId: delivery.data.objectiveId,
+          served: 0,
+          correct: 0,
+        };
+        entry.served++;
+        // Unanswered when time ran out: counted against the mock result only, never against mastery.
+        if (attempt) answered++;
+        if (attempt?.data.correct === true) entry.correct++;
+        byConcept.set(delivery.data.objectiveId, entry);
+      }
+      const result = {
+        examId: a.examId,
+        served: a.deliveryIds.length,
+        answered,
+        correct: [...byConcept.values()].reduce((n, c) => n + c.correct, 0),
+        concepts: [...byConcept.values()],
+        at: new Date().toISOString(),
+      };
+      await put(
+        tx,
+        ctx,
+        `mock:${randomUUID()}`,
+        "mock_result",
+        result,
+        ctx.userId,
+      );
+      return result;
     }
     if (a.action === "complete-session") {
       role(ctx, "student");
