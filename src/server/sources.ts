@@ -334,6 +334,79 @@ export async function importCustomLecture(
   });
   return { ...result, sourceKey };
 }
+const extractedPages = z.object({
+  mode: z.enum(["umbrella", "lecture"]),
+  title: z.string().trim().min(1).max(200),
+  filename: z.string().max(300).default("document.pdf"),
+  rightsConfirmed: z.boolean().optional(),
+  rightsReference: z.string().max(500).optional(),
+  pages: z
+    .array(
+      z.object({
+        page: z.number().int().positive().max(100000),
+        text: z.string().max(30000),
+      }),
+    )
+    .min(1)
+    .max(200),
+});
+/** A large PDF is read in the instructor's own browser and arrives as page text, one part
+ * of up to 200 pages per request, so the file size and page limits of an upload do not
+ * apply. Each part is its own source; the original file is not stored. */
+export async function importExtractedPages(ctx: AuthContext, raw: unknown) {
+  await staff(ctx);
+  const input = extractedPages.parse(raw);
+  if (
+    input.mode === "umbrella" &&
+    (!input.rightsConfirmed || (input.rightsReference ?? "").trim().length < 5)
+  )
+    throw new SourceError("permission_required", 400);
+  const numbers = input.pages.map((p) => p.page);
+  if (new Set(numbers).size !== numbers.length)
+    throw new SourceError("invalid_review");
+  const pages = [...input.pages]
+    .sort((a, b) => a.page - b.page)
+    .map((p) => ({
+      page: p.page,
+      section: null,
+      text: p.text.replace(/\s+/g, " ").trim(),
+    }));
+  const text = pages.map((p) => `[${p.page}]\n${p.text}`).join("\n\n");
+  if (Buffer.byteLength(text) > MAX_FILE) throw new SourceError("file_size");
+  const sourceKey =
+    (input.mode === "umbrella" ? UMBRELLA_PREFIX : LECTURE_PREFIX) +
+    hashBytes(input.title.normalize("NFKC").toLowerCase())
+      .slice(0, 12)
+      .toUpperCase();
+  const result = await persistMaterial(ctx, {
+    sourceKey,
+    title: input.title,
+    role: input.mode === "umbrella" ? "umbrella" : "instructor",
+    filename: path.basename(input.filename).normalize("NFC") + ".txt",
+    mime: "text/plain",
+    bytes: Buffer.from(text),
+    hash: hashBytes(text),
+    pages,
+    metadata: {
+      extractedInBrowser: true,
+      originalStored: false,
+      firstPage: pages[0].page,
+      lastPage: pages.at(-1)!.page,
+      uploadedBy: ctx.userId,
+      ...(input.mode === "umbrella"
+        ? {
+            instructorUmbrella: true,
+            authorization: {
+              assertedBy: ctx.userId,
+              reference: (input.rightsReference ?? "").trim(),
+              assertedAt: new Date().toISOString(),
+            },
+          }
+        : { customLecture: true }),
+    },
+  });
+  return { ...result, sourceKey };
+}
 /** Approve every readable pending section of one current umbrella version in a single
  * explicit instructor decision. Quarantined sections still need a corrected extract. */
 export async function approvePendingUmbrella(

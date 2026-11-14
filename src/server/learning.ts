@@ -48,6 +48,33 @@ const actionSchema = z.discriminatedUnion("action", [
     answer: z.string().max(4000),
     explanation: z.string().max(5000).optional(),
     idempotencyKey: z.string().min(8).max(100),
+    // "I don't know" is an honest answer: recorded as not known, never penalised further.
+    unknown: z.boolean().optional(),
+    elapsedMs: z.number().int().min(0).max(3_600_000).optional(),
+  }),
+  z.object({ action: z.literal("hint"), deliveryId: str }),
+  z.object({
+    action: z.literal("diagnose"),
+    objectiveId: str,
+    // Set once a prerequisite check or a format switch has already been tried.
+    afterPrerequisite: z.enum(["passed", "failed"]).optional(),
+    previousEpisodeId: str.optional(),
+    formatTried: z.boolean().optional(),
+  }),
+  z.object({
+    action: z.literal("diagnosis-outcome"),
+    episodeId: str,
+    choice: z.enum([
+      "check-prerequisite",
+      "stay",
+      "format",
+      "worked-example",
+      "break",
+      "ask-instructor",
+      "fresh-question",
+    ]),
+    format: z.string().max(40).optional(),
+    helped: z.boolean().optional(),
   }),
   z.object({ action: z.literal("complete-session"), sessionId: str }),
   z.object({
@@ -178,7 +205,8 @@ async function canSeeStudent(
   }
 }
 function publicItem(item: LearningRecord): LearningRecord {
-  const { key, rubric, feedback, solution, ...safe } = item.data;
+  const { key, rubric, feedback, solution, hints, ...safe } = item.data;
+  void hints;
   void key;
   void rubric;
   void feedback;
@@ -205,12 +233,15 @@ export function deriveObjective(
     assisted: boolean;
     at: string;
     moderation?: string;
+    lowConfidence?: boolean;
   }>,
   now = new Date(),
 ) {
   const independent = attempts.filter(
     (a) =>
       !a.assisted &&
+      // A run of very fast answers is not evidence either way.
+      !a.lowConfidence &&
       typeof a.correct === "boolean" &&
       a.moderation !== "pending",
   );
@@ -380,12 +411,19 @@ function byDifficulty(items: LearningRecord[], target: string) {
       Math.abs(difficultyOrder.indexOf(b.data.difficulty ?? "medium") - at),
   );
 }
+/** Answers quicker than this cannot have been read; only a run of them is flagged. */
+const FAST_MS = 2500;
 export type PathNode = {
   conceptId: string;
   label: Bilingual;
   objectiveId: string | null;
   status: string;
   blockedBy: { conceptId: string; label: Bilingual; status: string }[];
+  /** Estimated probability of mastery from independent answers, 0 to 1. */
+  mastery: number | null;
+  /** What becoming ready on this concept opens up. */
+  unlocks: { conceptId: string; label: Bilingual }[];
+  covered: { conceptId: string; label: Bilingual }[];
 };
 /**
  * The learner's route through the published prerequisite graph: prerequisites first,
@@ -432,13 +470,31 @@ export async function learningPath(
       o.data.objectiveId.startsWith("c:")
     )
       objectiveOf.set(o.data.conceptId, o.data.objectiveId);
-  const statusOf = (conceptId: string) => {
+  const stateOf = (conceptId: string) => {
     const objectiveId = objectiveOf.get(conceptId);
-    if (!objectiveId) return "unassessable";
-    return (
-      states.find((r) => r.data.objectiveId === objectiveId)?.data.status ??
-      "unassessed"
-    );
+    return objectiveId
+      ? states.find((r) => r.data.objectiveId === objectiveId)?.data
+      : undefined;
+  };
+  const direct = (conceptId: string) =>
+    !objectiveOf.has(conceptId)
+      ? "unassessable"
+      : (stateOf(conceptId)?.status ?? "unassessed");
+  // A concept answered correctly implies its prerequisites are probably known. That is an
+  // inference, not evidence: later practice or a confirming check can overturn it.
+  const inferred = new Set<string>();
+  const mark = (conceptId: string, depth: number) => {
+    if (depth > 3) return;
+    for (const e of edges)
+      if (e.to === conceptId && !inferred.has(e.from)) {
+        inferred.add(e.from);
+        mark(e.from, depth + 1);
+      }
+  };
+  for (const id of objectiveOf.keys()) if (direct(id) === "secure") mark(id, 0);
+  const statusOf = (conceptId: string) => {
+    const own = direct(conceptId);
+    return own === "unassessed" && inferred.has(conceptId) ? "inferred" : own;
   };
   const relevant = new Set<string>(objectiveOf.keys());
   for (const e of edges) if (objectiveOf.has(e.to)) relevant.add(e.from);
@@ -473,7 +529,21 @@ export async function learningPath(
         status: statusOf(e.from),
       }))
       // Only an assessable, not-yet-secure prerequisite can hold a learner back.
-      .filter((p) => p.status !== "secure" && p.status !== "unassessable"),
+      .filter(
+        (p) =>
+          p.status !== "secure" &&
+          p.status !== "unassessable" &&
+          p.status !== "inferred",
+      ),
+    mastery: stateOf(id)?.bkt?.probability ?? null,
+    unlocks: edges
+      .filter((e) => e.from === id && byId.has(e.to))
+      .map((e) => ({ conceptId: e.to, label: byId.get(e.to).label })),
+    covered: edges
+      .filter(
+        (e) => e.to === id && byId.has(e.from) && statusOf(e.from) === "secure",
+      )
+      .map((e) => ({ conceptId: e.from, label: byId.get(e.from).label })),
   }));
   const open = nodes.filter((n) => n.objectiveId && n.status !== "secure");
   return {
@@ -736,7 +806,7 @@ export async function workspace(ctx: AuthContext) {
       ?.data ?? {
       lessonLanguage: "mixed",
       presentation: "steps",
-      uiLanguage: "ar",
+      uiLanguage: "en",
     },
     grades: await Promise.all(
       students.map((id) => getOfficialGrades(ctx.tenantId, id)),
@@ -747,6 +817,8 @@ export async function workspace(ctx: AuthContext) {
       data: { ...r.data, key: undefined },
     })),
     examMode: protectedExam,
+    diagnoses: of("diagnosis"),
+    helpRequests: ctx.role === "instructor" ? of("help_request") : undefined,
     path:
       ctx.role === "student"
         ? await learningPath(conn, ctx, ctx.userId)
@@ -796,7 +868,10 @@ export async function learningAction(
   const isPractice =
     a.action === "select-practice" ||
     a.action === "attempt" ||
-    a.action === "diagnostic";
+    a.action === "diagnostic" ||
+    a.action === "hint" ||
+    a.action === "diagnose" ||
+    a.action === "diagnosis-outcome";
   const operation = isPractice
     ? "practice"
     : [
@@ -1008,10 +1083,24 @@ export async function learningAction(
       )
         throw new AppError(400, "INVALID_INPUT");
       const moderated =
-        item.data.kind === "open" || item.data.kind === "critique";
-      const correct =
-        item.data.kind === "open" ? null : a.answer === item.data.key;
+        !a.unknown &&
+        (item.data.kind === "open" || item.data.kind === "critique");
+      const correct = a.unknown
+        ? false
+        : item.data.kind === "open"
+          ? null
+          : a.answer === item.data.key;
       const at = new Date().toISOString();
+      const fast =
+        !a.unknown && typeof a.elapsedMs === "number" && a.elapsedMs < FAST_MS;
+      // One fast answer means nothing; most of the last five being fast does.
+      const recentFast = (
+        await tx.query<Row>(
+          "SELECT * FROM records WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind='attempt' ORDER BY created_at DESC,id DESC LIMIT 4",
+          [ctx.tenantId, ctx.userId, ctx.courseId],
+        )
+      ).rows.filter((r) => r.data.fast).length;
+      const lowConfidence = fast && recentFast >= 2;
       const data = {
         deliveryId: a.deliveryId,
         itemId: item.id,
@@ -1029,6 +1118,12 @@ export async function learningAction(
         at,
         moderation: moderated ? "pending" : "not-required",
         fixtureItem: !!item.data.fixture,
+        unknown: a.unknown === true,
+        elapsedMs: a.elapsedMs ?? null,
+        fast,
+        lowConfidence,
+        hintsUsed: delivery.data.hintsUsed ?? 0,
+        diagnostic: delivery.data.diagnostic === true,
       };
       await put(tx, ctx, id, "attempt", data, ctx.userId);
       await put(
@@ -1063,6 +1158,139 @@ export async function learningAction(
       };
       await put(tx, ctx, id, "attempt", { ...data, result }, ctx.userId);
       return result;
+    }
+    if (a.action === "hint") {
+      role(ctx, "student");
+      const delivery = await get(tx, ctx, a.deliveryId, "delivery");
+      if (delivery.ownerId !== ctx.userId) throw new AppError(403, "FORBIDDEN");
+      const item = await get(tx, ctx, delivery.data.itemId, "item");
+      const used = Number(delivery.data.hintsUsed ?? 0);
+      // Each hint is more direct than the last; none of them states the answer.
+      const ladder: Bilingual[] = [
+        ...((item.data.hints as Bilingual[] | undefined) ?? []),
+        ...(item.data.sourceKey
+          ? [
+              bi(
+                `ارجع إلى المصدر: ${item.data.sourceKey} ${item.data.locator ?? ""}، واقرأ الجزء الذي يشرح هذا المفهوم.`,
+                `Go back to the source: ${item.data.sourceKey} ${item.data.locator ?? ""}, and read the part that explains this concept.`,
+              ),
+            ]
+          : []),
+        bi(
+          "استبعد أولًا الخيارات التي تعرف أنها خطأ، ثم قارن ما بقي بتعريف المفهوم.",
+          "First rule out the options you know are wrong, then compare what is left with the definition of the concept.",
+        ),
+      ].slice(0, 3);
+      if (used >= ladder.length)
+        return { hint: null, used, total: ladder.length, exhausted: true };
+      await put(
+        tx,
+        ctx,
+        delivery.id,
+        "delivery",
+        { ...delivery.data, hintsUsed: used + 1, assisted: true },
+        ctx.userId,
+      );
+      return {
+        hint: ladder[used],
+        used: used + 1,
+        total: ladder.length,
+        exhausted: used + 1 >= ladder.length,
+      };
+    }
+    if (a.action === "diagnose") {
+      role(ctx, "student");
+      const recent = (
+        await tx.query<Row>(
+          "SELECT * FROM records WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind='attempt' ORDER BY created_at DESC,id DESC LIMIT 5",
+          [ctx.tenantId, ctx.userId, ctx.courseId],
+        )
+      ).rows;
+      const path = await learningPath(tx, ctx, ctx.userId);
+      const node = path.nodes.find((n) => n.objectiveId === a.objectiveId);
+      const previous = a.previousEpisodeId
+        ? (await get(tx, ctx, a.previousEpisodeId, "diagnosis")).data
+        : null;
+      const level = previous?.cause === "prerequisite" ? previous.level : 0;
+      // The order of the ladder is fixed by the application, never by a model.
+      let step: Record<string, unknown>;
+      const weak =
+        a.afterPrerequisite === "passed" ? undefined : node?.blockedBy[0];
+      if (recent.filter((r) => r.data.fast).length >= 3)
+        step = { cause: "gaming", level: 0 };
+      else if (a.afterPrerequisite === "failed" && level >= 2)
+        step = { cause: "basics-gap", level };
+      else if (
+        a.afterPrerequisite === "failed" &&
+        previous?.targetObjectiveId
+      ) {
+        const deeper = path.nodes.find(
+          (n) => n.objectiveId === previous.targetObjectiveId,
+        )?.blockedBy[0];
+        const target = deeper
+          ? path.nodes.find((n) => n.conceptId === deeper.conceptId)
+          : undefined;
+        step = target?.objectiveId
+          ? {
+              cause: "prerequisite",
+              level: level + 1,
+              targetObjectiveId: target.objectiveId,
+              targetLabel: target.label,
+            }
+          : { cause: "basics-gap", level };
+      } else if (weak) {
+        const target = path.nodes.find((n) => n.conceptId === weak.conceptId);
+        step = {
+          cause: "prerequisite",
+          level: 1,
+          targetObjectiveId: target?.objectiveId ?? null,
+          targetLabel: weak.label,
+        };
+      } else if (!a.formatTried) step = { cause: "presentation", level: 0 };
+      else step = { cause: "confidence", level: 0 };
+      const episodeId = `diagnosis:${randomUUID()}`;
+      const episode = {
+        objectiveId: a.objectiveId,
+        conceptLabel: node?.label ?? null,
+        ...step,
+        previousEpisodeId: a.previousEpisodeId ?? null,
+        at: new Date().toISOString(),
+        choice: null,
+        helped: null,
+      };
+      await put(tx, ctx, episodeId, "diagnosis", episode, ctx.userId);
+      return { episodeId, ...episode };
+    }
+    if (a.action === "diagnosis-outcome") {
+      role(ctx, "student");
+      const episode = await get(tx, ctx, a.episodeId, "diagnosis");
+      if (episode.ownerId !== ctx.userId) throw new AppError(403, "FORBIDDEN");
+      const data: Record<string, any> = {
+        ...episode.data,
+        choice: a.choice,
+        format: a.format ?? episode.data.format ?? null,
+        helped: a.helped ?? episode.data.helped ?? null,
+        decidedAt: new Date().toISOString(),
+      };
+      await put(tx, ctx, episode.id, "diagnosis", data, ctx.userId);
+      if (a.choice === "ask-instructor")
+        // The instructor sees the diagnosis, not a bare "I'm stuck".
+        await put(
+          tx,
+          ctx,
+          `help:${episode.id}`,
+          "help_request",
+          {
+            objectiveId: data.objectiveId,
+            conceptLabel: data.conceptLabel,
+            cause: data.cause,
+            level: data.level,
+            at: data.decidedAt,
+            status: "open",
+          },
+          ctx.userId,
+        );
+      return { episodeId: episode.id, ...data };
     }
     if (a.action === "complete-session") {
       role(ctx, "student");

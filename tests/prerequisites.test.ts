@@ -29,6 +29,7 @@ import {
   publishedPrerequisiteSupport,
   targetDifficulty,
   learningGain,
+  deriveObjective,
 } from "../src/server/learning";
 import {
   allocate,
@@ -48,7 +49,10 @@ import {
 import { extractionQuality } from "../src/server/prerequisites";
 import { transcribeSparsePages } from "../src/server/ocr";
 import { segments } from "../src/server/ai";
-import { importCustomLecture } from "../src/server/sources";
+import {
+  importCustomLecture,
+  importExtractedPages,
+} from "../src/server/sources";
 import { syntheticPdf } from "./fixtures/synthetic-pdf";
 
 const tenant = randomUUID();
@@ -883,5 +887,255 @@ describe("image-only pages and crowded pages", () => {
       await transcribeSparsePages(instructor, result.versionId, reader),
     ).toMatchObject({ transcribed: 0 });
     expect(asked).toEqual([]);
+  });
+});
+
+describe("large references read in the browser", () => {
+  const pages = Array.from({ length: 150 }, (_, i) => ({
+    page: i + 151,
+    text:
+      i === 3 ? "" : `Backpropagation derivation, page ${i + 151}. `.repeat(20),
+  }));
+  it("stores page text as a reviewable part with real page numbers", async () => {
+    await expect(
+      importExtractedPages(instructor, {
+        mode: "umbrella",
+        title: "Neural Networks (151–300)",
+        pages,
+      }),
+    ).rejects.toMatchObject({ code: "permission_required" });
+    await expect(
+      importExtractedPages(student, {
+        mode: "lecture",
+        title: "Big lecture",
+        pages,
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    const part = await importExtractedPages(instructor, {
+      mode: "umbrella",
+      title: "Neural Networks (151–300)",
+      filename: "haykin.pdf",
+      rightsConfirmed: true,
+      rightsReference: "Course textbook",
+      pages,
+    });
+    expect(part.sourceKey).toMatch(/^UMBRELLA-/);
+    const material = await getMaterial(instructor, part.id);
+    expect(material.chunks).toHaveLength(150);
+    expect(material.chunks[0].page).toBe(151);
+    // A scanned page arrives empty and is quarantined, never silently approved.
+    expect(
+      material.chunks
+        .filter((c) => c.status === "quarantined")
+        .map((c) => c.page),
+    ).toEqual([154]);
+    expect(await approvePendingUmbrella(instructor, part.id)).toMatchObject({
+      approved: 149,
+    });
+    // The same part sent again creates nothing new.
+    expect(
+      await importExtractedPages(instructor, {
+        mode: "umbrella",
+        title: "Neural Networks (151–300)",
+        rightsConfirmed: true,
+        rightsReference: "Course textbook",
+        pages,
+      }),
+    ).toMatchObject({ id: part.id, deduplicated: true });
+  });
+  it("rejects more than 200 pages or repeated page numbers in one part", async () => {
+    await expect(
+      importExtractedPages(instructor, {
+        mode: "lecture",
+        title: "Too long",
+        pages: Array.from({ length: 201 }, (_, i) => ({
+          page: i + 1,
+          text: "x",
+        })),
+      }),
+    ).rejects.toBeTruthy();
+    await expect(
+      importExtractedPages(instructor, {
+        mode: "lecture",
+        title: "Repeated",
+        pages: [
+          { page: 1, text: "a" },
+          { page: 1, text: "b" },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "invalid_review" });
+  });
+});
+
+describe("hints, honest unknowns and the diagnosis ladder", () => {
+  const naive = stableConceptId("Naive Bayes");
+  const bayes = stableConceptId("Bayes theorem");
+  const learner: AuthContext = { ...student, userId: randomUUID() };
+  const pick = async (objectiveId: string) =>
+    learningAction(learner, { action: "select-practice", objectiveId });
+  beforeAll(async () => {
+    await db.tenant(tenant).transaction(async (tx) => {
+      await tx.query("INSERT INTO users(tenant_id,id,name) VALUES($1,$2,$3)", [
+        tenant,
+        learner.userId,
+        '{"ar":"متعلّم","en":"Learner"}',
+      ]);
+      await tx.query(
+        "INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,'student')",
+        [tenant, learner.userId],
+      );
+      await tx.query(
+        "INSERT INTO course_access(tenant_id,user_id,course_id,access_role) VALUES($1,$2,'CET351','student')",
+        [tenant, learner.userId],
+      );
+    });
+  });
+  it("gives hints one at a time, never the key, and counts the answer as assisted", async () => {
+    const first = await pick(`c:${naive}`);
+    expect(first.item.data.hints).toBeUndefined();
+    const one = await learningAction(learner, {
+      action: "hint",
+      deliveryId: first.deliveryId,
+    });
+    expect(one.hint.en.length).toBeGreaterThan(10);
+    expect(one.used).toBe(1);
+    let last = one;
+    while (!last.exhausted)
+      last = await learningAction(learner, {
+        action: "hint",
+        deliveryId: first.deliveryId,
+      });
+    expect(
+      await learningAction(learner, {
+        action: "hint",
+        deliveryId: first.deliveryId,
+      }),
+    ).toMatchObject({ hint: null, exhausted: true });
+    const answered = await learningAction(learner, {
+      action: "attempt",
+      deliveryId: first.deliveryId,
+      answer: "a",
+      idempotencyKey: "hinted-attempt-1",
+      elapsedMs: 20000,
+    });
+    expect(answered.attempt).toMatchObject({ assisted: true, correct: true });
+    expect(answered.attempt.hintsUsed).toBeGreaterThan(0);
+    // Help taken is not independent evidence of mastery.
+    expect(answered.state.independentFamilies).toBe(0);
+  });
+  it('records "I don\'t know" as not known without needing an answer', async () => {
+    const next = await pick(`c:${naive}`);
+    const answered = await learningAction(learner, {
+      action: "attempt",
+      deliveryId: next.deliveryId,
+      answer: "",
+      unknown: true,
+      idempotencyKey: "unknown-attempt-1",
+      elapsedMs: 9000,
+    });
+    expect(answered.attempt).toMatchObject({ unknown: true, correct: false });
+    expect(answered.state.status).toBe("developing");
+  });
+  it("diagnoses a weak prerequisite first, then presentation, then confidence", async () => {
+    const path = await learningPath(db.tenant(tenant), learner, learner.userId);
+    expect(
+      path.nodes.find((n) => n.conceptId === naive)?.blockedBy[0].conceptId,
+    ).toBe(bayes);
+    const step = await learningAction(learner, {
+      action: "diagnose",
+      objectiveId: `c:${naive}`,
+    });
+    expect(step).toMatchObject({
+      cause: "prerequisite",
+      level: 1,
+      targetObjectiveId: `c:${bayes}`,
+    });
+    // The check failed and there is nothing deeper: stop descending instead of looping.
+    expect(
+      await learningAction(learner, {
+        action: "diagnose",
+        objectiveId: `c:${naive}`,
+        afterPrerequisite: "failed",
+        previousEpisodeId: step.episodeId,
+      }),
+    ).toMatchObject({ cause: "basics-gap" });
+    const presentation = await learningAction(learner, {
+      action: "diagnose",
+      objectiveId: `c:${naive}`,
+      afterPrerequisite: "passed",
+      previousEpisodeId: step.episodeId,
+    });
+    expect(presentation.cause).toBe("presentation");
+    expect(
+      (
+        await learningAction(learner, {
+          action: "diagnose",
+          objectiveId: `c:${naive}`,
+          afterPrerequisite: "passed",
+          formatTried: true,
+        })
+      ).cause,
+    ).toBe("confidence");
+    const outcome = await learningAction(learner, {
+      action: "diagnosis-outcome",
+      episodeId: presentation.episodeId,
+      choice: "ask-instructor",
+    });
+    expect(outcome.choice).toBe("ask-instructor");
+    const requests = (
+      await db
+        .tenant(tenant)
+        .query<{ data: any }>(
+          "SELECT data FROM records WHERE tenant_id=$1 AND kind='help_request' AND owner_id=$2",
+          [tenant, learner.userId],
+        )
+    ).rows;
+    expect(requests).toHaveLength(1);
+    expect(requests[0].data).toMatchObject({
+      cause: "presentation",
+      status: "open",
+    });
+  });
+  it("marks a prerequisite as inferred once the concept built on it is ready", async () => {
+    // The first learner mastered Bayes theorem directly; a fresh one masters Naive Bayes.
+    const path = await learningPath(db.tenant(tenant), student, student.userId);
+    const node = path.nodes.find((n) => n.conceptId === bayes)!;
+    expect(node.status).toBe("secure");
+    expect(node.unlocks.map((u) => u.conceptId)).toEqual([naive]);
+    expect(typeof node.mastery).toBe("number");
+    const fresh = await learningPath(
+      db.tenant(tenant),
+      learner,
+      learner.userId,
+    );
+    expect(fresh.nodes.find((n) => n.conceptId === bayes)?.status).toBe(
+      "unassessed",
+    );
+  });
+  it("discounts a run of very fast answers as low-confidence evidence", () => {
+    const base = {
+      familyId: "f",
+      correct: true,
+      assisted: false,
+      at: "2026-11-01",
+    };
+    expect(
+      deriveObjective(
+        [
+          { ...base, familyId: "a", lowConfidence: true },
+          { ...base, familyId: "b", lowConfidence: true },
+        ],
+        new Date("2026-11-02"),
+      ).status,
+    ).toBe("unassessed");
+    expect(
+      deriveObjective(
+        [
+          { ...base, familyId: "a" },
+          { ...base, familyId: "b" },
+        ],
+        new Date("2026-11-02"),
+      ).status,
+    ).toBe("secure");
   });
 });

@@ -67,18 +67,20 @@ export function MaterialsPanel({
       ST((s) => ({ ...s, [file.name]: t("جارٍ الاستيراد…", "Importing…") }));
       const form = new FormData();
       form.append("file", file);
-      const r = await act(() => request("/api/materials", form, lang));
-      ST((s) => ({
-        ...s,
-        [file.name]: r
-          ? t("تم الاستيراد", "Imported")
-          : t(
-              "تعذّر الاستيراد — أعد اختيار الملف للمحاولة",
-              "Import failed — select the file again to retry",
-            ),
-      }));
+      let outcome = t("تم الاستيراد", "Imported");
+      B(true);
+      try {
+        await request("/api/materials", form, lang);
+      } catch (error) {
+        // Say why, per file: this box only takes the six original pack files.
+        outcome = `${t("لم يُستورد", "Not imported")}: ${(error as Error).message}`;
+      } finally {
+        B(false);
+      }
+      ST((s) => ({ ...s, [file.name]: outcome }));
     }
     e.target.value = "";
+    await refresh();
   };
   const open = async (id: string) => {
     const r = await act(() => request(`/api/materials/${id}`, undefined, lang));
@@ -115,79 +117,38 @@ export function MaterialsPanel({
   return (
     <>
       <div className="pageHead">
-        <h1>{t("مصادر المقرر", "Course materials")}</h1>
+        <h1>{t("رفع المواد", "Upload materials")}</h1>
         <p>
           {t(
-            "استورد، راجع النص صفحة بصفحة، ثم انشر الأدلة المعتمدة.",
-            "Import, review page by page, then publish approved evidence.",
+            "ارفع محاضراتك ومرجع المقرر، ثم اعتمد الصفحات المقروءة. بعدها انتقل إلى الخطوة ٢.",
+            "Upload your lectures and the course reference, then approve the readable pages. Then move to step 2.",
           )}
         </p>
       </div>
-      <Box>
-        <div className="sectionTop">
-          <h2>{t("حزمة CET351", "CET351 source pack")}</h2>
-          <Button
-            primary
-            disabled={busy}
-            onClick={() =>
-              act(() =>
-                request("/api/materials", { action: "register-pack" }, lang),
-              )
-            }
-          >
-            <Upload size={17} />
-            {t("استيراد حزمة CET351", "Import CET351 pack")}
-          </Button>
-        </div>
-        <p>
-          {t(
-            "يسجّل المرجع الجامع ويستورد الملحق الأصلي. ارفع المحاضرات الست كل ملف على حدة؛ يمكن إعادة المحاولة دون تكرار النسخ المطابقة.",
-            "Registers the umbrella reference and ingests the original supplement. Upload all six lectures individually; retrying identical files does not duplicate them.",
-          )}
-        </p>
-        <div className="upload">
-          <label>
-            {t(
-              "ملفات محاضرات CET351 الأصلية (PDF)",
-              "Original CET351 lecture files (PDF)",
-            )}
-            <input
-              aria-label={t("رفع المحاضرات", "Upload lectures")}
-              type="file"
-              accept="application/pdf,.pdf"
-              multiple
-              disabled={busy}
-              onChange={upload}
-            />
-          </label>
-          <small>
-            {t(
-              "تتم معالجة كل ملف في طلب مستقل. يُتحقق من الاسم والبصمة وعدد الصفحات.",
-              "Each file is processed in a separate request. Filename, checksum and page count are verified.",
-            )}
-          </small>
-        </div>
-        {Object.entries(statuses).map(([name, s]) => (
-          <div className="row" key={name}>
-            <bdi>{name}</bdi>
-            <span role="status">{s}</span>
-          </div>
-        ))}
-        <p className="notice">
-          {t(
-            "GeeksforGeeks: تسجيل رابط لا يعني السماح باستخراج المقال أو إرساله للموديل. الملحق الأصلي مصدر مستقل.",
-            "GeeksforGeeks: registering a link does not permit extracting or sending article text to the model. The original supplement is a separate source.",
-          )}
-        </p>
-        {data?.gfg && (
-          <small>
-            {t("تسجيل GFG", "GFG registration")}:{" "}
-            {data.gfg.registered ? t("تم", "Done") : t("لم يتم", "Pending")} ·{" "}
-            {t("استخدام نص المقال", "Article text used")}:{" "}
-            {data.gfg.textUsed ? t("نعم", "Yes") : t("لا", "No")}
-          </small>
+      <p className="notice">
+        {t(
+          "ابدأ من هنا: ارفع محاضراتك في الخانة الأولى، وكتاب المقرر أو المرجع في الثانية. يُقبل أي ملف PDF بأي اسم وأي حجم.",
+          "Start here: upload your lectures in the first box and the course textbook or reference in the second. Any PDF is accepted, with any name and any size.",
         )}
-      </Box>
+      </p>
+      <UmbrellaUpload
+        mode="lecture"
+        lang={lang}
+        t={t}
+        busy={busy}
+        umbrellas={data?.lectures || []}
+        act={act}
+        open={open}
+      />
+      <UmbrellaUpload
+        mode="umbrella"
+        lang={lang}
+        t={t}
+        busy={busy}
+        umbrellas={data?.umbrellas || []}
+        act={act}
+        open={open}
+      />
       <div className="source-review end">
         <Box>
           <h2>{t("الملفات والنسخ", "Files & versions")}</h2>
@@ -376,130 +337,245 @@ export function MaterialsPanel({
           )}
         </Box>
       </div>
-      <UmbrellaUpload
-        mode="lecture"
-        lang={lang}
-        t={t}
-        busy={busy}
-        umbrellas={data?.lectures || []}
-        act={act}
-        open={open}
-      />
-      <UmbrellaUpload
-        mode="umbrella"
-        lang={lang}
-        t={t}
-        busy={busy}
-        umbrellas={data?.umbrellas || []}
-        act={act}
-        open={open}
-      />
-      <Box cls="end">
-        <h2>{t("مقطع مرخّص من مرجع جامع", "Authorized umbrella passage")}</h2>
-        <p>
+      <details className="end">
+        <summary>
           {t(
-            "أضف نصًا تملك تصريحًا واضحًا باستخدامه. يظل في انتظار المراجعة قبل النشر.",
-            "Add text you have explicit permission to use. It remains pending review before publication.",
+            "خيارات متقدمة: حزمة CET351 الأصلية ولصق مقطع نصي",
+            "Advanced: the original CET351 pack and pasting a text passage",
           )}
-        </p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            act(() =>
-              request(
-                "/api/materials",
-                {
-                  action: "authorized-passage",
-                  sourceKey,
-                  title,
-                  text: passage,
-                  section,
-                  rightsConfirmed: confirmed,
-                  rightsReference: rights,
-                  ...(url ? { url } : {}),
-                },
-                lang,
-              ),
-            );
-          }}
-        >
-          <div className="two-columns">
-            <label>
-              {t("المصدر", "Source")}
-              <select value={sourceKey} onChange={(e) => SK(e.target.value)}>
-                <option value="GFG-UMBRELLA">GeeksforGeeks</option>
-                <option value="CUSTOM-UMBRELLA">
-                  {t("مرجع جامع آخر", "Other umbrella reference")}
-                </option>
-              </select>
-            </label>
-            <label>
-              {t("عنوان المصدر", "Source title")}
-              <input
-                value={title}
-                onChange={(e) => TI(e.target.value)}
-                required
-              />
-            </label>
-            <label>
-              {t("رقم القسم أو محدّد المقطع", "Section or passage locator")}
-              <input
-                value={section}
-                onChange={(e) => SE(e.target.value)}
-                required
-              />
-            </label>
-            <label>
-              {t("رابط المصدر (اختياري)", "Source URL (optional)")}
-              <input
-                type="url"
-                value={url}
-                onChange={(e) => URL(e.target.value)}
-                dir="ltr"
-              />
-            </label>
-          </div>
-          <label>
-            {t("النص المسموح باستخدامه", "Authorized text")}
-            <textarea
-              value={passage}
-              onChange={(e) => PT(e.target.value)}
-              required
-              minLength={20}
-              maxLength={30000}
-              dir="auto"
-            />
-          </label>
-          <label>
-            {t("مرجع تصريح الاستخدام", "Permission reference")}
-            <input
-              value={rights}
-              onChange={(e) => RI(e.target.value)}
-              required
-              minLength={5}
-            />
-          </label>
-          <label className="checklabel">
-            <input
-              type="checkbox"
-              checked={confirmed}
-              onChange={(e) => CF(e.target.checked)}
-              required
-            />
-            {t(
-              "أؤكد السماح باستخراج وعرض هذا النص وإرساله للموديل المعتمد.",
-              "I confirm permission to extract, display and send this passage to the approved model.",
-            )}
-          </label>
-          <div className="end">
-            <Button type="submit" primary disabled={busy || !confirmed}>
-              {t("استيراد المقطع للمراجعة", "Import passage for review")}
+        </summary>
+        <Box>
+          <div className="sectionTop">
+            <h2>{t("حزمة CET351", "CET351 source pack")}</h2>
+            <Button
+              primary
+              disabled={busy}
+              onClick={() =>
+                act(() =>
+                  request("/api/materials", { action: "register-pack" }, lang),
+                )
+              }
+            >
+              <Upload size={17} />
+              {t("استيراد حزمة CET351", "Import CET351 pack")}
             </Button>
           </div>
-        </form>
-      </Box>
+          <p>
+            {t(
+              "يسجّل المرجع الجامع ويستورد الملحق الأصلي. ارفع المحاضرات الست كل ملف على حدة؛ يمكن إعادة المحاولة دون تكرار النسخ المطابقة.",
+              "Registers the umbrella reference and ingests the original supplement. Upload all six lectures individually; retrying identical files does not duplicate them.",
+            )}
+          </p>
+          <div className="upload">
+            <label>
+              {t(
+                "ملفات محاضرات CET351 الأصلية (PDF)",
+                "Original CET351 lecture files (PDF)",
+              )}
+              <input
+                aria-label={t("رفع المحاضرات", "Upload lectures")}
+                type="file"
+                accept="application/pdf,.pdf"
+                multiple
+                disabled={busy}
+                onChange={upload}
+              />
+            </label>
+            <small>
+              {t(
+                "هذه الخانة للملفات الستة الأصلية فقط بأسمائها (Lec 1-ML.pdf إلى Lec 6-ML.pdf). لأي محاضرة أخرى استخدم «محاضرات إضافية»، وللكتاب أو المرجع استخدم «المرجع الشامل للمقرر» أسفل الصفحة.",
+                "This box takes only the six original files by name (Lec 1-ML.pdf to Lec 6-ML.pdf). For any other lecture use “Additional lectures”, and for a textbook or reference use “Course umbrella reference” further down.",
+              )}
+            </small>
+          </div>
+          {Object.entries(statuses).map(([name, s]) => (
+            <div className="row" key={name}>
+              <bdi>{name}</bdi>
+              <span role="status">{s}</span>
+            </div>
+          ))}
+          <p className="notice">
+            {t(
+              "GeeksforGeeks: تسجيل رابط لا يعني السماح باستخراج المقال أو إرساله للموديل. الملحق الأصلي مصدر مستقل.",
+              "GeeksforGeeks: registering a link does not permit extracting or sending article text to the model. The original supplement is a separate source.",
+            )}
+          </p>
+          {data?.gfg && (
+            <small>
+              {t("تسجيل GFG", "GFG registration")}:{" "}
+              {data.gfg.registered ? t("تم", "Done") : t("لم يتم", "Pending")} ·{" "}
+              {t("استخدام نص المقال", "Article text used")}:{" "}
+              {data.gfg.textUsed ? t("نعم", "Yes") : t("لا", "No")}
+            </small>
+          )}
+        </Box>
+        <Box cls="end">
+          <h2>{t("مقطع مرخّص من مرجع جامع", "Authorized umbrella passage")}</h2>
+          <p>
+            {t(
+              "أضف نصًا تملك تصريحًا واضحًا باستخدامه. يظل في انتظار المراجعة قبل النشر.",
+              "Add text you have explicit permission to use. It remains pending review before publication.",
+            )}
+          </p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              act(() =>
+                request(
+                  "/api/materials",
+                  {
+                    action: "authorized-passage",
+                    sourceKey,
+                    title,
+                    text: passage,
+                    section,
+                    rightsConfirmed: confirmed,
+                    rightsReference: rights,
+                    ...(url ? { url } : {}),
+                  },
+                  lang,
+                ),
+              );
+            }}
+          >
+            <div className="two-columns">
+              <label>
+                {t("المصدر", "Source")}
+                <select value={sourceKey} onChange={(e) => SK(e.target.value)}>
+                  <option value="GFG-UMBRELLA">GeeksforGeeks</option>
+                  <option value="CUSTOM-UMBRELLA">
+                    {t("مرجع جامع آخر", "Other umbrella reference")}
+                  </option>
+                </select>
+              </label>
+              <label>
+                {t("عنوان المصدر", "Source title")}
+                <input
+                  value={title}
+                  onChange={(e) => TI(e.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                {t("رقم القسم أو محدّد المقطع", "Section or passage locator")}
+                <input
+                  value={section}
+                  onChange={(e) => SE(e.target.value)}
+                  required
+                />
+              </label>
+              <label>
+                {t("رابط المصدر (اختياري)", "Source URL (optional)")}
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => URL(e.target.value)}
+                  dir="ltr"
+                />
+              </label>
+            </div>
+            <label>
+              {t("النص المسموح باستخدامه", "Authorized text")}
+              <textarea
+                value={passage}
+                onChange={(e) => PT(e.target.value)}
+                required
+                minLength={20}
+                maxLength={30000}
+                dir="auto"
+              />
+            </label>
+            <label>
+              {t("مرجع تصريح الاستخدام", "Permission reference")}
+              <input
+                value={rights}
+                onChange={(e) => RI(e.target.value)}
+                required
+                minLength={5}
+              />
+            </label>
+            <label className="checklabel">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={(e) => CF(e.target.checked)}
+                required
+              />
+              {t(
+                "أؤكد السماح باستخراج وعرض هذا النص وإرساله للموديل المعتمد.",
+                "I confirm permission to extract, display and send this passage to the approved model.",
+              )}
+            </label>
+            <div className="end">
+              <Button type="submit" primary disabled={busy || !confirmed}>
+                {t("استيراد المقطع للمراجعة", "Import passage for review")}
+              </Button>
+            </div>
+          </form>
+        </Box>
+      </details>
     </>
   );
+}
+const LARGE_PDF_BYTES = 3_000_000;
+const PART_PAGES = 150;
+/** Read a large PDF's text in the browser and send it as page text, part by part, so the
+ * upload size and page limits do not apply. Scanned pages come through empty. */
+async function uploadLargePdf(
+  file: File,
+  options: {
+    mode: "umbrella" | "lecture";
+    title: string;
+    rights: string;
+    confirmed: boolean;
+    lang: Lang;
+    progress: (done: number, total: number) => void;
+  },
+) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+  const task = pdfjs.getDocument({ data: await file.arrayBuffer() });
+  const pdf = await task.promise;
+  const total = pdf.numPages;
+  let parts = 0,
+    empty = 0;
+  for (let start = 1; start <= total; start += PART_PAGES) {
+    const end = Math.min(total, start + PART_PAGES - 1);
+    const pages: { page: number; text: string }[] = [];
+    for (let n = start; n <= end; n++) {
+      const page = await pdf.getPage(n);
+      const content = await page.getTextContent();
+      const text = content.items
+        .map((item) => ("str" in item ? item.str : ""))
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 30000);
+      if (text.length < 20) empty++;
+      pages.push({ page: n, text });
+      page.cleanup();
+      if (n % 10 === 0 || n === end) options.progress(n, total);
+    }
+    await request(
+      "/api/materials",
+      {
+        action: "extracted-pages",
+        mode: options.mode,
+        title:
+          total > PART_PAGES
+            ? `${options.title} (${start}–${end})`
+            : options.title,
+        filename: file.name,
+        rightsConfirmed: options.confirmed,
+        rightsReference: options.rights,
+        pages,
+      },
+      options.lang,
+    );
+    parts++;
+  }
+  await task.destroy();
+  return { pages: total, parts, empty };
 }
 function UmbrellaUpload({
   mode,
@@ -529,14 +605,14 @@ function UmbrellaUpload({
     <Box cls="end">
       <h2>
         {isLecture
-          ? t("محاضرات إضافية", "Additional lectures")
+          ? t("المحاضرات", "Lectures")
           : t("المرجع الشامل للمقرر", "Course umbrella reference")}
       </h2>
       <p>
         {isLecture
           ? t(
-              "ارفع أي محاضرة PDF خارج الحزمة الثابتة. تبقى صفحاتها بانتظار مراجعتك ثم تُستخرج مفاهيمها.",
-              "Upload any lecture PDF beyond the fixed pack. Its pages stay pending your review, then its concepts can be extracted.",
+              "ارفع محاضراتك بصيغة PDF، واحدة واحدة مع عنوان لكل منها. تبقى صفحاتها بانتظار مراجعتك ثم تُستخرج مفاهيمها.",
+              "Upload your lecture PDFs one at a time, each with a title. Pages stay pending your review, then concepts can be extracted.",
             )
           : t(
               "ارفع المرجع الذي تُستخرج منه المتطلبات السابقة لمفاهيم المحاضرات: كتاب المقرر أو فصل منه أو مذكرة أساسيات. يُقسَّم إلى أقسام تبقى بانتظار مراجعتك.",
@@ -547,6 +623,33 @@ function UmbrellaUpload({
         onSubmit={async (e) => {
           e.preventDefault();
           if (!file) return;
+          if (/\.pdf$/i.test(file.name) && file.size > LARGE_PDF_BYTES) {
+            DN("");
+            const result = await act(() =>
+              uploadLargePdf(file, {
+                mode,
+                title,
+                rights,
+                confirmed,
+                lang,
+                progress: (done, total) =>
+                  DN(
+                    t(
+                      `ملف كبير: يُقرأ داخل المتصفح… ${done} من ${total} صفحة`,
+                      `Large file: reading in your browser… ${done} of ${total} pages`,
+                    ),
+                  ),
+              }),
+            );
+            if (result)
+              DN(
+                t(
+                  `تم الاستيراد: ${result.pages} صفحة في ${result.parts} جزءًا، كلها بانتظار المراجعة. الصفحات المصوّرة بلا نص: ${result.empty}.`,
+                  `Imported: ${result.pages} pages in ${result.parts} parts, all pending review. Image-only pages without text: ${result.empty}.`,
+                ),
+              );
+            return;
+          }
           const form = new FormData();
           form.append("kind", mode);
           form.append("file", file);
@@ -637,8 +740,8 @@ function UmbrellaUpload({
         </div>
         <small>
           {t(
-            "الحد الأقصى ٣٫٥ ميجابايت و١٠٠ صفحة للملف؛ ارفع الكتاب الكبير فصلًا فصلًا. الصفحات المصوّرة تُعزل حتى ترفق نصًّا لها.",
-            "Up to 3.5 MB and 100 pages per file; upload a large book chapter by chapter. Image-only pages are quarantined until you attach their text.",
+            "الملف الأكبر من ٣ ميجابايت (كتاب كامل مثلًا) يُقرأ نصّه داخل متصفحك ويُرفع أجزاءً من ١٥٠ صفحة دون حد للحجم، ولا يُحفظ الملف الأصلي. الصفحات المصوّرة تُعزل حتى يُرفق نصّها.",
+            "A file over 3 MB (a whole textbook, for example) has its text read in your browser and is uploaded in parts of 150 pages with no size limit; the original file is not stored. Image-only pages are quarantined until their text is attached.",
           )}
         </small>
         {!isLecture && (
@@ -1130,16 +1233,19 @@ function QuestionBank({
   );
 }
 export function KnowledgePanel({
+  section,
   lang,
   t,
   onError,
   onChanged,
 }: {
+  section: "graph" | "bank";
   lang: Lang;
   t: Translate;
   onError: (s: string) => void;
   onChanged: () => Promise<any>;
 }) {
+  const graphSection = section === "graph";
   const [data, D] = useState<any>(null),
     [busy, B] = useState(false),
     [expanded, EX] = useState(""),
@@ -1172,27 +1278,41 @@ export function KnowledgePanel({
   return (
     <>
       <div className="pageHead">
-        <h1>{t("مراجعة المعرفة", "Knowledge review")}</h1>
+        <h1>
+          {graphSection
+            ? t("المفاهيم والمتطلبات السابقة", "Concepts & prerequisites")
+            : t("بنك الأسئلة", "Question bank")}
+        </h1>
         <p>
-          {t(
-            "كل مفهوم وعلاقة وسؤال يبدأ كمسودة. قرار النشر لك.",
-            "Every concept, relationship and question starts as a draft. You decide what gets published.",
-          )}
+          {graphSection
+            ? t(
+                "اختر محاضرة ليستخرج النظام مفاهيمها وما يسبق كل مفهوم، ثم راجع كل علاقة واعتمدها. لا يتغيّر شيء عند الطلاب قبل النشر.",
+                "Pick a lecture so the system extracts its concepts and what precedes each one, then review and approve each link. Nothing changes for students before you publish.",
+              )
+            : t(
+                "حدّد أسلوب أسئلتك، ولّد مسودات لكل مفهوم، ثم راجعها واعتمدها. لا يصل أي سؤال إلى الطلاب قبل اعتمادك ونشره.",
+                "Set your question style, draft questions per concept, then review and approve them. No question reaches students before you approve and publish it.",
+              )}
         </p>
       </div>
-      <Box>
+      {!graphSection && data?.bank && (
+        <QuestionBank
+          key={JSON.stringify(data.bank.settings)}
+          data={data}
+          lang={lang}
+          t={t}
+          busy={busy}
+          act={act}
+        />
+      )}
+      <Box cls={graphSection ? "" : "end"}>
         <div className="sectionTop">
           <h2>
-            {t("اقتراحات قائمة على المصادر", "Source-grounded proposals")}
+            {graphSection
+              ? t("استخراج ومراجعة", "Extract and review")
+              : t("مسودات الأسئلة للمراجعة", "Question drafts to review")}
           </h2>
           <div className="actions">
-            <Button disabled={busy} onClick={() => act({ action: "propose" })}>
-              <GitBranch size={16} />
-              {t("اقتراحات Gemini", "Propose with Gemini")}
-            </Button>
-            <Button disabled={busy} onClick={() => act({ action: "generate" })}>
-              {t("اقتراح جلسة وسؤال", "Draft session & question")}
-            </Button>
             <Button
               primary
               disabled={busy}
@@ -1203,7 +1323,7 @@ export function KnowledgePanel({
             </Button>
           </div>
         </div>
-        <div className="actions">
+        <div className="actions" hidden={!graphSection}>
           <label>
             {t("المحاضرة", "Lecture")}
             <select value={lecture} onChange={(e) => LE(e.target.value)}>
@@ -1236,7 +1356,7 @@ export function KnowledgePanel({
             )}
           </Button>
         </div>
-        <small>
+        <small hidden={!graphSection}>
           {t(
             "يقرأ النموذج كل صفحات المحاضرة المعتمدة ثم يبحث في المرجع الشامل المعتمد عمّا يسبق كل مفهوم. قد يستغرق حتى دقيقة.",
             "The model reads every approved lecture page, then searches the approved umbrella reference for what precedes each concept. This can take up to a minute.",
@@ -1279,6 +1399,7 @@ export function KnowledgePanel({
           )}
         </label>
         {(data?.proposals || [])
+          .filter((p: any) => !!(p.data || p).graph === graphSection)
           .filter(
             (p: any) =>
               showPublished ||
@@ -1518,54 +1639,255 @@ export function KnowledgePanel({
             );
           })}
       </Box>
-      <div className="split end">
-        <Box>
-          <h2>{t("مفاهيم ثابتة الهوية", "Stable concept identities")}</h2>
-          {(data?.concepts || []).map((c: any) => (
-            <div key={c.id} className="row">
-              <strong>
-                {localized(
-                  c.name ||
-                    c.label ||
-                    c.data?.name ||
-                    c.data?.label ||
-                    c.data?.title,
-                  lang,
-                ) ||
-                  c.canonical_name ||
-                  c.id}
-              </strong>
-              <bdi>{c.id}</bdi>
-            </div>
-          ))}
-        </Box>
-        <Box>
-          <h2>{t("تاريخ النشر", "Release history")}</h2>
-          {(data?.releases || []).map((r: any) => (
-            <div key={r.id} className="row">
-              <bdi>{r.id}</bdi>
-              <span>{r.version || r.created_at || r.data?.publishedAt}</span>
-            </div>
-          ))}
-          <small>
+      <details className="end" hidden={!graphSection}>
+        <summary>
+          {t(
+            "خيارات متقدمة: معرّفات المفاهيم، تاريخ النشر، الدمج والتقسيم",
+            "Advanced: concept identities, release history, merge and split",
+          )}
+        </summary>
+        <div className="actions">
+          <Button disabled={busy} onClick={() => act({ action: "propose" })}>
+            <GitBranch size={16} />
             {t(
-              "الإصدارات السابقة وأدلة الطلاب محفوظة عند تحديث المصدر.",
-              "Previous releases and learner evidence are retained when sources change.",
+              "اقتراح سريع من مقاطع قليلة",
+              "Quick proposal from a few passages",
             )}
-          </small>
-        </Box>
+          </Button>
+          <Button disabled={busy} onClick={() => act({ action: "generate" })}>
+            {t("اقتراح جلسة وسؤال", "Draft session & question")}
+          </Button>
+        </div>
+        <div className="split end">
+          <Box>
+            <h2>{t("مفاهيم ثابتة الهوية", "Stable concept identities")}</h2>
+            {(data?.concepts || []).map((c: any) => (
+              <div key={c.id} className="row">
+                <strong>
+                  {localized(
+                    c.name ||
+                      c.label ||
+                      c.data?.name ||
+                      c.data?.label ||
+                      c.data?.title,
+                    lang,
+                  ) ||
+                    c.canonical_name ||
+                    c.id}
+                </strong>
+                <bdi>{c.id}</bdi>
+              </div>
+            ))}
+          </Box>
+          <Box>
+            <h2>{t("تاريخ النشر", "Release history")}</h2>
+            {(data?.releases || []).map((r: any) => (
+              <div key={r.id} className="row">
+                <bdi>{r.id}</bdi>
+                <span>{r.version || r.created_at || r.data?.publishedAt}</span>
+              </div>
+            ))}
+            <small>
+              {t(
+                "الإصدارات السابقة وأدلة الطلاب محفوظة عند تحديث المصدر.",
+                "Previous releases and learner evidence are retained when sources change.",
+              )}
+            </small>
+          </Box>
+        </div>
+        <ConceptMappings lang={lang} t={t} onError={onError} />
+      </details>
+    </>
+  );
+}
+/** IN6: what must be true before students can use the course, in plain words. */
+export function LaunchPanel({
+  lang,
+  t,
+  onError,
+  onPreview,
+  go,
+}: {
+  lang: Lang;
+  t: Translate;
+  onError: (s: string) => void;
+  onPreview: () => void;
+  go: (view: string) => void;
+}) {
+  const [state, S] = useState<any>(null),
+    [busy, B] = useState(false),
+    [done, DN] = useState("");
+  const load = async () => {
+    const [materials, knowledge] = await Promise.all([
+      request("/api/materials", undefined, lang),
+      request("/api/knowledge", undefined, lang),
+    ]);
+    S({ materials, knowledge });
+  };
+  useEffect(() => {
+    load().catch((e) => onError(e.message));
+  }, []);
+  if (!state) return <p role="status">{t("جارٍ التحميل…", "Loading…")}</p>;
+  const { materials, knowledge } = state;
+  const lectureCount =
+    (materials.materials || []).filter(
+      (m: any) => m.filename && ["pending", "published"].includes(m.status),
+    ).length + (materials.lectures || []).length;
+  const publishedLectures =
+    (materials.materials || []).filter(
+      (m: any) => m.filename && m.status === "published",
+    ).length +
+    (materials.lectures || []).filter((l: any) => l.sections.approved > 0)
+      .length;
+  const umbrellaApproved = (materials.umbrellas || []).filter(
+    (u: any) => u.sections.approved > 0,
+  ).length;
+  const release = (knowledge.releases || [])[0]?.data;
+  const concepts = release?.graph?.concepts?.length || 0;
+  const prerequisites = (release?.graph?.edges || []).filter(
+    (e: any) => e.type === "prerequisite",
+  ).length;
+  const coverage = knowledge.bank?.coverage || {};
+  const withQuestions = Object.keys(coverage).length;
+  const questions = Object.values(coverage).reduce(
+    (n: number, c: any) => n + c.total,
+    0,
+  );
+  const waiting = (knowledge.proposals || []).filter((p: any) =>
+    ["pending", "approved"].includes((p.data || p).status),
+  ).length;
+  const checks = [
+    {
+      ok: publishedLectures > 0,
+      label: t(
+        "محاضرة واحدة على الأقل مرفوعة ومعتمدة",
+        "At least one lecture uploaded and approved",
+      ),
+      detail: t(
+        `${publishedLectures} من ${lectureCount} محاضرة`,
+        `${publishedLectures} of ${lectureCount} lectures`,
+      ),
+      view: "materials",
+    },
+    {
+      ok: umbrellaApproved > 0,
+      label: t(
+        "مرجع شامل مرفوع ومعتمد",
+        "An umbrella reference uploaded and approved",
+      ),
+      detail: t(
+        `${umbrellaApproved} مرجعًا معتمدًا`,
+        `${umbrellaApproved} approved references`,
+      ),
+      view: "materials",
+    },
+    {
+      ok: concepts > 0 && prerequisites > 0,
+      label: t(
+        "المفاهيم والمتطلبات السابقة منشورة",
+        "Concepts and prerequisites published",
+      ),
+      detail: t(
+        `${concepts} مفهومًا و${prerequisites} متطلبًا سابقًا`,
+        `${concepts} concepts and ${prerequisites} prerequisites`,
+      ),
+      view: "knowledge",
+    },
+    {
+      ok: withQuestions > 0,
+      label: t("أسئلة منشورة للمفاهيم", "Published questions for concepts"),
+      detail: t(
+        `${questions} سؤالًا تغطي ${withQuestions} مفهومًا`,
+        `${questions} questions covering ${withQuestions} concepts`,
+      ),
+      view: "bank",
+    },
+    {
+      ok: waiting === 0,
+      label: t("لا مسودات تنتظر قرارك", "No drafts waiting for your decision"),
+      detail: t(
+        `${waiting} مسودة بانتظار المراجعة أو النشر`,
+        `${waiting} drafts waiting for review or publication`,
+      ),
+      view: "knowledge",
+    },
+  ];
+  const ready = checks.slice(0, 4).every((c) => c.ok);
+  return (
+    <>
+      <div className="pageHead">
+        <h1>{t("الإطلاق للطلاب", "Launch to students")}</h1>
+        <p>
+          {t(
+            "قائمة ما يجب اكتماله قبل أن يبدأ الطلاب. اضغط أي بند ناقص لتذهب إلى مكانه.",
+            "What must be complete before students start. Press any missing item to go to it.",
+          )}
+        </p>
       </div>
-      {data?.bank && (
-        <QuestionBank
-          key={JSON.stringify(data.bank.settings)}
-          data={data}
-          lang={lang}
-          t={t}
-          busy={busy}
-          act={act}
-        />
-      )}
-      <ConceptMappings lang={lang} t={t} onError={onError} />
+      <Box>
+        {checks.map((c, i) => (
+          <div className="row" key={i}>
+            <span>
+              <strong>
+                {c.ok ? "✓" : "○"} {c.label}
+              </strong>
+              <br />
+              <small>{c.detail}</small>
+            </span>
+            {!c.ok && (
+              <Button onClick={() => go(c.view)}>
+                {t("أكمِل هذا البند", "Complete this item")}
+              </Button>
+            )}
+          </div>
+        ))}
+        <p className="notice">
+          {ready
+            ? t(
+                "كل البنود الأساسية مكتملة. المحتوى المنشور ظاهر للطلاب الآن.",
+                "All essential items are complete. Published content is visible to students now.",
+              )
+            : t(
+                "البنود التي عليها ○ ناقصة. الطلاب يرون فقط ما اعتمدتَه ونشرتَه.",
+                "Items marked ○ are missing. Students see only what you approved and published.",
+              )}
+        </p>
+        <div className="actions">
+          <Button
+            primary
+            disabled={busy}
+            onClick={async () => {
+              B(true);
+              onError("");
+              try {
+                const r = await request(
+                  "/api/knowledge",
+                  { action: "publish" },
+                  lang,
+                );
+                DN(
+                  t(
+                    `تم النشر: ${r.concepts} مفهومًا و${r.edges} علاقة.`,
+                    `Published: ${r.concepts} concepts and ${r.edges} links.`,
+                  ),
+                );
+                await load();
+              } catch (e) {
+                onError((e as Error).message);
+              } finally {
+                B(false);
+              }
+            }}
+          >
+            <Check size={16} />
+            {t("نشر كل ما اعتمدتُه", "Publish everything I approved")}
+          </Button>
+          <Button onClick={onPreview}>
+            {t("معاينة كطالب", "Preview as a student")}
+          </Button>
+        </div>
+        {done && <p role="status">{done}</p>}
+      </Box>
     </>
   );
 }

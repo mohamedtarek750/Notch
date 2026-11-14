@@ -4,6 +4,7 @@ import {
   importAuthorizedPassage,
   importLecture,
   importUmbrella,
+  importExtractedPages,
   importCustomLecture,
   listMaterials,
   registerPack,
@@ -63,6 +64,8 @@ export async function POST(req: Request) {
       );
     }
     const body = await req.json();
+    if (body.action === "extracted-pages")
+      return Response.json(await importExtractedPages(ctx, body));
     if (body.action === "authorized-passage") {
       const input = z
         .object({
