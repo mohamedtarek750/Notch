@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { db } from "./db";
+import { db, type Queryable } from "./db";
 import {
   authorizeCourse,
   DEFAULT_COURSE,
@@ -190,6 +190,23 @@ export async function registerPack(ctx: AuthContext) {
     "utf8",
   );
   return importSupplement(ctx, supplement);
+}
+/**
+ * A reference uploaded in any course of a major serves every course of that major, so a
+ * textbook is uploaded once. Returns the other courses of the open course's major.
+ */
+export async function majorCourses(
+  ctx: AuthContext,
+  // Inside a transaction, pass it: a second connection would wait on the first.
+  sql: Queryable = db.tenant(ctx.tenantId),
+): Promise<string[]> {
+  return (
+    await sql.query<{ course_id: string }>(
+      `SELECT o.course_id FROM records me JOIN records o ON o.tenant_id=me.tenant_id AND o.kind='course' AND o.data->>'majorId'=me.data->>'majorId'
+       WHERE me.tenant_id=$1 AND me.kind='course' AND me.course_id=$2 AND me.data->>'majorId' IS NOT NULL AND o.course_id<>$2`,
+      [ctx.tenantId, ctx.courseId],
+    )
+  ).rows.map((r) => r.course_id);
 }
 /** A source is identified by its title within its course; the first course keeps the
  * original keys so material uploaded before courses existed is still recognised. */
@@ -491,7 +508,26 @@ export async function listMaterials(ctx: AuthContext) {
             })),
           };
         });
+  // References uploaded in the other courses of this major: usable here, managed there.
+  const shared = (
+    await db.tenant(ctx.tenantId).query<{
+      id: string;
+      title: string;
+      course_id: string;
+      approved: string;
+    }>(
+      `SELECT v.id,v.title,v.course_id,(SELECT count(*) FROM evidence_chunks c WHERE c.tenant_id=v.tenant_id AND c.version_id=v.id AND c.status='approved') AS approved
+       FROM material_versions v WHERE v.tenant_id=$1 AND v.course_id=ANY($2::text[]) AND v.role='umbrella' AND v.current_version=true AND v.source_key LIKE 'UMBRELLA-%' ORDER BY v.title`,
+      [ctx.tenantId, await majorCourses(ctx)],
+    )
+  ).rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    courseId: r.course_id,
+    approved: Number(r.approved),
+  }));
   return {
+    sharedUmbrellas: shared,
     umbrellas: uploaded.filter((u) => u.sourceKey.startsWith(UMBRELLA_PREFIX)),
     lectures: uploaded.filter((u) => u.sourceKey.startsWith(LECTURE_PREFIX)),
     materials: sourceManifest.map((entry) => ({
@@ -963,8 +999,8 @@ export async function getMaterial(ctx: AuthContext, id: string) {
     await db
       .tenant(ctx.tenantId)
       .query<Material>(
-        "SELECT id,source_key,title,role,hash,status,page_count,rights,metadata,current_version FROM material_versions WHERE tenant_id=$1 AND id=$2 AND course_id=$3",
-        [ctx.tenantId, id, ctx.courseId],
+        "SELECT id,source_key,title,role,hash,status,page_count,rights,metadata,current_version FROM material_versions WHERE tenant_id=$1 AND id=$2 AND (course_id=$3 OR (role='umbrella' AND course_id=ANY($4::text[])))",
+        [ctx.tenantId, id, ctx.courseId, await majorCourses(ctx)],
       )
   ).rows[0];
   if (

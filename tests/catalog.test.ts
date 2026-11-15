@@ -4,7 +4,7 @@ import { db } from "../src/server/db";
 import { migrateDatabase } from "../src/server/migrate";
 import { type AuthContext } from "../src/server/auth";
 import { type ModelGateway } from "../src/server/ai";
-import { catalog, catalogAction } from "../src/server/catalog";
+import { catalog, catalogAction, unionTree } from "../src/server/catalog";
 import {
   approvePendingUmbrella,
   importExtractedPages,
@@ -71,7 +71,10 @@ const model: ModelGateway = {
             to: payload.lectureConcepts[0].key,
             type: "prerequisite",
             evidenceIds: [payload.umbrellaEvidence[0].id],
-            reason: { ar: "يُحسب من المشتقة", en: "Computed from the derivative" },
+            reason: {
+              ar: "يُحسب من المشتقة",
+              en: "Computed from the derivative",
+            },
           },
         ],
       },
@@ -139,7 +142,10 @@ beforeAll(async () => {
     }
     await tx.query(
       "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,'course:CET351','course','CET351',NULL,$2)",
-      [tenant, '{"code":"CET351","title":{"ar":"مقرر أول","en":"First course"}}'],
+      [
+        tenant,
+        '{"code":"CET351","title":{"ar":"مقرر أول","en":"First course"}}',
+      ],
     );
   });
 });
@@ -240,5 +246,111 @@ describe("faculty, major and course structure", () => {
     expect(
       (await workspace({ ...student, courseId: second })).path?.releaseId,
     ).toBeTruthy();
+  });
+  it("shares a major's reference with its courses, and not with another major", async () => {
+    const create = async (majorId: string, code: string) =>
+      (
+        (await catalogAction(instructor, {
+          action: "create-course",
+          majorId,
+          code,
+          title: "Course " + code,
+        })) as any
+      ).id as string;
+    const sibling = { ...instructor, courseId: await create(majorId, "DL201") };
+    const otherMajor = (
+      (await catalogAction(instructor, {
+        action: "create-major",
+        facultyId,
+        name: "Networks",
+      })) as any
+    ).id;
+    const outsider = {
+      ...instructor,
+      courseId: await create(otherMajor, "NW101"),
+    };
+    const lectureOnly = async (ctx: AuthContext) => {
+      const lecture = await importExtractedPages(ctx, {
+        mode: "lecture",
+        title: "Lecture A",
+        pages: [
+          {
+            page: 1,
+            text: "Gradient descent lowers the error by stepping against the gradient of the loss.",
+          },
+        ],
+      });
+      await approvePendingUmbrella(ctx, lecture.id);
+      return lecture.sourceKey;
+    };
+    // No reference was uploaded in this course: the one from its major is used.
+    const key = await lectureOnly(sibling);
+    expect((await listMaterials(sibling)).sharedUmbrellas).toHaveLength(2);
+    const proposal = await extractPrerequisites(sibling, model, {
+      lectureSourceKey: key,
+    });
+    expect(proposal.graph.edges).toHaveLength(1);
+    await reviewPrerequisiteEdges(sibling, {
+      id: proposal.id,
+      accept: proposal.graph.edges.map((e) => ({ from: e.from, to: e.to })),
+    });
+    await expect(publishKnowledge(sibling)).resolves.toMatchObject({
+      edges: 1,
+    });
+    // A course of another major sees no reference at all.
+    const outsiderKey = await lectureOnly(outsider);
+    expect((await listMaterials(outsider)).sharedUmbrellas).toHaveLength(0);
+    await expect(
+      extractPrerequisites(outsider, model, { lectureSourceKey: outsiderKey }),
+    ).rejects.toMatchObject({ code: "umbrella_required" });
+  });
+  it("lays the courses of a major over each other as one tree", async () => {
+    const tree = await unionTree(instructor, "major");
+    expect(tree.courses).toHaveLength(3);
+    const gradient = tree.concepts.find(
+      (c) => c.id === stableConceptId("Gradient Descent"),
+    )!;
+    // Taught in all three courses, and still one node.
+    expect(gradient.courses).toHaveLength(3);
+    expect(tree.concepts.filter((c) => c.id === gradient.id)).toHaveLength(1);
+    expect((await unionTree(instructor, "university")).courses).toHaveLength(4);
+  });
+  it("draws a line from a concept of another course in the same major only", async () => {
+    const gradient = stableConceptId("Gradient Descent");
+    const derivative = stableConceptId("Derivative");
+    const inSecond = { ...instructor, courseId: second };
+    // The second course lost its derivative line earlier; drop the concept too.
+    await db
+      .tenant(tenant)
+      .query(
+        "UPDATE records SET data=jsonb_set(data,'{graph,concepts}',(SELECT jsonb_agg(c) FROM jsonb_array_elements(data->'graph'->'concepts') c WHERE c->>'id'<>$3)) WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release'",
+        [tenant, second, derivative],
+      );
+    await expect(
+      editTree(inSecond, { op: "add", from: derivative, to: gradient }),
+    ).rejects.toMatchObject({ code: "phantom_endpoint" });
+    const linked = await editTree(inSecond, {
+      op: "add",
+      from: derivative,
+      to: gradient,
+      fromCourse: "CET351",
+    });
+    expect(
+      linked.graph.concepts.find((c) => c.id === derivative),
+    ).toMatchObject({ scope: "foundation", importedFrom: "CET351" });
+    expect(linked.graph.edges).toMatchObject([
+      { from: derivative, to: gradient, origin: "instructor" },
+    ]);
+    const outsider = (await catalog(instructor)).courses.find(
+      (c) => c.code === "NW101",
+    )!;
+    await expect(
+      editTree(inSecond, {
+        op: "add",
+        from: "anything",
+        to: gradient,
+        fromCourse: outsider.id,
+      }),
+    ).rejects.toMatchObject({ code: "phantom_endpoint" });
   });
 });

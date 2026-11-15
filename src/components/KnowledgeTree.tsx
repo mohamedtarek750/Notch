@@ -15,13 +15,31 @@ type Concept = {
   id: string;
   label: { ar: string; en: string };
   scope?: string;
+  /** In the shared tree: the courses that teach it, and those that only need it. */
+  courses?: string[];
+  mentionedIn?: string[];
 };
+type Scope = "course" | "major" | "university";
+type Shared = {
+  current: string;
+  layoutKey: string;
+  courses: { id: string; code: string; title: { ar: string; en: string } }[];
+};
+const TINTS = [
+  "#4b4f8a",
+  "#0f766e",
+  "#9d174d",
+  "#1d4ed8",
+  "#6d28d9",
+  "#3f6212",
+];
 type Edge = {
   from: string;
   to: string;
   type: string;
   reason?: { ar: string; en: string };
   origin?: string;
+  courses?: string[];
 };
 type Point = { x: number; y: number };
 const W = 190,
@@ -138,12 +156,14 @@ const Card = memo(function Card({
   active,
   target,
   lang,
+  tint,
 }: {
   concept: Concept;
   at: Point;
   active: boolean;
   target: boolean;
   lang: Lang;
+  tint: string;
 }) {
   return (
     <g
@@ -166,7 +186,7 @@ const Card = memo(function Card({
               ? "#eef0f6"
               : "#ffffff"
         }
-        stroke={active || target ? MINE : MODEL}
+        stroke={active || target ? MINE : tint}
         strokeWidth={active || target ? 2.5 : 1.2}
       />
       <foreignObject width={W} height={H} pointerEvents="none">
@@ -234,7 +254,9 @@ export function KnowledgeTree({
     [kind, setKind] = useState("prerequisite"),
     [first, setFirst] = useState(""),
     [then, setThen] = useState(""),
-    [note, setNote] = useState("");
+    [note, setNote] = useState(""),
+    [scope, setScope] = useState<Scope>("course"),
+    [shared, setShared] = useState<Shared | null>(null);
   const svg = useRef<SVGSVGElement>(null),
     frame = useRef(0),
     live = useRef<Gesture | null>(null),
@@ -243,6 +265,19 @@ export function KnowledgeTree({
   const edges = useMemo(() => graph?.edges ?? [], [graph]);
   const load = useCallback(async () => {
     try {
+      if (scope !== "course") {
+        const u = await request("/api/catalog?tree=" + scope, undefined, lang);
+        saved.current = u.layout ?? {};
+        setShared({
+          current: u.current,
+          layoutKey: u.layoutKey,
+          courses: u.courses,
+        });
+        setGraph({ concepts: u.concepts, edges: u.edges });
+        setPending(0);
+        return;
+      }
+      setShared(null);
       const k = await request("/api/knowledge", undefined, lang);
       saved.current = k.layout ?? {};
       setGraph(k.releases?.[0]?.data?.graph ?? null);
@@ -258,7 +293,7 @@ export function KnowledgeTree({
     } finally {
       setLoaded(true);
     }
-  }, [lang, onError]);
+  }, [lang, onError, scope]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -286,7 +321,10 @@ export function KnowledgeTree({
     saved.current = positions;
     request(
       "/api/knowledge",
-      { action: "tree-layout", data: { positions } },
+      {
+        action: "tree-layout",
+        data: { positions, ...(shared ? { key: shared.layoutKey } : {}) },
+      },
       lang,
     ).catch((e) => onError((e as Error).message));
   };
@@ -300,12 +338,40 @@ export function KnowledgeTree({
     setBusy(true);
     onError("");
     try {
+      // In the shared tree a line is stored in the course that teaches the later concept.
+      const later = concepts.find((c) => c.id === to),
+        earlier = concepts.find((c) => c.id === from),
+        line = edges.find((e) => e.from === from && e.to === to);
+      const owners = [...(later?.courses ?? []), ...(later?.mentionedIn ?? [])];
+      const target = !shared
+        ? undefined
+        : op !== "add"
+          ? line?.courses?.[0]
+          : owners.includes(shared.current)
+            ? shared.current
+            : owners[0];
       const result = await request(
         "/api/knowledge",
-        { action: "tree-edit", data: { op, from, to, type } },
+        {
+          action: "tree-edit",
+          data: {
+            op,
+            from,
+            to,
+            type,
+            ...(target ? { courseId: target } : {}),
+            ...(shared && op === "add"
+              ? {
+                  fromCourse:
+                    earlier?.courses?.[0] ?? earlier?.mentionedIn?.[0],
+                }
+              : {}),
+          },
+        },
         lang,
       );
-      setGraph(result.graph);
+      if (shared) await load();
+      else setGraph(result.graph);
       setChosen(op === "remove" ? "" : `${from}|${to}`);
       setNote(
         op === "add"
@@ -474,6 +540,46 @@ export function KnowledgeTree({
           "Every published concept of the course and what comes before it. Move the concepts wherever you like and draw your own lines. Each new lecture you publish joins the same tree.",
         )}
       </p>
+      <label style={{ display: "block", margin: "10px 0" }}>
+        {t("اعرض", "Show")}{" "}
+        <select
+          value={scope}
+          onChange={(e) => {
+            // Each scope has its own concepts and its own saved places.
+            setPlaces({});
+            setGraph(null);
+            setChosen("");
+            setPicked("");
+            setLoaded(false);
+            setScope(e.target.value as Scope);
+          }}
+        >
+          <option value="course">{t("هذا المقرر", "This course")}</option>
+          <option value="major">
+            {t("كل مقررات التخصص", "All courses of the major")}
+          </option>
+          <option value="university">
+            {t("الجامعة كلها", "The whole university")}
+          </option>
+        </select>
+      </label>
+      {shared && (
+        <p>
+          {shared.courses.map((c, i) => (
+            <span key={c.id} style={{ marginInlineEnd: 14 }}>
+              <span style={{ color: TINTS[i % TINTS.length] }}>■</span>{" "}
+              {c.title?.[lang] || c.code}
+            </span>
+          ))}
+          <br />
+          <small>
+            {t(
+              "المفهوم الذي يُدرَّس في أكثر من مقرر يظهر مرة واحدة. الخط الذي ترسمه يُحفظ في المقرر الذي يدرّس المفهوم اللاحق، ويجوز بين مقررات التخصص الواحد فقط.",
+              "A concept taught in more than one course appears once. A line you draw is stored in the course that teaches the later concept, and is allowed between courses of the same major only.",
+            )}
+          </small>
+        </p>
+      )}
       {pending > 0 && (
         <div className="notice">
           {t(
@@ -625,6 +731,20 @@ export function KnowledgeTree({
                       key={c.id}
                       concept={c}
                       at={places[c.id]}
+                      tint={
+                        shared
+                          ? TINTS[
+                              Math.max(
+                                0,
+                                shared.courses.findIndex(
+                                  (x) =>
+                                    x.id ===
+                                    (c.courses?.[0] ?? c.mentionedIn?.[0]),
+                                ),
+                              ) % TINTS.length
+                            ]
+                          : MODEL
+                      }
                       active={picked === c.id || linking?.from === c.id}
                       target={linking?.over === c.id}
                       lang={lang}

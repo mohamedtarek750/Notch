@@ -1,12 +1,19 @@
 import { COURSE_COOKIE, requireAuth, setCookie } from "@/server/auth";
-import { catalog, catalogAction } from "@/server/catalog";
+import { catalog, catalogAction, unionTree } from "@/server/catalog";
 import { errorResponse, localeFrom } from "@/server/errors";
 export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
-    return Response.json(await catalog(await requireAuth(request)), {
-      headers: { "Cache-Control": "no-store" },
-    });
+    const ctx = await requireAuth(request);
+    const tree = new URL(request.url).searchParams.get("tree");
+    return Response.json(
+      tree === "major" || tree === "university"
+        ? await unionTree(ctx, tree)
+        : await catalog(ctx),
+      {
+        headers: { "Cache-Control": "no-store" },
+      },
+    );
   } catch (e) {
     return errorResponse(e, localeFrom(request));
   }

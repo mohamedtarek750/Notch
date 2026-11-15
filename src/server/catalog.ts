@@ -163,3 +163,96 @@ export async function catalogAction(ctx: AuthContext, raw: unknown) {
     return { id: courseId };
   });
 }
+
+type GraphConcept = {
+  id: string;
+  label: { ar: string; en: string };
+  scope?: string;
+};
+type GraphEdge = {
+  from: string;
+  to: string;
+  type: string;
+  origin?: string;
+  reason?: { ar: string; en: string };
+};
+/**
+ * One tree for a whole major or the whole university: the published trees of its
+ * courses laid over each other. A concept taught in two courses is one node.
+ */
+export async function unionTree(
+  ctx: AuthContext,
+  scope: "major" | "university",
+) {
+  const all = await catalog(ctx);
+  const here = all.courses.find((c) => c.id === ctx.courseId);
+  const courses =
+    scope === "university"
+      ? all.courses
+      : all.courses.filter((c) =>
+          here?.majorId ? c.majorId === here.majorId : c.id === ctx.courseId,
+        );
+  const key =
+    scope === "university"
+      ? "tree_layout:university"
+      : "tree_layout:" + (here?.majorId ?? "course:" + ctx.courseId);
+  const conn = db.tenant(ctx.tenantId);
+  const releases = (
+    await conn.query<{
+      course_id: string;
+      graph: { concepts: GraphConcept[]; edges: GraphEdge[] };
+    }>(
+      "SELECT DISTINCT ON (course_id) course_id,data->'graph' AS graph FROM records WHERE tenant_id=$1 AND kind='graph_release' AND course_id=ANY($2::text[]) ORDER BY course_id,created_at DESC,id DESC",
+      [ctx.tenantId, courses.map((c) => c.id)],
+    )
+  ).rows;
+  const concepts = new Map<
+    string,
+    GraphConcept & { courses: string[]; mentionedIn: string[] }
+  >();
+  const edges = new Map<string, GraphEdge & { courses: string[] }>();
+  for (const r of releases) {
+    for (const c of r.graph?.concepts ?? []) {
+      const node = concepts.get(c.id) ?? {
+        id: c.id,
+        label: c.label,
+        scope: "foundation",
+        courses: [],
+        mentionedIn: [],
+      };
+      // A course "teaches" a concept from its lectures; a foundation is only needed there.
+      if (c.scope === "foundation") node.mentionedIn.push(r.course_id);
+      else {
+        node.courses.push(r.course_id);
+        node.scope = "course";
+      }
+      concepts.set(c.id, node);
+    }
+    for (const e of r.graph?.edges ?? []) {
+      const id = `${e.from}|${e.to}`;
+      const edge = edges.get(id) ?? { ...e, courses: [] };
+      edge.courses.push(r.course_id);
+      // Routing in any course makes the shared line a prerequisite.
+      if (e.type === "prerequisite") edge.type = "prerequisite";
+      edges.set(id, edge);
+    }
+  }
+  const layout = (
+    await conn.query<{ data: { positions?: Record<string, unknown> } }>(
+      "SELECT data FROM records WHERE tenant_id=$1 AND id=$2 AND kind='tree_layout' AND course_id IS NULL",
+      [ctx.tenantId, key],
+    )
+  ).rows[0]?.data.positions;
+  return {
+    scope,
+    current: ctx.courseId,
+    layoutKey: key,
+    courses: courses.map((c) => ({
+      ...c,
+      major: all.majors.find((m) => m.id === c.majorId)?.name ?? null,
+    })),
+    concepts: [...concepts.values()],
+    edges: [...edges.values()],
+    layout: layout ?? {},
+  };
+}
