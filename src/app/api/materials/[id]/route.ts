@@ -13,7 +13,7 @@ const review = z.object({
   correctedText: z.string().min(20).max(30000).optional(),
 });
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
