@@ -1306,6 +1306,59 @@ describe("daily review, exam readiness, mock quiz and the tutor ladder", () => {
       (await learningAction(fresh, { action: "mock-start", examId })).items,
     ).toHaveLength(0);
   });
+  it("offers a short check after a lecture, counted toward the learner's level", async () => {
+    const fresh: AuthContext = { ...student, userId: randomUUID() };
+    await db.tenant(tenant).transaction(async (tx) => {
+      await tx.query("INSERT INTO users(tenant_id,id,name) VALUES($1,$2,$3)", [
+        tenant,
+        fresh.userId,
+        '{"ar":"جديد","en":"Fresh"}',
+      ]);
+      await tx.query(
+        "INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,'student')",
+        [tenant, fresh.userId],
+      );
+      await tx.query(
+        "INSERT INTO course_access(tenant_id,user_id,course_id,access_role) VALUES($1,$2,'CET351','student')",
+        [tenant, fresh.userId],
+      );
+    });
+    const checks = (await workspace(fresh)).lectureChecks!;
+    const check = checks.find((c) => c.questions > 0)!;
+    // The lecture is known by the concepts whose pages it holds; foundations are not its own.
+    expect(check.id.startsWith("lecture:")).toBe(true);
+    expect(check.concepts).toBeGreaterThan(0);
+    expect(check.last).toBeNull();
+    const quiz = await learningAction(fresh, {
+      action: "mock-start",
+      examId: check.id,
+    });
+    expect(quiz.items.length).toBeGreaterThan(0);
+    expect(quiz.items.length).toBeLessThanOrEqual(5);
+    expect(quiz.items[0].item.data.key).toBeUndefined();
+    await learningAction(fresh, {
+      action: "attempt",
+      deliveryId: quiz.items[0].deliveryId,
+      answer: "a",
+      idempotencyKey: "lecture-check-1",
+      elapsedMs: 15000,
+    });
+    const result = await learningAction(fresh, {
+      action: "mock-finish",
+      examId: check.id,
+      deliveryIds: quiz.items.map((i: any) => i.deliveryId),
+    });
+    expect(result).toMatchObject({ examId: check.id, answered: 1 });
+    const after = await workspace(fresh);
+    // The answer is an ordinary attempt, so it moves the learner's level.
+    expect(after.attempts).toHaveLength(1);
+    expect(
+      after.lectureChecks!.find((c) => c.id === check.id)!.last,
+    ).toMatchObject({ served: quiz.items.length });
+    await expect(
+      learningAction(fresh, { action: "mock-start", examId: "lecture:NOPE" }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
   it("walks the hint ladder by code and respects the instructor's strictness", async () => {
     expect(ladderStep(0, "hints-then-answer")).toBe("guiding-question");
     expect(ladderStep(1, "hints-then-answer")).toBe("stronger-hint");

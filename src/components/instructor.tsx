@@ -86,6 +86,10 @@ export function ClassDashboard({
         `متعثر في ${r.value} مفهومًا، أولها ${localized(r.label, lang)}`,
         `Stuck on ${r.value} concept(s), first ${localized(r.label, lang)}`,
       ),
+      "asks-tutor": t(
+        `سأل المساعد ${r.value} مرات هذا الأسبوع عن ${localized(r.label, lang) || "مفهوم واحد"}`,
+        `Asked the tutor ${r.value} times this week about ${localized(r.label, lang) || "one concept"}`,
+      ),
       "repeated-diagnosis": t(
         `تكرر التشخيص في ${localized(r.label, lang)}`,
         `Repeated diagnosis on ${localized(r.label, lang)}`,
@@ -284,6 +288,33 @@ export function ClassDashboard({
       )}
       {tab === "overview" && !concept && (
         <>
+          {(data.lectureChecks || []).length > 0 && (
+            <Box>
+              <h2>
+                {t("اختبارات ما بعد المحاضرة", "Checks after each lecture")}
+              </h2>
+              {(data.lectureChecks as any[]).map((c) => (
+                <div className="row" key={c.id}>
+                  <strong>{c.title}</strong>
+                  <span>
+                    {c.taken
+                      ? t(
+                          `أجراه ${c.taken} طالبًا · متوسط ${c.averagePercent}٪`,
+                          `${c.taken} took it · average ${c.averagePercent}%`,
+                        )
+                      : t("لم يُجرِه أحد بعد", "Nobody has taken it yet")}
+                    {c.taken > 0 && c.thinData
+                      ? " · " +
+                        t(
+                          "عدد قليل، فسّره بحذر",
+                          "few students; interpret with caution",
+                        )
+                      : ""}
+                  </span>
+                </div>
+              ))}
+            </Box>
+          )}
           <Box>
             <h2>{t("الانضمام", "Sign-ups")}</h2>
             <p>
