@@ -50,7 +50,7 @@ Rules:
 - Add a foundation ONLY when an umbrella passage presents that background idea as needed and no candidate or lecture concept already names it.
 - State a dependency whenever an umbrella passage shows it: the dependent "requires", "is built on", "is derived from", "is defined in terms of", "applies" or "uses" the prerequisite, the learner needs it "first" or "before", or the passage's own definition, formula or procedure for the dependent is written in terms of the prerequisite (for example an update rule that is computed from a gradient depends on the gradient). Mere co-occurrence or similarity is NOT a prerequisite.
 - Consider every lecture concept in turn, including dependencies between two lecture concepts; do not stop after the first concept that has clear evidence.
-- Every edge MUST cite at least one umbrella evidence ID whose text shows that dependency.
+- Every edge MUST cite at least one supplied evidence ID whose text shows that dependency: an umbrella evidence ID, or a lectureEvidenceId when the lecture excerpt itself presents one lecture concept as a kind of, a part of, or built from another lecture concept.
 - type "prerequisite": the dependent cannot be understood without it. type "optional_bridge": helpful background that is not required.
 - A tool or programming language used in an example is never a prerequisite of the mathematical idea.
 - At most 3 direct prerequisites per concept; prefer the most immediate one over a distant ancestor. If the passages show no dependency for a concept, return no edge for it.
@@ -629,9 +629,15 @@ export async function extractPrerequisites(
       const cited = [
         ...new Set(e.evidenceIds.filter((id) => allowedIds.has(id))),
       ];
+      // The lecture is the instructor's own approved material: when it presents one of
+      // its concepts as a kind of, or built from, another, its page is valid evidence too.
+      // A foundation taken from the reference must still cite the reference.
+      const lectureOnly = !cited.some((id) => passageIds.has(id));
       if (
+        !cited.length ||
         cited.length !== new Set(e.evidenceIds).size ||
-        !cited.some((id) => passageIds.has(id))
+        (lectureOnly &&
+          !(lectureConcepts.has(from.id) && lectureConcepts.has(to.id)))
       ) {
         reject("no_umbrella_citation");
         continue;
