@@ -390,8 +390,10 @@ export async function publishedPrerequisiteSupport(
     (e: any) =>
       e.to === dependent.id &&
       e.type === "prerequisite" &&
-      e.evidenceIds.length &&
-      e.evidenceIds.every((id: string) => validEvidence.has(id)),
+      // A line the instructor drew is their own decision and needs no citation.
+      (e.origin === "instructor" ||
+        (e.evidenceIds.length &&
+          e.evidenceIds.every((id: string) => validEvidence.has(id)))),
   );
   const states = (
     await tx.query<Row>(

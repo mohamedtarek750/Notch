@@ -90,6 +90,8 @@ export type Graph = {
     type: string;
     evidenceIds: string[];
     reason: { ar: string; en: string };
+    /** "instructor" for a line the instructor drew on the knowledge tree. */
+    origin?: "instructor";
   }[];
 };
 export function validateGraph(graph: Graph) {
@@ -647,6 +649,93 @@ export async function reviewProposal(
               : "Optional relationship; does not gate progress",
         })) || [],
     };
+  });
+}
+const treeEdit = z.object({
+  op: z.enum(["add", "remove", "retype"]),
+  from: z.string().min(1).max(120),
+  to: z.string().min(1).max(120),
+  type: z.enum(["prerequisite", "optional_bridge"]).default("prerequisite"),
+});
+/**
+ * Instructor edits the published knowledge tree directly: draw a line between two
+ * concepts, remove one, or switch it between routing and optional. Each edit is a
+ * new release, so the learner path follows at once; later lecture extractions merge
+ * into the same tree and keep these lines.
+ */
+export async function editTree(ctx: AuthContext, raw: unknown) {
+  await staff(ctx, "publish");
+  const edit = treeEdit.parse(raw);
+  return db.tenant(ctx.tenantId).transaction(async (tx) => {
+    await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
+    await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+      ctx.tenantId + ":knowledge:" + COURSE,
+    ]);
+    const prior = (
+      await tx.query<{ data: Record<string, unknown> & { graph: Graph } }>(
+        "SELECT data FROM records WHERE tenant_id=$1 AND kind='graph_release' AND course_id=$2 ORDER BY created_at DESC,id DESC LIMIT 1",
+        [ctx.tenantId, COURSE],
+      )
+    ).rows[0];
+    if (!prior) throw new SourceError("tree_not_published", 409);
+    const same = (e: Graph["edges"][number]) =>
+      e.from === edit.from && e.to === edit.to;
+    const existing = prior.data.graph.edges.find(same);
+    let edges = prior.data.graph.edges;
+    if (edit.op === "add") {
+      if (existing) throw new SourceError("duplicate_edge", 409);
+      edges = [
+        ...edges,
+        {
+          from: edit.from,
+          to: edit.to,
+          type: edit.type,
+          evidenceIds: [],
+          reason: {
+            ar: "علاقة أضافها المحاضر على شجرة المعرفة.",
+            en: "Relationship added by the instructor on the knowledge tree.",
+          },
+          origin: "instructor",
+        },
+      ];
+    } else {
+      if (!existing) throw new SourceError("edge_missing", 404);
+      edges =
+        edit.op === "remove"
+          ? edges.filter((e) => !same(e))
+          : edges.map((e) => (same(e) ? { ...e, type: edit.type } : e));
+    }
+    const graph: Graph = { concepts: prior.data.graph.concepts, edges };
+    validateGraph(graph);
+    const now = new Date().toISOString();
+    await tx.query(
+      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'graph_release',$3,NULL,$4)",
+      [
+        ctx.tenantId,
+        randomUUID(),
+        COURSE,
+        JSON.stringify({
+          ...prior.data,
+          graph,
+          publishedBy: ctx.userId,
+          publishedAt: now,
+          proposalIds: [],
+          treeEdit: edit,
+        }),
+      ],
+    );
+    await tx.query(
+      "INSERT INTO audit_events(tenant_id,id,actor_id,action,entity_id,data) VALUES($1,$2,$3,$4,$5,$6)",
+      [
+        ctx.tenantId,
+        randomUUID(),
+        ctx.userId,
+        "knowledge.tree_edit",
+        COURSE,
+        JSON.stringify(edit),
+      ],
+    );
+    return { graph };
   });
 }
 export async function publishKnowledge(ctx: AuthContext) {

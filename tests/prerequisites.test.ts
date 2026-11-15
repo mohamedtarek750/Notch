@@ -14,6 +14,7 @@ import {
 } from "../src/server/sources";
 import { type ModelGateway } from "../src/server/ai";
 import {
+  editTree,
   getKnowledge,
   publishKnowledge,
   stableConceptId,
@@ -475,6 +476,42 @@ describe("model-extracted prerequisites with instructor approval", () => {
       "already_published",
       "cycle",
     ]);
+  });
+  it("lets the instructor draw, retype and remove lines on the published tree", async () => {
+    const edit = (op: string, from: string, to: string, type?: string) =>
+      editTree(instructor, { op, from, to, ...(type ? { type } : {}) });
+    await expect(edit("add", naive, bayes)).rejects.toMatchObject({
+      code: "cycle",
+    });
+    await expect(edit("add", bayes, bayes)).rejects.toMatchObject({
+      code: "self_loop",
+    });
+    await expect(edit("add", bayes, naive)).rejects.toMatchObject({
+      code: "duplicate_edge",
+    });
+    await expect(edit("add", bayes, "no-such-concept")).rejects.toMatchObject({
+      code: "phantom_endpoint",
+    });
+    await expect(
+      editTree(student, { op: "remove", from: bayes, to: naive }),
+    ).rejects.toBeTruthy();
+    expect(
+      (await edit("retype", bayes, naive, "optional_bridge")).graph.edges[0]
+        .type,
+    ).toBe("optional_bridge");
+    expect((await edit("remove", bayes, naive)).graph.edges).toHaveLength(0);
+    const drawn = await edit("add", bayes, naive);
+    expect(drawn.graph.edges).toMatchObject([
+      { from: bayes, to: naive, type: "prerequisite", origin: "instructor" },
+    ]);
+    // The drawn line routes the learner and survives the next publication.
+    const support = await publishedPrerequisiteSupport(
+      db.tenant(tenant),
+      student,
+      student.userId,
+      "nb.apply",
+    );
+    expect(support?.concepts.map((c: any) => c.conceptId)).toEqual([bayes]);
   });
 });
 
