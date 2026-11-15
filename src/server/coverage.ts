@@ -166,6 +166,11 @@ export function permittedEvidence(e: CurrentEvidence) {
   );
 }
 const validationMessages: Record<string, [string, string]> = {
+  edge_missing: ["العلاقة غير موجودة.", "The relationship was not found."],
+  tree_not_published: [
+    "انشر مفاهيم محاضرة واحدة على الأقل قبل تعديل الشجرة.",
+    "Publish the concepts of at least one lecture before editing the tree.",
+  ],
   invalid_page_coverage: [
     "راجع أرقام الصفحات وربطها بالمفاهيم.",
     "Check the page numbers and their concept links.",

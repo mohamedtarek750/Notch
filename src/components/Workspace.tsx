@@ -37,6 +37,7 @@ import { FieldArt } from "./FieldArt";
 import { ClassDashboard, CourseReport } from "./instructor";
 import { AdvisorDashboard } from "./advisor";
 import { CourseConceptMap } from "./CourseConceptMap";
+import { KnowledgeTree } from "./KnowledgeTree";
 import { MaterialsPanel, KnowledgePanel, LaunchPanel } from "./sources";
 import {
   StudentHome,
@@ -142,7 +143,7 @@ const INSTRUCTOR_NAV = [
   ["launch", "٤ · الإطلاق", "4 · Launch", ShieldCheck],
   ["teaching", "متابعة الفصل", "Class dashboard", Users],
   ["report", "تقرير المقرر", "Course report", ClipboardList],
-  ["map", "خريطة المقرر", "Course map", Network],
+  ["map", "شجرة المعرفة", "Knowledge tree", Network],
 ] as const;
 const ADVISOR_NAV = [["advising", "طلابي", "My students", Users]] as const;
 export function Workspace({
@@ -808,7 +809,10 @@ export function Workspace({
               {view === "map" && user?.role === "student" && (
                 <Roadmap data={data} lang={lang} t={t} learn={learn} />
               )}
-              {view === "map" && user?.role !== "student" && (
+              {view === "map" && user?.role === "instructor" && (
+                <KnowledgeTree lang={lang} t={t} onError={E} go={go} />
+              )}
+              {view === "map" && user?.role === "advisor" && (
                 <LearningMap data={data} lang={lang} t={t} go={go} />
               )}
               {view === "status" && (
