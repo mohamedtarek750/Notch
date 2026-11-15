@@ -551,6 +551,7 @@ export async function parsePdf(bytes: Uint8Array) {
     return pages;
   } catch (error) {
     if (error instanceof SourceError) throw error;
+    console.error("pdf parse failed:", (error as Error)?.message);
     throw new SourceError("parse_failed");
   } finally {
     clearTimeout(timer);

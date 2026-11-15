@@ -517,7 +517,6 @@ export function MaterialsPanel({
     </>
   );
 }
-const LARGE_PDF_BYTES = 3_000_000;
 const PART_PAGES = 150;
 /** Read a large PDF's text in the browser and send it as page text, part by part, so the
  * upload size and page limits do not apply. Scanned pages come through empty. */
@@ -623,7 +622,7 @@ function UmbrellaUpload({
         onSubmit={async (e) => {
           e.preventDefault();
           if (!file) return;
-          if (/\.pdf$/i.test(file.name) && file.size > LARGE_PDF_BYTES) {
+          if (/\.pdf$/i.test(file.name)) {
             DN("");
             const result = await act(() =>
               uploadLargePdf(file, {
@@ -635,8 +634,8 @@ function UmbrellaUpload({
                 progress: (done, total) =>
                   DN(
                     t(
-                      `ملف كبير: يُقرأ داخل المتصفح… ${done} من ${total} صفحة`,
-                      `Large file: reading in your browser… ${done} of ${total} pages`,
+                      `يُقرأ الملف داخل المتصفح… ${done} من ${total} صفحة`,
+                      `Reading the file in your browser… ${done} of ${total} pages`,
                     ),
                   ),
               }),
@@ -740,8 +739,8 @@ function UmbrellaUpload({
         </div>
         <small>
           {t(
-            "الملف الأكبر من ٣ ميجابايت (كتاب كامل مثلًا) يُقرأ نصّه داخل متصفحك ويُرفع أجزاءً من ١٥٠ صفحة دون حد للحجم، ولا يُحفظ الملف الأصلي. الصفحات المصوّرة تُعزل حتى يُرفق نصّها.",
-            "A file over 3 MB (a whole textbook, for example) has its text read in your browser and is uploaded in parts of 150 pages with no size limit; the original file is not stored. Image-only pages are quarantined until their text is attached.",
+            "يُقرأ نصّ ملف PDF داخل متصفحك ويُرفع أجزاءً من ١٥٠ صفحة دون حد للحجم، ولا يُحفظ الملف الأصلي. الصفحات المصوّرة تُعزل حتى يُرفق نصّها.",
+            "A PDF has its text read in your browser and is uploaded in parts of 150 pages with no size limit; the original file is not stored. Image-only pages are quarantined until their text is attached.",
           )}
         </small>
         {!isLecture && (
