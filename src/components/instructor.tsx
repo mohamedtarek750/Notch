@@ -625,3 +625,222 @@ export function ClassDashboard({
     </>
   );
 }
+
+/** IN18 + IN19: the course report and the research export. */
+export function CourseReport({
+  lang,
+  t,
+  onError,
+}: {
+  lang: Lang;
+  t: Translate;
+  onError: (s: string) => void;
+}) {
+  const [report, R] = useState<any>(null),
+    [fields, F] = useState<string[]>([]),
+    [note, N] = useState("");
+  const load = () =>
+    request("/api/course-end", undefined, lang)
+      .then((r) => {
+        R(r);
+        F((f) => (f.length ? f : [...r.exportFields]));
+      })
+      .catch((e) => onError(e.message));
+  useEffect(() => {
+    load();
+  }, []);
+  if (!report) return <p role="status">{t("جارٍ التحميل…", "Loading…")}</p>;
+  const pct = (n: number | null) => (n === null ? "—" : `${Math.round(n)}%`);
+  const gain = report.learningGain;
+  const surveyLabels: Record<string, string> = {
+    usefulness: t("ساعدتني على التعلّم", "Helped me learn"),
+    trust: t("الثقة في المساعد", "Trust in the tutor"),
+    language: t("مناسبة اللغة", "Language suited me"),
+    ease: t("سهولة الاستخدام", "Ease of use"),
+    hints: t("فائدة التلميحات", "Hints were useful"),
+    map: t("دقة خريطة المهارات", "Skill map accuracy"),
+    pace: t("التعلّم بسرعتي", "Own pace"),
+    recommend: t("أنصح بها", "Would recommend"),
+  };
+  return (
+    <>
+      <div className="pageHead">
+        <h1>{t("تقرير المقرر", "Course report")}</h1>
+        {note && <p role="status">{note}</p>}
+      </div>
+      <Box>
+        <h2>{t("الاختبار البعدي", "Post-test")}</h2>
+        <p>
+          {report.postTestOpen
+            ? t("مفتوح للطلاب الآن.", "Open to students now.")
+            : t(
+                "مغلق. افتحه في نهاية المقرر ليقيس ما تعلّمه الطلاب.",
+                "Closed. Open it at the end of the course to measure what students learned.",
+              )}
+        </p>
+        <Button
+          onClick={async () => {
+            try {
+              await request(
+                "/api/course-end",
+                { action: "posttest-open", open: !report.postTestOpen },
+                lang,
+              );
+              await load();
+            } catch (e) {
+              onError((e as Error).message);
+            }
+          }}
+        >
+          {report.postTestOpen
+            ? t("أغلق الاختبار البعدي", "Close the post-test")
+            : t("افتح الاختبار البعدي", "Open the post-test")}
+        </Button>
+      </Box>
+      <Box cls="end">
+        <h2>{t("المشاركة", "Participation")}</h2>
+        <p>
+          {t(
+            `${report.participation.active} من ${report.participation.enrolled} طالبًا أجابوا عن سؤال واحد على الأقل. اختبار البداية: ${report.participation.tookStartingCheck}. الاختبار البعدي: ${report.participation.tookPostTest}.`,
+            `${report.participation.active} of ${report.participation.enrolled} students answered at least one question. Starting check: ${report.participation.tookStartingCheck}. Post-test: ${report.participation.tookPostTest}.`,
+          )}
+        </p>
+        <h2>{t("ما تعلّمه الطلاب", "Learning gain")}</h2>
+        {gain.students === 0 ? (
+          <p>
+            {t(
+              "لا يوجد طالب أكمل اختبار البداية والاختبار البعدي معًا بعد.",
+              "No student has completed both the starting check and the post-test yet.",
+            )}
+          </p>
+        ) : (
+          <p>
+            {t(
+              `من ${pct(gain.preAverage)} في اختبار البداية إلى ${pct(gain.postAverage)} في الاختبار البعدي، لـ${gain.students} طالبًا أكملوا الاثنين.`,
+              `From ${pct(gain.preAverage)} on the starting check to ${pct(gain.postAverage)} on the post-test, for ${gain.students} students who completed both.`,
+            )}{" "}
+            {gain.thinData &&
+              t(
+                "العدد صغير؛ فسّره بحذر.",
+                "The number is small; interpret with caution.",
+              )}
+          </p>
+        )}
+        <h2>{t("الإتقان بحسب المفهوم", "Mastery by concept")}</h2>
+        {report.masteryByConcept.map((c: any) => (
+          <div className="row" key={c.conceptId}>
+            <strong>{localized(c.label, lang)}</strong>
+            <span>
+              {c.readyShare === null
+                ? t("لم يُقيَّم أحد", "nobody assessed")
+                : t(
+                    `جاهز ${c.ready} من ${c.assessed}`,
+                    `${c.ready} of ${c.assessed} ready`,
+                  )}
+            </span>
+          </div>
+        ))}
+        <h2>{t("المساعد", "Tutor")}</h2>
+        <p>
+          {t(
+            `${report.tutor.questionsAnswered} إجابة، ${report.tutor.couldNotAnswer} سؤالًا بلا تغطية في المواد، ${report.tutor.thumbsUp} تقييمًا إيجابيًّا و${report.tutor.thumbsDown} سلبيًّا، و${report.tutor.markedWrongByInstructor} علّمتَها خاطئة.`,
+            `${report.tutor.questionsAnswered} answers, ${report.tutor.couldNotAnswer} questions the material did not cover, ${report.tutor.thumbsUp} thumbs-up and ${report.tutor.thumbsDown} thumbs-down, ${report.tutor.markedWrongByInstructor} marked wrong by you.`,
+          )}
+        </p>
+        <h2>{t("استبيان الطلاب", "Student survey")}</h2>
+        {report.survey.responses === 0 ? (
+          <p>{t("لا ردود بعد.", "No responses yet.")}</p>
+        ) : (
+          <>
+            <p>
+              <small>
+                {t(
+                  `${report.survey.responses} ردًّا · المتوسط من ٥`,
+                  `${report.survey.responses} responses · average out of 5`,
+                )}
+              </small>
+            </p>
+            {Object.entries(report.survey.averages).map(([k, v]) => (
+              <div className="row" key={k}>
+                <span>{surveyLabels[k] || k}</span>
+                <strong>{v === null ? "—" : (v as number).toFixed(1)}</strong>
+              </div>
+            ))}
+            {report.survey.comments.map((c: string, i: number) => (
+              <p className="notice" key={i} dir="auto">
+                {c}
+              </p>
+            ))}
+          </>
+        )}
+        <p className="notice">
+          {t(
+            "حدود هذا التقرير: لا توجد مجموعة مقارنة عشوائية، فالأرقام تُظهر ارتباطًا لا دليلًا على أن المنصة هي السبب.",
+            "Limits of this report: there is no randomized comparison group, so the figures show association, not proof that the platform caused the change.",
+          )}
+        </p>
+        <Button onClick={() => window.print()}>
+          {t("اطبع أو احفظ PDF", "Print or save as PDF")}
+        </Button>
+      </Box>
+      <Box cls="end">
+        <h2>{t("تصدير بيانات البحث", "Research data export")}</h2>
+        <p>
+          {t(
+            `${report.participation.researchConsent} طالبًا وافقوا على البحث حتى هذه اللحظة. يُصدَّر لهم فقط، بمعرّفات مجهولة لا تُربط بهم، ودون أي نص حر.`,
+            `${report.participation.researchConsent} students consent to research as of now. Only their data is exported, under anonymous IDs that cannot be linked back, with no free text.`,
+          )}
+        </p>
+        {report.exportFields.map((f: string) => (
+          <label className="checklabel" key={f}>
+            <input
+              type="checkbox"
+              checked={fields.includes(f)}
+              onChange={(e) =>
+                F(
+                  e.target.checked
+                    ? [...fields, f]
+                    : fields.filter((x) => x !== f),
+                )
+              }
+            />
+            <bdi>{f}</bdi>
+          </label>
+        ))}
+        <Button
+          primary
+          disabled={!fields.length}
+          onClick={async () => {
+            try {
+              const r = await request(
+                "/api/course-end",
+                { action: "research-export", fields },
+                lang,
+              );
+              const url = URL.createObjectURL(
+                new Blob([JSON.stringify(r, null, 2)], {
+                  type: "application/json",
+                }),
+              );
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "tilwa-research-export.json";
+              a.click();
+              URL.revokeObjectURL(url);
+              N(
+                t(
+                  `صُدّر ${r.rows.length} صفًّا لـ${r.consentingStudents} طالبًا، وسُجّل التصدير في سجل التدقيق.`,
+                  `Exported ${r.rows.length} rows for ${r.consentingStudents} students; the export was recorded in the audit log.`,
+                ),
+              );
+            } catch (e) {
+              onError((e as Error).message);
+            }
+          }}
+        >
+          {t("وافق ونزّل", "Approve and download")}
+        </Button>
+      </Box>
+    </>
+  );
+}

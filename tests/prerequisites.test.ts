@@ -53,6 +53,12 @@ import { extractionQuality } from "../src/server/prerequisites";
 import { transcribeSparsePages } from "../src/server/ocr";
 import { segments } from "../src/server/ai";
 import {
+  courseEndAction,
+  courseReport,
+  myData,
+} from "../src/server/course-end";
+import {
+  advisorCaseload,
   dashboardAction,
   gapTopic,
   instructorDashboard,
@@ -1462,5 +1468,244 @@ describe("instructor class dashboard", () => {
         (a) => a.id === answer.id,
       )?.audit?.verdict,
     ).toBe("wrong");
+  });
+});
+
+describe("advisor caseload, consent and the end of the course", () => {
+  const advisor: AuthContext = {
+    ...student,
+    userId: randomUUID(),
+    role: "advisor",
+  };
+  const stranger: AuthContext = { ...student, userId: randomUUID() };
+  beforeAll(async () => {
+    await db.tenant(tenant).transaction(async (tx) => {
+      for (const [ctx, role] of [
+        [advisor, "advisor"],
+        [stranger, "student"],
+      ] as const) {
+        await tx.query(
+          "INSERT INTO users(tenant_id,id,name) VALUES($1,$2,$3)",
+          [tenant, ctx.userId, '{"ar":"شخص","en":"Person"}'],
+        );
+        await tx.query(
+          "INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,$3)",
+          [tenant, ctx.userId, role],
+        );
+        await tx.query(
+          "INSERT INTO course_access(tenant_id,user_id,course_id,access_role) VALUES($1,$2,'CET351',$3)",
+          [tenant, ctx.userId, role],
+        );
+      }
+      await tx.query(
+        "INSERT INTO advisor_assignments(tenant_id,advisor_id,student_id) VALUES($1,$2,$3)",
+        [tenant, advisor.userId, student.userId],
+      );
+    });
+  });
+  it("shows an advisor only their assigned students, with reasons, and never transcripts", async () => {
+    const caseload = await advisorCaseload(advisor);
+    expect(caseload.size).toBe(1);
+    expect(caseload.caseload.map((s) => s.studentId)).toEqual([student.userId]);
+    expect(caseload.caseload[0].assessable).toBeGreaterThan(0);
+    const view = await studentView(advisor, student.userId);
+    expect(view.tutorTranscripts).toBe("not-available");
+    // Someone outside the caseload does not exist as far as this advisor can tell.
+    await expect(studentView(advisor, stranger.userId)).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(advisorCaseload(student)).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(
+      await dashboardAction(advisor, {
+        action: "nudge",
+        studentIds: [student.userId, stranger.userId],
+        text: "Just checking in.",
+      }),
+    ).toEqual({ sent: 1 });
+    // Advisors cannot audit the tutor or decide content gaps.
+    await expect(
+      dashboardAction(advisor, {
+        action: "gap-status",
+        ids: ["x"],
+        status: "resolved",
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+  it("lets an advisor clear a flag for themselves while the instructor still sees it", async () => {
+    const learnerWithHelp = (await instructorDashboard(instructor)).atRisk.find(
+      (s) => s.reasons.some((r) => r.kind === "asked-for-help"),
+    )!;
+    await db
+      .tenant(tenant)
+      .query(
+        "INSERT INTO advisor_assignments(tenant_id,advisor_id,student_id) VALUES($1,$2,$3)",
+        [tenant, advisor.userId, learnerWithHelp.studentId],
+      );
+    const before = await advisorCaseload(advisor);
+    expect(before.earlyWarning.askedForHelp.map((s) => s.studentId)).toEqual([
+      learnerWithHelp.studentId,
+    ]);
+    await dashboardAction(advisor, {
+      action: "flag-clear",
+      studentId: learnerWithHelp.studentId,
+      note: "Spoke to the student; already resolved.",
+    });
+    const after = await advisorCaseload(advisor);
+    expect(after.earlyWarning.askedForHelp).toEqual([]);
+    expect(
+      after.caseload.find((s) => s.studentId === learnerWithHelp.studentId)
+        ?.flagsCleared,
+    ).toBe(true);
+    expect(
+      (await instructorDashboard(instructor)).atRisk.some(
+        (s) => s.studentId === learnerWithHelp.studentId,
+      ),
+    ).toBe(true);
+  });
+  it("records consent with version and history, and gates nothing on research consent", async () => {
+    expect((await workspace(stranger)).consent).toBeNull();
+    await courseEndAction(stranger, {
+      action: "consent",
+      platform: true,
+      research: false,
+    });
+    const changed = await courseEndAction(stranger, {
+      action: "consent",
+      platform: true,
+      research: true,
+    });
+    expect(changed).toMatchObject({ research: true, platform: true });
+    expect(changed.history).toHaveLength(2);
+    expect((await workspace(stranger)).consent?.research).toBe(true);
+    await expect(
+      courseEndAction(instructor, {
+        action: "consent",
+        platform: true,
+        research: true,
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+  it("runs the post-test apart from practice, then survey, report and a consent-checked export", async () => {
+    await expect(
+      courseEndAction(stranger, { action: "posttest-start" }),
+    ).rejects.toMatchObject({ status: 403 });
+    await courseEndAction(instructor, { action: "posttest-open", open: true });
+    // Opening the post-test keeps the tutor setting chosen earlier.
+    expect((await workspace(stranger)).settings.tutorStrictness).toBe(
+      "answer-allowed",
+    );
+    const test = await courseEndAction(stranger, { action: "posttest-start" });
+    expect(test.items.length).toBe(2);
+    expect(test.items[0].item.data.key).toBeUndefined();
+    await learningAction(stranger, {
+      action: "attempt",
+      deliveryId: test.items[0].deliveryId,
+      answer: "a",
+      idempotencyKey: "posttest-attempt-1",
+      elapsedMs: 12000,
+    });
+    const result = await courseEndAction(stranger, {
+      action: "posttest-finish",
+      deliveryIds: test.items.map((i: any) => i.deliveryId),
+    });
+    expect(result).toMatchObject({ served: 2, answered: 1, correct: 1 });
+    // The post-test answer did not change mastery.
+    const view = await workspace(stranger);
+    expect(
+      view.states.every((s: any) => s.data.independentFamilies === 0),
+    ).toBe(true);
+    expect(view.courseEnd?.postTest).toMatchObject({ correct: 1 });
+    await courseEndAction(stranger, {
+      action: "survey",
+      ratings: {
+        usefulness: 5,
+        trust: 4,
+        language: 5,
+        ease: 3,
+        hints: 4,
+        map: 4,
+        pace: 5,
+        recommend: 4,
+      },
+      comment: "More worked examples please.",
+    });
+    const report = await courseReport(instructor);
+    expect(report.participation.tookPostTest).toBe(1);
+    expect(report.survey.responses).toBe(1);
+    expect(report.survey.averages.usefulness).toBe(5);
+    expect(report.survey.comments).toEqual(["More worked examples please."]);
+    expect(JSON.stringify(report.survey)).not.toContain(stranger.userId);
+    await expect(courseReport(student)).rejects.toMatchObject({ status: 403 });
+    // Only the consenting student is exported, under an ID that is not theirs.
+    const exported = await courseEndAction(instructor, {
+      action: "research-export",
+      fields: ["concept", "correct", "phase"],
+    });
+    expect(exported.consentingStudents).toBe(1);
+    expect(exported.rows).toHaveLength(1);
+    expect(exported.rows[0]).toMatchObject({
+      correct: true,
+      phase: "post-test",
+    });
+    expect(Object.keys(exported.rows[0]).sort()).toEqual([
+      "anonymousId",
+      "concept",
+      "correct",
+      "phase",
+    ]);
+    expect(JSON.stringify(exported)).not.toContain(stranger.userId);
+    // Consent withdrawn before the next export: nothing leaves.
+    await courseEndAction(stranger, {
+      action: "consent",
+      platform: true,
+      research: false,
+    });
+    expect(
+      (
+        await courseEndAction(instructor, {
+          action: "research-export",
+          fields: ["concept"],
+        })
+      ).rows,
+    ).toHaveLength(0);
+  });
+  it("lets a learner download and delete their own data, keeping anonymous rows only with research consent", async () => {
+    const mine = await myData(stranger);
+    expect(mine.records.some((r) => r.kind === "attempt")).toBe(true);
+    expect(mine.records.every((r) => r.kind !== "item")).toBe(true);
+    const gone = await courseEndAction(stranger, {
+      action: "delete-my-data",
+      confirm: true,
+    });
+    expect(gone.deleted).toBeGreaterThan(0);
+    expect(gone.anonymizedRowsKept).toBe(0);
+    const after = await workspace(stranger);
+    expect(after.attempts).toHaveLength(0);
+    expect(after.consent).toBeNull();
+    expect((await myData(stranger)).records).toHaveLength(0);
+    // With research consent the answers stay only as unlinkable rows.
+    await courseEndAction(student, {
+      action: "consent",
+      platform: true,
+      research: true,
+    });
+    const kept = await courseEndAction(student, {
+      action: "delete-my-data",
+      confirm: true,
+    });
+    expect(kept.anonymizedRowsKept).toBeGreaterThan(0);
+    const rows = (
+      await db
+        .tenant(tenant)
+        .query<{ owner_id: string | null; data: any }>(
+          "SELECT owner_id,data FROM records WHERE tenant_id=$1 AND kind='research_row'",
+          [tenant],
+        )
+    ).rows;
+    expect(rows.length).toBe(kept.anonymizedRowsKept);
+    expect(rows.every((r) => r.owner_id === null)).toBe(true);
+    expect(JSON.stringify(rows)).not.toContain(student.userId);
   });
 });
