@@ -47,6 +47,8 @@ import {
   ConsentGate,
   PrivacyBox,
   CourseFinish,
+  Roadmap,
+  StatusPage,
   type LearnOptions,
 } from "./student";
 type Lang = "ar" | "en";
@@ -216,6 +218,18 @@ export function Workspace({
     L(next);
   };
   const [tutorOpen, TO] = useState(false);
+  // SYS1: say plainly when the connection drops, and when it is back.
+  const [offline, OFF] = useState(false);
+  useEffect(() => {
+    const update = () => OFF(!navigator.onLine);
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
   const [learnTarget, LT] = useState<{
     objectiveId: string | null;
     diagnostic: boolean;
@@ -543,6 +557,17 @@ export function Workspace({
           </div>
         </header>
         <main className={view === "session" ? "sessionMain" : ""}>
+          {offline && (
+            <div className="error" role="alert">
+              {t(
+                "أنت غير متصل. ما لم يُرسل بعد لن يُحفظ حتى يعود الاتصال؛ أعد المحاولة عندها.",
+                "You're offline. Anything not sent yet is not saved until the connection is back; try again then.",
+              )}{" "}
+              <button onClick={() => go("status")}>
+                {t("حالة النظام", "System status")}
+              </button>
+            </div>
+          )}
           {error && (
             <div className="error" role="alert">
               {error}
@@ -769,8 +794,26 @@ export function Workspace({
                   go={go}
                 />
               )}
-              {view === "map" && (
+              {view === "map" && user?.role === "student" && (
+                <Roadmap data={data} lang={lang} t={t} learn={learn} />
+              )}
+              {view === "map" && user?.role !== "student" && (
                 <LearningMap data={data} lang={lang} t={t} go={go} />
+              )}
+              {view === "status" && (
+                <StatusPage
+                  lang={lang}
+                  t={t}
+                  back={() =>
+                    go(
+                      user?.role === "instructor"
+                        ? "launch"
+                        : user?.role === "advisor"
+                          ? "advising"
+                          : "home",
+                    )
+                  }
+                />
               )}
               {view === "timeline" && (
                 <>
@@ -979,7 +1022,14 @@ export function Workspace({
             ·{" "}
             {data?.mode === "local"
               ? t("قاعدة محلية للاختبار", "Local test database")
-              : t("تقدّم محفوظ على السيرفر", "Progress saved on the server")}
+              : t(
+                  "تقدّم محفوظ على السيرفر",
+                  "Progress saved on the server",
+                )}{" "}
+            ·{" "}
+            <button className="textbtn" onClick={() => go("status")}>
+              {t("حالة النظام", "System status")}
+            </button>
           </footer>
           {user?.role === "student" && data && !tutorOpen && (
             <button

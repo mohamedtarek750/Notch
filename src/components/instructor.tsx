@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Box, Button, localized, request, type Translate } from "./Workspace";
 
 type Lang = "ar" | "en";
-type Tab = "overview" | "students" | "gaps" | "tutor";
+type Tab = "overview" | "students" | "gaps" | "tutor" | "exam";
 
 /** A heat-map cell colour from the share of assessed students who are ready. */
 function heat(share: number | null) {
@@ -30,6 +30,11 @@ export function ClassDashboard({
     [student, S] = useState<any>(null),
     [nudge, N] = useState(""),
     [note, NO] = useState(""),
+    [concept, CD] = useState<any>(null),
+    [classNote, CN] = useState(""),
+    [exams, EX] = useState<any[] | null>(null),
+    [packFor, PF] = useState<string[]>([]),
+    [pack, PK] = useState<any>(null),
     [approved, A] = useState<Record<string, string>>({});
   const load = () =>
     request("/api/dashboard", undefined, lang)
@@ -119,7 +124,32 @@ export function ClassDashboard({
       "Tutor audit",
       data.tutorAnswers.filter((a: any) => a.flag && !a.audit).length,
     ],
+    ["exam", "قبل الامتحان", "Before the exam", 0],
   ];
+  const openConcept = async (objectiveId: string) => {
+    try {
+      CD(
+        await request(
+          `/api/dashboard?concept=${encodeURIComponent(objectiveId)}`,
+          undefined,
+          lang,
+        ),
+      );
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
+  const loadExams = async () => {
+    try {
+      const list = await request("/api/dashboard?exams=1", undefined, lang);
+      EX(list);
+      // Default to the five concepts the class is least ready on.
+      PF((list[0]?.concepts || []).slice(0, 5).map((c: any) => c.objectiveId));
+      PK(null);
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
   return (
     <>
       <div className="pageHead">
@@ -138,6 +168,7 @@ export function ClassDashboard({
               onClick={() => {
                 T(id);
                 S(null);
+                CD(null);
                 NO("");
               }}
             >
@@ -149,9 +180,182 @@ export function ClassDashboard({
         {note && <p role="status">{note}</p>}
       </div>
 
-      {tab === "overview" && (
+      {tab === "overview" && concept && (
+        <Box>
+          <button className="textbtn" onClick={() => CD(null)}>
+            {lang === "ar" ? "→" : "←"} {t("نظرة عامة", "Overview")}
+          </button>
+          <h2>{localized(concept.label, lang)}</h2>
+          <p>
+            {t(
+              `جاهز ${concept.distribution.ready} · قيد التعلّم ${concept.distribution.learning} · لم يبدأ ${concept.distribution.notStarted} (من ${concept.distribution.students} طالبًا)`,
+              `${concept.distribution.ready} ready · ${concept.distribution.learning} learning · ${concept.distribution.notStarted} not started (of ${concept.distribution.students} students)`,
+            )}{" "}
+            {concept.thinData &&
+              t(
+                "العدد صغير؛ فسّره بحذر.",
+                "Small numbers; interpret with caution.",
+              )}
+          </p>
+          {concept.suggestion && (
+            <p className="notice">
+              <strong>{t("اقتراح", "Suggested fix")}:</strong>{" "}
+              {concept.suggestion.kind === "review-prerequisite"
+                ? t(
+                    `راجع ${localized(concept.suggestion.label, lang)} في المحاضرة؛ أغلب التشخيصات هنا مرتبطة بضعفه.`,
+                    `Review ${localized(concept.suggestion.label, lang)} in class; most diagnoses here are associated with it being weak.`,
+                  )
+                : concept.suggestion.kind === "improve-question"
+                  ? t(
+                      "راجع صياغة السؤال الأول في القائمة: أخطأ فيه كل من أجاب.",
+                      "Check the wording of the first question below: everyone who answered it missed it.",
+                    )
+                  : t(
+                      "أضف مثالًا محلولًا لهذا المفهوم؛ المتطلبات سليمة والتعثر في الفهم نفسه.",
+                      "Add a worked example for this concept; prerequisites are fine and the difficulty is the concept itself.",
+                    )}
+            </p>
+          )}
+          <h3>{t("المتطلبات السابقة", "Prerequisites")}</h3>
+          {concept.prerequisites.length === 0 && (
+            <p>
+              {t("لا متطلبات سابقة منشورة.", "No published prerequisites.")}
+            </p>
+          )}
+          {concept.prerequisites.map((p: any, i: number) => (
+            <div className="row" key={i}>
+              <span>{localized(p.label, lang)}</span>
+              <small>
+                {p.readyShare === null
+                  ? t("لم يُقيَّم", "not assessed")
+                  : t(
+                      `جاهز ${p.readyShare}٪ ممن قُيّموا`,
+                      `${p.readyShare}% of assessed ready`,
+                    )}
+              </small>
+            </div>
+          ))}
+          <h3>{t("الأسئلة الأكثر خطأً", "Most-missed questions")}</h3>
+          {concept.questions.length === 0 && (
+            <p>{t("لا إجابات بعد.", "No answers yet.")}</p>
+          )}
+          {concept.questions.map((q: any) => (
+            <div className="row" key={q.itemId}>
+              <span dir="auto">
+                {localized(q.stem, lang)}
+                <br />
+                <small>
+                  {t(
+                    `أخطأ ${q.missed} من ${q.answers}`,
+                    `${q.missed} of ${q.answers} missed`,
+                  )}
+                  {q.unknown > 0 &&
+                    ` · ${t("«لا أعرف»", "“I don't know”")} ${q.unknown}`}
+                  {q.commonWrongAnswer?.label &&
+                    ` · ${t("أشيع إجابة خاطئة", "most common wrong answer")}: ${localized(q.commonWrongAnswer.label, lang)} (${q.commonWrongAnswer.count})`}
+                </small>
+              </span>
+            </div>
+          ))}
+          <h3>{t("ما وجده سلّم التشخيص", "What the diagnosis ladder found")}</h3>
+          <p>
+            {Object.keys(concept.causes).length === 0
+              ? t("لا تشخيصات مسجّلة.", "No diagnosis episodes recorded.")
+              : Object.entries(concept.causes)
+                  .map(([k, v]) => `${causeText(k)}: ${v}`)
+                  .join(" · ")}
+          </p>
+          {Object.keys(concept.formats).length > 0 && (
+            <p>
+              {t(
+                "طرق الشرح التي جرّبها الطلاب",
+                "Explanation formats students tried",
+              )}
+              :{" "}
+              {Object.entries(concept.formats)
+                .map(
+                  ([k, v]: any) =>
+                    `${k} (${t("نفع", "helped")} ${v.helped}/${v.used})`,
+                )
+                .join(" · ")}
+            </p>
+          )}
+        </Box>
+      )}
+      {tab === "overview" && !concept && (
         <>
           <Box>
+            <h2>{t("الانضمام", "Sign-ups")}</h2>
+            <p>
+              {t(
+                `انضم ${data.signup.joined} من ${data.signup.enrolled} طالبًا · أكمل اختبار البداية ${data.signup.tookStartingCheck} · وافق على البحث ${data.signup.researchConsent} (عدد فقط).`,
+                `${data.signup.joined} of ${data.signup.enrolled} students joined · ${data.signup.tookStartingCheck} took the starting check · ${data.signup.researchConsent} consent to research (count only).`,
+              )}
+            </p>
+            {data.signup.notJoined.length > 0 && (
+              <>
+                <p>
+                  <small>
+                    {t("لم ينضموا بعد", "Not joined yet")}:{" "}
+                    {data.signup.notJoined
+                      .map((s: any) => localized(s.name, lang))
+                      .join(lang === "ar" ? "، " : ", ")}
+                  </small>
+                </p>
+                <Button
+                  onClick={() =>
+                    act(
+                      {
+                        action: "nudge",
+                        studentIds: data.signup.notJoined.map(
+                          (s: any) => s.studentId,
+                        ),
+                        text: t(
+                          "المقرر جاهز على المنصة. ادخل وابدأ بالاختبار القصير؛ يأخذ دقائق.",
+                          "The course is ready on the platform. Sign in and start with the short check; it takes minutes.",
+                        ),
+                      },
+                      t(
+                        "أُرسل التذكير لكل منهم على حدة.",
+                        "Reminder sent to each of them individually.",
+                      ),
+                    )
+                  }
+                >
+                  {t("أرسل تذكيرًا", "Send reminder")}
+                </Button>
+              </>
+            )}
+          </Box>
+          <Box cls="end">
+            <h2>{t("للمحاضرة القادمة", "For the next class")}</h2>
+            <p>
+              {data.roadblocks.length
+                ? t(
+                    `ركّز على: ${data.roadblocks.map((r: any) => localized(r.label, lang)).join("، ")}.`,
+                    `Focus on: ${data.roadblocks.map((r: any) => localized(r.label, lang)).join(", ")}.`,
+                  )
+                : t(
+                    "لا عوائق مسجّلة بعد؛ لا تغيير مقترح.",
+                    "No roadblocks recorded yet; no change suggested.",
+                  )}
+            </p>
+            <label>
+              {t(
+                "ملاحظتك (تُطبع مع الملخص ولا تُحفظ)",
+                "Your note (printed with the summary, not saved)",
+              )}
+              <textarea
+                dir="auto"
+                value={classNote}
+                onChange={(e) => CN(e.target.value)}
+              />
+            </label>
+            <Button onClick={() => window.print()}>
+              {t("اطبع الملخص للمحاضرة", "Print the summary for class")}
+            </Button>
+          </Box>
+          <Box cls="end">
             <h2>{t("حالة الفصل هذا الأسبوع", "Class status this week")}</h2>
             <div className="two-columns">
               {(
@@ -253,7 +457,12 @@ export function ClassDashboard({
                   marginBottom: 6,
                 }}
               >
-                <strong>{localized(c.label, lang)}</strong>
+                <button
+                  className="textbtn"
+                  onClick={() => openConcept(c.objectiveId)}
+                >
+                  <strong>{localized(c.label, lang)}</strong>
+                </button>
                 <span>
                   {c.readyShare === null
                     ? t("لم يُقيَّم أحد بعد", "nobody assessed yet")
@@ -525,6 +734,135 @@ export function ClassDashboard({
         </Box>
       )}
 
+      {tab === "exam" && (
+        <>
+          <Box>
+            <h2>
+              {t("أين الفصل أقل جاهزية", "Where the class is least ready")}
+            </h2>
+            {!exams && (
+              <Button primary onClick={loadExams}>
+                {t("اعرض الامتحانات", "Show exams")}
+              </Button>
+            )}
+            {exams && exams.length === 0 && (
+              <p>
+                {t(
+                  "لم تحدد امتحانًا بعد. أضِفه من خطوة الإطلاق.",
+                  "No exam set yet. Add one in the Launch step.",
+                )}{" "}
+                <button className="textbtn" onClick={() => go("launch")}>
+                  {t("اذهب إلى الإطلاق", "Go to Launch")}
+                </button>
+              </p>
+            )}
+            {(exams || []).map((e: any) => (
+              <div key={e.examId}>
+                <h3>
+                  {e.name} · {e.date}
+                </h3>
+                {e.concepts.map((c: any) => (
+                  <div className="row" key={c.conceptId}>
+                    <label className="checklabel">
+                      <input
+                        type="checkbox"
+                        checked={packFor.includes(c.objectiveId)}
+                        onChange={(ev) =>
+                          PF(
+                            ev.target.checked
+                              ? [...packFor, c.objectiveId]
+                              : packFor.filter((x) => x !== c.objectiveId),
+                          )
+                        }
+                      />
+                      <strong>{localized(c.label, lang) || c.conceptId}</strong>
+                    </label>
+                    <small>
+                      {c.readiness === null
+                        ? t("لم يُقيَّم أحد", "nobody assessed")
+                        : t(
+                            `جاهزية نحو ${c.readiness}٪`,
+                            `about ${c.readiness}% ready`,
+                          )}{" "}
+                      ·{" "}
+                      {t(
+                        `${c.belowThreshold} من ${c.assessed} تحت العتبة`,
+                        `${c.belowThreshold} of ${c.assessed} below the threshold`,
+                      )}{" "}
+                      ·{" "}
+                      {t(
+                        `نحو ${c.suggestedShare}٪ من وقت المراجعة`,
+                        `about ${c.suggestedShare}% of review time`,
+                      )}
+                    </small>
+                  </div>
+                ))}
+              </div>
+            ))}
+            {exams && exams.length > 0 && (
+              <Button
+                primary
+                disabled={!packFor.length}
+                onClick={async () => {
+                  try {
+                    PK(
+                      await request(
+                        `/api/dashboard?pack=${encodeURIComponent(packFor.join(","))}`,
+                        undefined,
+                        lang,
+                      ),
+                    );
+                  } catch (e) {
+                    onError((e as Error).message);
+                  }
+                }}
+              >
+                {t(
+                  "جهّز حزمة مراجعة للمحدَّد",
+                  "Build a review pack for the selection",
+                )}
+              </Button>
+            )}
+          </Box>
+          {pack && (
+            <Box cls="end">
+              <h2>
+                {t(
+                  `حزمة مراجعة: ${pack.questions.length} سؤالًا معتمدًا`,
+                  `Review pack: ${pack.questions.length} reviewed questions`,
+                )}
+              </h2>
+              {pack.questions.length === 0 && (
+                <p>
+                  {t(
+                    "لا أسئلة منشورة للمفاهيم المحددة.",
+                    "No published questions for the selected concepts.",
+                  )}
+                </p>
+              )}
+              <ol>
+                {pack.questions.map((q: any) => (
+                  <li key={q.itemId}>
+                    <p dir="auto">
+                      <strong>{localized(q.stem, lang)}</strong>
+                    </p>
+                    {(q.options || []).map((o: any) => (
+                      <p key={o.id} dir="auto">
+                        {o.id === q.key ? "✓ " : "○ "}
+                        {localized(o.label, lang)}
+                      </p>
+                    ))}
+                    <small dir="auto">{localized(q.feedback, lang)}</small>
+                  </li>
+                ))}
+              </ol>
+              <Button onClick={() => window.print()}>
+                {t("اطبع أو احفظ PDF", "Print or save as PDF")}
+              </Button>
+            </Box>
+          )}
+        </>
+      )}
       {tab === "tutor" && (
         <Box>
           <h2>{t("عيّنة من إجابات المساعد", "A sample of tutor answers")}</h2>
