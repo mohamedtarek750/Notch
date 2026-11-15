@@ -19,7 +19,14 @@ export async function resolveWorkspace(
     [hashCode(workspaceCode)],
   );
   if (!rows[0]) throw new AppError(401, "INVALID_WORKSPACE");
-  const tenantId = rows[0].tenant_id;
+  return { ...(await workspaceOfTenant(rows[0].tenant_id)), workspaceCode };
+}
+/** The shared synthetic workspace used when the pilot is open without a code. */
+export async function workspaceOfTenant(tenantId: string): Promise<Workspace> {
+  const synthetic = await db
+    .tenant(tenantId)
+    .query("SELECT 1 FROM tenants WHERE id=$1 AND synthetic=true", [tenantId]);
+  if (!synthetic.rows[0]) throw new AppError(401, "INVALID_WORKSPACE");
   const members = await db
     .tenant(tenantId)
     .query<{ user_id: string; role: Role }>(
@@ -28,7 +35,7 @@ export async function resolveWorkspace(
     );
   const users = {} as Record<Role, string>;
   for (const m of members.rows) users[m.role] = m.user_id;
-  return { tenantId, workspaceCode, users };
+  return { tenantId, workspaceCode: "", users };
 }
 export async function createWorkspace(
   suppliedCode?: string,

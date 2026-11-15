@@ -377,6 +377,27 @@ describe("invite-only synthetic pilot on a production host (real local PostgreSQ
     },
   );
 
+  it("opens the configured synthetic workspace without a code, and refuses a non-synthetic one", async () => {
+    const before = await tenantCount();
+    try {
+      process.env.PILOT_OPEN_TENANT = invited.tenantId;
+      const response = await login({ role: "instructor" });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        synthetic: true,
+        workspaceCode: "",
+        user: { tenantId: invited.tenantId, role: "instructor" },
+      });
+      process.env.PILOT_OPEN_TENANT = nonsynthetic.tenantId;
+      expect((await login({ role: "student" })).status).toBe(401);
+      process.env.PILOT_OPEN_TENANT = "not-a-tenant";
+      expect((await login({ role: "student" })).status).toBe(401);
+    } finally {
+      delete process.env.PILOT_OPEN_TENANT;
+    }
+    expect(await tenantCount()).toBe(before);
+  });
+
   it.each(["student", "instructor", "advisor"] as const)(
     "authenticates an invited %s with database-enforced permissions",
     async (role) => {
