@@ -6,7 +6,7 @@ import {
   sourceErrorResponse,
 } from "@/server/sources";
 import { z } from "zod";
-import { transcribeSparsePages } from "@/server/ocr";
+import { transcribePageImages, transcribeSparsePages } from "@/server/ocr";
 const review = z.object({
   chunkId: z.string(),
   status: z.enum(["approved", "rejected", "quarantined"]),
@@ -37,6 +37,10 @@ export async function POST(
     if (raw?.action === "transcribe")
       return Response.json(
         await transcribeSparsePages(ctx, material.material.id),
+      );
+    if (raw?.action === "transcribe-images")
+      return Response.json(
+        await transcribePageImages(ctx, material.material.id, raw.images),
       );
     if (raw?.action === "approve-pending")
       return Response.json(

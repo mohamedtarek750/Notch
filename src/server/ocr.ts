@@ -1,13 +1,128 @@
 import { randomUUID } from "node:crypto";
 import { db } from "./db";
 import { type AuthContext } from "./auth";
-import { COURSE, SourceError, reviseMaterialExtracts, staff } from "./sources";
+import { z } from "zod";
+import { SourceError, reviseMaterialExtracts, staff } from "./sources";
 import {
   GeminiGateway,
   prepareStaffGeneration,
   saveTrace,
   type ModelGateway,
 } from "./ai";
+
+const MAX_IMAGES_PER_RUN = 6;
+const pageImages = z
+  .array(
+    z.object({
+      page: z.number().int().min(1).max(5000),
+      mime: z.enum(["image/jpeg", "image/png"]),
+      // Base64 of one rendered slide; about 450 KB of picture at most.
+      data: z
+        .string()
+        .min(100)
+        .max(600_000)
+        .regex(/^[A-Za-z0-9+/=]+$/),
+    }),
+  )
+  .min(1)
+  .max(MAX_IMAGES_PER_RUN);
+
+/**
+ * Read slide pages the browser rendered to pictures. Used when only the page text was
+ * uploaded, so there is no stored PDF to read. The result is a new revision whose pages
+ * are all pending, exactly as for the stored-PDF reader below.
+ */
+export async function transcribePageImages(
+  ctx: AuthContext,
+  versionId: string,
+  raw: unknown,
+  gateway: ModelGateway = new GeminiGateway(),
+) {
+  await staff(ctx, "publish");
+  if (!gateway.transcribeImages)
+    throw new SourceError("provider_unconfigured", 503);
+  const images = pageImages.parse(raw);
+  if (new Set(images.map((i) => i.page)).size !== images.length)
+    throw new SourceError("invalid_review");
+  const prepared = await prepareStaffGeneration(ctx);
+  const scoped = db.tenant(ctx.tenantId);
+  const version = (
+    await scoped.query<{ rights: Record<string, boolean> }>(
+      "SELECT rights FROM material_versions WHERE tenant_id=$1 AND id=$2 AND course_id=$3 AND current_version=true",
+      [ctx.tenantId, versionId, ctx.courseId],
+    )
+  ).rows[0];
+  if (!version) throw new SourceError("stale_source", 409);
+  if (!version.rights.sendToModel) throw new SourceError("forbidden", 403);
+  // Only pages that really have no usable text may be replaced by a transcription.
+  const sparse = (
+    await scoped.query<{ id: string; page: number }>(
+      "SELECT id,page FROM evidence_chunks WHERE tenant_id=$1 AND version_id=$2 AND page=ANY($3::int[]) AND length(text_content) < $4",
+      [ctx.tenantId, versionId, images.map((i) => i.page), SPARSE_PAGE_CHARS],
+    )
+  ).rows;
+  if (sparse.length !== images.length) throw new SourceError("invalid_review");
+  const base = {
+    id: randomUUID(),
+    operation: "transcribe-pages",
+    policyVersion: prepared.policyVersion,
+    retrievedAt: new Date().toISOString(),
+    evidenceIds: sparse.map((c) => c.id),
+    modelId: gateway.modelId,
+  };
+  await saveTrace(ctx, { ...base, outcome: "retrieved" });
+  const generatedAt = new Date().toISOString();
+  let result: Awaited<
+    ReturnType<NonNullable<ModelGateway["transcribeImages"]>>
+  >;
+  try {
+    result = await gateway.transcribeImages(
+      images.map((i) => ({
+        page: i.page,
+        mime: i.mime,
+        data: new Uint8Array(Buffer.from(i.data, "base64")),
+      })),
+    );
+  } catch (error) {
+    await saveTrace(ctx, {
+      ...base,
+      generatedAt,
+      outcome:
+        error instanceof SourceError ? error.code : "provider_unavailable",
+    });
+    throw error;
+  }
+  const corrections = sparse.flatMap((chunk) => {
+    const text = result.pages
+      .find((p) => p.page === chunk.page)
+      ?.text?.trim()
+      .slice(0, 30000);
+    return text && text.length >= 20
+      ? [
+          {
+            chunkId: chunk.id,
+            text,
+            note: `Model transcription of a slide picture (${gateway.modelId}). Check against the original page before approval.`,
+          },
+        ]
+      : [];
+  });
+  await saveTrace(ctx, {
+    ...base,
+    generatedAt,
+    outcome: corrections.length ? "pending_review" : "invalid_output",
+    tokens: result.tokens,
+  });
+  // Pages with nothing readable (a photo, a blank divider) simply stay as they were.
+  if (!corrections.length)
+    return { versionId, transcribed: 0, unreadable: sparse.length };
+  const revision = await reviseMaterialExtracts(ctx, versionId, corrections);
+  return {
+    versionId: revision.id,
+    transcribed: corrections.length,
+    unreadable: sparse.length - corrections.length,
+  };
+}
 
 /** A page whose text layer is this short is a picture of a slide, or a title over a figure. */
 export const SPARSE_PAGE_CHARS = 60;
