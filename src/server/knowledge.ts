@@ -532,7 +532,7 @@ export async function getKnowledge(ctx: AuthContext) {
     await db
       .tenant(ctx.tenantId)
       .query<{ id: string; kind: string; data: Record<string, unknown> }>(
-        `SELECT id,kind,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind IN ('concept','knowledge_proposal','graph_release') ORDER BY created_at DESC`,
+        `SELECT id,kind,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind IN ('concept','knowledge_proposal','tree_layout') ORDER BY created_at DESC`,
         [ctx.tenantId, COURSE],
       )
   ).rows;
@@ -563,8 +563,48 @@ export async function getKnowledge(ctx: AuthContext) {
         (p.data.evidenceIds as string[]).includes(e.id),
       ),
     })),
-    releases: rows.filter((r) => r.kind === "graph_release"),
+    // Every tree edit is a release: send the current one in full and only the
+    // dates of the last few, not every past copy of the graph.
+    releases: (
+      await db
+        .tenant(ctx.tenantId)
+        .query<{ id: string; kind: string; data: Record<string, unknown> }>(
+          `SELECT id,kind,CASE WHEN row_number() OVER (ORDER BY created_at DESC,id DESC)=1 THEN data ELSE jsonb_build_object('publishedAt',data->'publishedAt') END AS data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release' ORDER BY created_at DESC,id DESC LIMIT 10`,
+          [ctx.tenantId, COURSE],
+        )
+    ).rows,
+    layout:
+      (rows.find((r) => r.kind === "tree_layout")?.data.positions as
+        Record<string, { x: number; y: number }> | undefined) ?? {},
   };
+}
+const layoutInput = z.object({
+  positions: z
+    .record(
+      z.string().min(1).max(120),
+      z.object({
+        x: z.number().finite().min(-20000).max(20000),
+        y: z.number().finite().min(-20000).max(20000),
+      }),
+    )
+    .refine((p) => Object.keys(p).length <= 600),
+});
+/** Where the instructor placed each concept on the knowledge tree. Display only. */
+export async function saveTreeLayout(ctx: AuthContext, raw: unknown) {
+  await staff(ctx, "review");
+  const { positions } = layoutInput.parse(raw);
+  await db
+    .tenant(ctx.tenantId)
+    .query(
+      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'tree_layout',$3,NULL,$4) ON CONFLICT(tenant_id,id) DO UPDATE SET data=excluded.data,updated_at=now()",
+      [
+        ctx.tenantId,
+        "tree_layout:" + COURSE,
+        COURSE,
+        JSON.stringify({ positions }),
+      ],
+    );
+  return { saved: Object.keys(positions).length };
 }
 export async function reviewProposal(
   ctx: AuthContext,
