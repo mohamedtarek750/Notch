@@ -69,10 +69,12 @@ export function StudentHome({
   learn,
   startDiagnostic,
   go,
+  perform,
 }: {
   data: any;
   lang: Lang;
   t: Translate;
+  perform: Perform;
   learn: (objectiveId: string) => void;
   startDiagnostic: () => void;
   go: (view: string) => void;
@@ -118,6 +120,23 @@ export function StudentHome({
           )}
         </p>
       </div>
+      {(data.nudges || [])
+        .filter((n: any) => !n.data.seenAt)
+        .slice(-2)
+        .map((n: any) => (
+          <p className="notice" key={n.id} dir="auto">
+            <strong>
+              {t("رسالة من مدرّسك", "A message from your instructor")}:
+            </strong>{" "}
+            {n.data.text}{" "}
+            <button
+              className="textbtn"
+              onClick={() => perform("nudge-seen", { id: n.id })}
+            >
+              {t("تم", "Got it")}
+            </button>
+          </p>
+        ))}
       {!answered && !skipped && (
         <Box>
           <h2>{t("اختبار قصير للبداية", "A short check to begin")}</h2>

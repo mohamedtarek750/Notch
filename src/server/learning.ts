@@ -53,6 +53,7 @@ const actionSchema = z.discriminatedUnion("action", [
     elapsedMs: z.number().int().min(0).max(3_600_000).optional(),
   }),
   z.object({ action: z.literal("hint"), deliveryId: str }),
+  z.object({ action: z.literal("nudge-seen"), id: str }),
   z.object({ action: z.literal("review-due") }),
   z.object({ action: z.literal("review-show"), itemId: str }),
   z.object({
@@ -984,6 +985,7 @@ export async function workspace(ctx: AuthContext) {
       tutorStrictness: "hints-then-answer",
     },
     mockResults: of("mock_result"),
+    nudges: ctx.role === "student" ? of("nudge") : undefined,
     learningGain:
       ctx.role === "instructor" ? learningGain(of("attempt")) : undefined,
     fixture: true,
@@ -1460,6 +1462,20 @@ export async function learningAction(
           ctx.userId,
         );
       return { episodeId: episode.id, ...data };
+    }
+    if (a.action === "nudge-seen") {
+      role(ctx, "student");
+      const nudge = await get(tx, ctx, a.id, "nudge");
+      if (nudge.ownerId !== ctx.userId) throw new AppError(403, "FORBIDDEN");
+      // Whether the student saw it is what the sender's log shows.
+      return put(
+        tx,
+        ctx,
+        nudge.id,
+        "nudge",
+        { ...nudge.data, seenAt: new Date().toISOString() },
+        ctx.userId,
+      );
     }
     if (a.action === "review-due") {
       role(ctx, "student");
