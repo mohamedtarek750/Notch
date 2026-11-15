@@ -27,8 +27,9 @@ export const PREREQUISITE_KIND = "prerequisite-extraction";
 const MAX_CONCEPT_CALLS = 4;
 const MAX_LECTURE_CONCEPTS = 24;
 const LINK_GROUP = 6;
-const UMBRELLA_PER_GROUP = 7;
-const UMBRELLA_CHARS = 1000;
+const UMBRELLA_PER_GROUP = 12;
+const UMBRELLA_PER_CONCEPT = 3;
+const UMBRELLA_CHARS = 1600;
 const EXCERPT_CHARS = 350;
 const MAX_CANDIDATES = 40;
 
@@ -47,7 +48,8 @@ Rules:
 - "to" is the key of a lecture concept, or of a foundation you add (so you can state chains such as A -> B -> lecture concept when the umbrella states both steps).
 - "from" is the key of a candidate concept, of another lecture concept, or of a foundation you add to "foundations".
 - Add a foundation ONLY when an umbrella passage presents that background idea as needed and no candidate or lecture concept already names it.
-- State a dependency whenever an umbrella passage says so explicitly (the dependent "requires", "is built on", "is derived from", "is defined in terms of", "applies" or "uses" the prerequisite, or the learner needs it "first" or "before"). Mere co-occurrence or similarity is NOT a prerequisite.
+- State a dependency whenever an umbrella passage shows it: the dependent "requires", "is built on", "is derived from", "is defined in terms of", "applies" or "uses" the prerequisite, the learner needs it "first" or "before", or the passage's own definition, formula or procedure for the dependent is written in terms of the prerequisite (for example an update rule that is computed from a gradient depends on the gradient). Mere co-occurrence or similarity is NOT a prerequisite.
+- Consider every lecture concept in turn, including dependencies between two lecture concepts; do not stop after the first concept that has clear evidence.
 - Every edge MUST cite at least one umbrella evidence ID whose text shows that dependency.
 - type "prerequisite": the dependent cannot be understood without it. type "optional_bridge": helpful background that is not required.
 - A tool or programming language used in an example is never a prerequisite of the mathematical idea.
@@ -401,6 +403,25 @@ export async function extractPrerequisites(
   const umbrellaText = new Map(
     umbrella.map((e) => [e.id, ` ${normalize(e.text_content)} `]),
   );
+  const frequency = new Map<string, number>();
+  for (const text of umbrellaText.values())
+    for (const w of new Set(text.split(" ")))
+      if (w.length > 3) frequency.set(w, (frequency.get(w) ?? 0) + 1);
+  const rarity = (w: string) =>
+    1 + Math.log(umbrella.length / (frequency.get(w) ?? 1));
+  const window = (text: string, hit: string[]) => {
+    if (text.length <= UMBRELLA_CHARS) return text;
+    const lower = text.toLowerCase();
+    const at = hit
+      .map((h) => lower.indexOf(h))
+      .filter((n) => n >= 0)
+      .sort((a, b) => a - b)[0];
+    const start = Math.max(
+      0,
+      Math.min((at ?? 0) - 300, text.length - UMBRELLA_CHARS),
+    );
+    return text.slice(start, start + UMBRELLA_CHARS);
+  };
   const endpoints = new Map<string, Concept>();
   const edges: Edge[] = [];
   const all = [...lectureConcepts.values()];
@@ -408,36 +429,63 @@ export async function extractPrerequisites(
   for (let i = 0; i < all.length; i += LINK_GROUP) {
     const group = all.slice(i, i + LINK_GROUP);
     const groupIds = new Set(group.map((c) => c.id));
-    const terms = group.flatMap(names);
-    // Whole names weigh most; their distinctive words still find a passage that
-    // phrases the idea differently ("choosing k" vs "the number of neighbours").
-    const words = [
-      ...new Set(
-        terms
-          .flatMap((term) => term.split(" "))
-          .filter((w) => w.length > 3 && !genericWords.has(w)),
-      ),
-    ];
-    const passages = umbrella
-      .map((e) => {
-        const text = umbrellaText.get(e.id)!;
-        return {
-          e,
-          score:
-            3 * terms.filter((term) => text.includes(` ${term} `)).length +
-            words.filter((w) => text.includes(` ${w} `)).length,
-        };
-      })
-      .filter((r) => r.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, UMBRELLA_PER_GROUP)
-      .map((r) => r.e);
+    // Each concept picks its own best passages, so one concept with many matching
+    // pages cannot use up the whole budget. Rare words weigh more than words that
+    // appear on most pages of the reference ("function", "network").
+    const hints = new Map<string, string[]>();
+    const ranked = group.map((c) => {
+      const terms = names(c);
+      const words = [
+        ...new Set(
+          terms
+            .flatMap((term) => term.split(" "))
+            .filter((w) => w.length > 3 && !genericWords.has(w)),
+        ),
+      ];
+      return umbrella
+        .map((e) => {
+          const text = umbrellaText.get(e.id)!;
+          const hit = [
+            ...terms.filter((term) => text.includes(` ${term} `)),
+            ...words.filter((w) => text.includes(` ${w} `)),
+          ];
+          const score =
+            4 * terms.filter((term) => text.includes(` ${term} `)).length +
+            words.reduce(
+              (sum, w) => sum + (text.includes(` ${w} `) ? rarity(w) : 0),
+              0,
+            );
+          return { e, score, hit };
+        })
+        .filter((r) => r.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, UMBRELLA_PER_CONCEPT);
+    });
+    const passages: (typeof umbrella)[number][] = [];
+    for (let rank = 0; rank < UMBRELLA_PER_CONCEPT; rank++)
+      for (const list of ranked) {
+        const r = list[rank];
+        if (!r) continue;
+        hints.set(r.e.id, [...(hints.get(r.e.id) ?? []), ...r.hit]);
+        if (
+          passages.length < UMBRELLA_PER_GROUP &&
+          !passages.some((e) => e.id === r.e.id)
+        )
+          passages.push(r.e);
+      }
+    // A reference page is longer than the budget: send the part around the match.
+    const snippets = new Map(
+      passages.map((e) => [
+        e.id,
+        window(e.text_content, hints.get(e.id) ?? []),
+      ]),
+    );
     if (!passages.length) {
       unsupported.push(...group.map((c) => c.id));
       continue;
     }
     const passageText = passages
-      .map((e) => umbrellaText.get(e.id)!.slice(0, UMBRELLA_CHARS + 200))
+      .map((e) => ` ${normalize(snippets.get(e.id)!)} `)
       .join(" ");
     const candidates = [
       ...all.filter((c) => !groupIds.has(c.id)),
@@ -473,7 +521,7 @@ export async function extractPrerequisites(
             source: e.source_key,
             page: e.page,
             section: e.section,
-            text: e.text_content.slice(0, UMBRELLA_CHARS),
+            text: snippets.get(e.id)!,
           })),
         },
         ids,
