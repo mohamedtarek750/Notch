@@ -187,7 +187,7 @@ function parseJson(text: string | undefined) {
 }
 export const tutorInput = z.object({
   question: z.string().trim().min(2).max(1200),
-  courseId: z.literal("CET351").default("CET351"),
+  courseId: z.string().max(40).optional(),
   language: z.enum(["ar", "en", "mixed"]).default("ar"),
   style: z
     .enum([
@@ -317,7 +317,7 @@ export async function publishedGraph(ctx: AuthContext): Promise<CourseGraph> {
       .tenant(ctx.tenantId)
       .query<{ data: { graph?: CourseGraph; publishedAt?: string } }>(
         "SELECT data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release' ORDER BY created_at DESC,id DESC LIMIT 1",
-        [ctx.tenantId, COURSE],
+        [ctx.tenantId, ctx.courseId],
       )
   ).rows[0];
   return release?.data.publishedAt && release.data.graph
@@ -410,7 +410,7 @@ export async function indexEmbeddings(
        WHERE c.tenant_id=$1 AND c.course_id=$2 AND c.status='approved' AND v.current_version=true AND v.rights->>'sendToModel'='true'
          AND NOT EXISTS(SELECT 1 FROM chunk_embeddings x WHERE x.tenant_id=c.tenant_id AND x.chunk_id=c.id AND x.model=$3)
        ORDER BY c.id LIMIT $4`,
-      [ctx.tenantId, COURSE, gateway.embeddingModelId, limit],
+      [ctx.tenantId, ctx.courseId, gateway.embeddingModelId, limit],
     )
   ).rows;
   if (!missing.length) return { indexed: 0 };
@@ -512,7 +512,7 @@ function overBudget(
 /** Authorization, active policy and budget for a staff-only generation job that
  * selects its own approved evidence deterministically (no lexical ranking). */
 export async function prepareStaffGeneration(ctx: AuthContext) {
-  await authorizeCourse(ctx, COURSE, "generate");
+  await authorizeCourse(ctx, ctx.courseId, "generate");
   if (ctx.role !== "instructor") throw new SourceError("forbidden", 403);
   const policy = (
     await db.query<{
@@ -559,7 +559,7 @@ export async function retrieveEvidence(
         ORDER BY (v.role='instructor') DESC,v.source_key,c.page,c.section LIMIT 2500`,
       [
         ctx.tenantId,
-        COURSE,
+        ctx.courseId,
         scope?.lectureSourceKey ?? null,
         scope?.pages ?? null,
         scope?.umbrellaSections ?? null,
@@ -707,7 +707,7 @@ export async function prepareModel(
 ) {
   await authorizeCourse(
     ctx,
-    COURSE,
+    ctx.courseId,
     operation === "propose" ? "generate" : operation,
   );
   const semantic = { top: 0 };
@@ -741,7 +741,7 @@ export async function prepareModel(
           contextQuestion?: string;
           citations: string[];
         };
-      }>(`SELECT data FROM records WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind='tutor_memory' AND COALESCE(data->>'archived','false') <> 'true' AND jsonb_array_length(data->'citations')>0 ORDER BY created_at DESC LIMIT 1`, [ctx.tenantId, ctx.userId, COURSE])
+      }>(`SELECT data FROM records WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind='tutor_memory' AND COALESCE(data->>'archived','false') <> 'true' AND jsonb_array_length(data->'citations')>0 ORDER BY created_at DESC LIMIT 1`, [ctx.tenantId, ctx.userId, ctx.courseId])
     ).rows[0];
     if (prior) {
       priorQuestion = (prior.data.contextQuestion || prior.data.question).slice(
@@ -887,7 +887,7 @@ export async function learnerContextFor(
       .tenant(ctx.tenantId)
       .query<{ kind: string; data: Record<string, any> }>(
         "SELECT kind,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND ((kind='state' AND owner_id=$3) OR kind='objective')",
-        [ctx.tenantId, COURSE, ctx.userId],
+        [ctx.tenantId, ctx.courseId, ctx.userId],
       )
   ).rows;
   const status = (conceptId: string) => {
@@ -931,7 +931,7 @@ async function recordContentGap(
       [
         ctx.tenantId,
         `gap:${randomUUID()}`,
-        COURSE,
+        ctx.courseId,
         ctx.userId,
         JSON.stringify({
           question: question.slice(0, 600),
@@ -1005,7 +1005,7 @@ export async function tutor(
   let providerStarted = false,
     providerCompleted = false;
   try {
-    await authorizeCourse(ctx, COURSE, "tutor");
+    await authorizeCourse(ctx, ctx.courseId, "tutor");
     const learnerContext = graph
       ? await learnerContextFor(ctx, graph, prepared.evidence)
       : undefined;
@@ -1016,7 +1016,7 @@ export async function tutor(
         .tenant(ctx.tenantId)
         .query<{ data: { answer: string; citations?: string[] } }>(
           "SELECT data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='approved_answer' AND data->>'ladderKey'=$3 LIMIT 1",
-          [ctx.tenantId, COURSE, ladderKey],
+          [ctx.tenantId, ctx.courseId, ladderKey],
         )
     ).rows[0];
     if (approved) {
@@ -1048,7 +1048,7 @@ export async function tutor(
         ((
           await scoped.query<{ data: { tutorStrictness?: string } }>(
             "SELECT data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='course_settings' LIMIT 1",
-            [ctx.tenantId, COURSE],
+            [ctx.tenantId, ctx.courseId],
           )
         ).rows[0]?.data.tutorStrictness as
           "hints-only" | "hints-then-answer" | "answer-allowed" | undefined) ??
@@ -1057,7 +1057,7 @@ export async function tutor(
         (
           await scoped.query<{ n: string }>(
             "SELECT count(*) AS n FROM records WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind='tutor_memory' AND data->>'ladderKey'=$4 AND COALESCE(data->>'archived','false') <> 'true'",
-            [ctx.tenantId, ctx.userId, COURSE, ladderKey],
+            [ctx.tenantId, ctx.userId, ctx.courseId, ladderKey],
           )
         ).rows[0]?.n ?? 0,
       );
@@ -1085,7 +1085,7 @@ export async function tutor(
       },
     });
     providerCompleted = true;
-    await authorizeCourse(ctx, COURSE, "tutor");
+    await authorizeCourse(ctx, ctx.courseId, "tutor");
     const valid = validateAnswer(result.value, prepared.evidence);
     if (!valid && process.env.DEBUG_RETRIEVAL)
       console.error("invalid tutor output", JSON.stringify(result.value));
@@ -1106,7 +1106,7 @@ export async function tutor(
         .tenant(ctx.tenantId)
         .query(
           "UPDATE records SET data=jsonb_set(data,'{assisted}','true'::jsonb) WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind='delivery'",
-          [ctx.tenantId, ctx.userId, COURSE],
+          [ctx.tenantId, ctx.userId, ctx.courseId],
         );
     const citations = prepared.evidence
       .filter((e) => valid.evidenceIds.includes(e.id))
@@ -1126,7 +1126,7 @@ export async function tutor(
         [
           ctx.tenantId,
           id,
-          COURSE,
+          ctx.courseId,
           ctx.userId,
           JSON.stringify({
             question: input.question,
@@ -1175,7 +1175,7 @@ export async function tutor(
     if (providerStarted && !providerCompleted) {
       // A provider outage may display already-reviewed source text, never an invented answer.
       try {
-        await authorizeCourse(ctx, COURSE, "tutor");
+        await authorizeCourse(ctx, ctx.courseId, "tutor");
         const fresh = await retrieveEvidence(
           ctx,
           prepared.effectiveQuestion,

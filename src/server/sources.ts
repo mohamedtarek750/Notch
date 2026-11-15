@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "./db";
 import {
   authorizeCourse,
+  DEFAULT_COURSE,
   authorizeCourseInTransaction,
   type AuthContext,
   type CourseOperation,
@@ -123,7 +124,7 @@ export async function staff(
   ctx: AuthContext,
   operation: CourseOperation = "write",
 ) {
-  await authorizeCourse(ctx, COURSE, operation);
+  await authorizeCourse(ctx, ctx.courseId, operation);
   if (ctx.role !== "instructor") throw new SourceError("forbidden", 403);
 }
 export const hashBytes = (bytes: Uint8Array | string) =>
@@ -167,7 +168,7 @@ export async function registerPack(ctx: AuthContext) {
       [
         ctx.tenantId,
         `registration-${sourceKey}`,
-        COURSE,
+        ctx.courseId,
         sourceKey,
         "title" in entry ? entry.title : sourceKey,
         entry.role,
@@ -190,6 +191,11 @@ export async function registerPack(ctx: AuthContext) {
   );
   return importSupplement(ctx, supplement);
 }
+/** A source is identified by its title within its course; the first course keeps the
+ * original keys so material uploaded before courses existed is still recognised. */
+const keyText = (ctx: AuthContext, title: string) =>
+  (ctx.courseId === DEFAULT_COURSE ? "" : ctx.courseId + "\n") +
+  title.normalize("NFKC").toLowerCase();
 export const UMBRELLA_PREFIX = "UMBRELLA-";
 const umbrellaKeyPattern = /^UMBRELLA-[0-9A-F]{12}$/;
 /** Split an instructor-supplied text/Markdown reference into bounded, locatable sections. */
@@ -245,10 +251,7 @@ export async function importUmbrella(
     throw new SourceError("invalid_review");
   const sourceKey =
     input.sourceKey ||
-    UMBRELLA_PREFIX +
-      hashBytes(title.normalize("NFKC").toLowerCase())
-        .slice(0, 12)
-        .toUpperCase();
+    UMBRELLA_PREFIX + hashBytes(keyText(ctx, title)).slice(0, 12).toUpperCase();
   const safeName = path.basename(input.filename || "umbrella").normalize("NFC");
   const isPdf = Buffer.from(input.bytes.slice(0, 5)).toString() === "%PDF-";
   let pages: NewMaterial["pages"];
@@ -316,10 +319,7 @@ export async function importCustomLecture(
     throw new SourceError("invalid_review");
   const sourceKey =
     input.sourceKey ||
-    LECTURE_PREFIX +
-      hashBytes(title.normalize("NFKC").toLowerCase())
-        .slice(0, 12)
-        .toUpperCase();
+    LECTURE_PREFIX + hashBytes(keyText(ctx, title)).slice(0, 12).toUpperCase();
   const pages = await parsePdf(input.bytes);
   const result = await persistMaterial(ctx, {
     sourceKey,
@@ -375,9 +375,7 @@ export async function importExtractedPages(ctx: AuthContext, raw: unknown) {
   if (Buffer.byteLength(text) > MAX_FILE) throw new SourceError("file_size");
   const sourceKey =
     (input.mode === "umbrella" ? UMBRELLA_PREFIX : LECTURE_PREFIX) +
-    hashBytes(input.title.normalize("NFKC").toLowerCase())
-      .slice(0, 12)
-      .toUpperCase();
+    hashBytes(keyText(ctx, input.title)).slice(0, 12).toUpperCase();
   const result = await persistMaterial(ctx, {
     sourceKey,
     title: input.title,
@@ -415,10 +413,10 @@ export async function approvePendingUmbrella(
 ) {
   await staff(ctx, "publish");
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
-    await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
+    await authorizeCourseInTransaction(ctx, ctx.courseId, "publish", tx);
     const current = await tx.query(
       "SELECT id FROM material_versions WHERE tenant_id=$1 AND id=$2 AND course_id=$3 AND current_version=true AND (source_key LIKE 'UMBRELLA-%' OR source_key LIKE 'LECTURE-%') FOR UPDATE",
-      [ctx.tenantId, versionId, COURSE],
+      [ctx.tenantId, versionId, ctx.courseId],
     );
     if (!current.rows.length) throw new SourceError("stale_source", 409);
     const updated = await tx.query<{ id: string }>(
@@ -430,7 +428,7 @@ export async function approvePendingUmbrella(
       [
         ctx.tenantId,
         randomUUID(),
-        COURSE,
+        ctx.courseId,
         ctx.userId,
         JSON.stringify({
           action: "umbrella-approve-pending",
@@ -444,13 +442,13 @@ export async function approvePendingUmbrella(
   });
 }
 export async function listMaterials(ctx: AuthContext) {
-  await authorizeCourse(ctx, COURSE, "read");
+  await authorizeCourse(ctx, ctx.courseId, "read");
   const rows = (
     await db
       .tenant(ctx.tenantId)
       .query<Material>(
         "SELECT id,source_key,title,role,hash,status,page_count,rights,metadata,current_version FROM material_versions WHERE tenant_id=$1 AND course_id=$2 ORDER BY source_key,created_at DESC",
-        [ctx.tenantId, COURSE],
+        [ctx.tenantId, ctx.courseId],
       )
   ).rows;
   const umbrellaRows = rows.filter(
@@ -464,7 +462,7 @@ export async function listMaterials(ctx: AuthContext) {
           .tenant(ctx.tenantId)
           .query<{ version_id: string; status: string; n: string }>(
             "SELECT version_id,status,count(*) AS n FROM evidence_chunks WHERE tenant_id=$1 AND course_id=$2 AND version_id=ANY($3::text[]) GROUP BY version_id,status",
-            [ctx.tenantId, COURSE, umbrellaRows.map((r) => r.id)],
+            [ctx.tenantId, ctx.courseId, umbrellaRows.map((r) => r.id)],
           )
       ).rows
     : [];
@@ -622,7 +620,7 @@ async function persistMaterial(ctx: AuthContext, input: NewMaterial) {
   await db.tenant(ctx.tenantId).transaction(async (tx) => {
     await authorizeCourseInTransaction(
       ctx,
-      COURSE,
+      ctx.courseId,
       input.authorization || "write",
       tx,
     );
@@ -666,7 +664,7 @@ async function persistMaterial(ctx: AuthContext, input: NewMaterial) {
       [
         ctx.tenantId,
         id,
-        COURSE,
+        ctx.courseId,
         input.sourceKey,
         input.title,
         input.role,
@@ -702,7 +700,7 @@ async function persistMaterial(ctx: AuthContext, input: NewMaterial) {
           ctx.tenantId,
           `${id}-${p.section || p.page}`,
           id,
-          COURSE,
+          ctx.courseId,
           p.page,
           p.section,
           p.text,
@@ -795,7 +793,7 @@ export async function reviseMaterialExtracts(
       Material & { filename: string; mime_type: string; bytes: Buffer }
     >(
       "SELECT * FROM material_versions WHERE tenant_id=$1 AND id=$2 AND course_id=$3",
-      [ctx.tenantId, versionId, COURSE],
+      [ctx.tenantId, versionId, ctx.courseId],
     )
   ).rows[0];
   if (
@@ -852,7 +850,7 @@ export async function reviseMaterialExtracts(
   // Resume safely if creation committed but the separate review audit was interrupted.
   // Never reset an explicit review decision on a deduplicated retry.
   await scoped.transaction(async (tx) => {
-    await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
+    await authorizeCourseInTransaction(ctx, ctx.courseId, "publish", tx);
     const current = await tx.query(
       "SELECT id FROM material_versions WHERE tenant_id=$1 AND id=$2 AND current_version=true FOR UPDATE",
       [ctx.tenantId, revision.id],
@@ -870,11 +868,11 @@ export async function reviseMaterialExtracts(
       );
     }
     await tx.query(
-      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'source_review',$3,$4,$5) ON CONFLICT(tenant_id,id) DO NOTHING",
+      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'source_review',$3,$4,$5) ON CONFLICT ON CONSTRAINT records_pkey DO NOTHING",
       [
         ctx.tenantId,
         `source-revision:${revision.id}`,
-        COURSE,
+        ctx.courseId,
         ctx.userId,
         JSON.stringify({
           action: "batch-extraction-revision",
@@ -911,10 +909,10 @@ export async function reviewMaterialChunks(
   if (new Set(decisions.map((c) => c.chunkId)).size !== decisions.length)
     throw new SourceError("invalid_review");
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
-    await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
+    await authorizeCourseInTransaction(ctx, ctx.courseId, "publish", tx);
     const current = await tx.query(
       "SELECT id FROM material_versions WHERE tenant_id=$1 AND id=$2 AND course_id=$3 AND current_version=true FOR UPDATE",
-      [ctx.tenantId, versionId, COURSE],
+      [ctx.tenantId, versionId, ctx.courseId],
     );
     if (!current.rows.length) throw new SourceError("stale_source", 409);
     const chunks = (
@@ -942,7 +940,7 @@ export async function reviewMaterialChunks(
       [
         ctx.tenantId,
         randomUUID(),
-        COURSE,
+        ctx.courseId,
         ctx.userId,
         JSON.stringify({
           action: "explicit-batch-review",
@@ -960,13 +958,13 @@ export async function reviewMaterialChunks(
   });
 }
 export async function getMaterial(ctx: AuthContext, id: string) {
-  await authorizeCourse(ctx, COURSE, "read");
+  await authorizeCourse(ctx, ctx.courseId, "read");
   const v = (
     await db
       .tenant(ctx.tenantId)
       .query<Material>(
         "SELECT id,source_key,title,role,hash,status,page_count,rights,metadata,current_version FROM material_versions WHERE tenant_id=$1 AND id=$2 AND course_id=$3",
-        [ctx.tenantId, id, COURSE],
+        [ctx.tenantId, id, ctx.courseId],
       )
   ).rows[0];
   if (
@@ -1012,7 +1010,7 @@ export async function reviewPage(
       .tenant(ctx.tenantId)
       .query<{ text_content: string; status: string; review_note: string }>(
         "SELECT text_content,status,review_note FROM evidence_chunks WHERE tenant_id=$1 AND id=$2 AND course_id=$3",
-        [ctx.tenantId, id, COURSE],
+        [ctx.tenantId, id, ctx.courseId],
       )
   ).rows[0];
   if (!row) throw new SourceError("source_missing", 404);
@@ -1083,7 +1081,7 @@ export async function reviewPage(
         [
           ctx.tenantId,
           randomUUID(),
-          COURSE,
+          ctx.courseId,
           ctx.userId,
           JSON.stringify({
             chunkId: id,
@@ -1108,7 +1106,7 @@ export async function reviewPage(
       [
         ctx.tenantId,
         randomUUID(),
-        COURSE,
+        ctx.courseId,
         ctx.userId,
         JSON.stringify({ chunkId: id, status, reviewer: ctx.userId }),
       ],

@@ -3,13 +3,13 @@ import { db } from "./db";
 import { authorizeCourse, type AuthContext } from "./auth";
 import { COURSE, SourceError } from "./sources";
 export async function readMemory(ctx: AuthContext, includeArchived = false) {
-  await authorizeCourse(ctx, COURSE, "tutor");
+  await authorizeCourse(ctx, ctx.courseId, "tutor");
   const rows = (
     await db
       .tenant(ctx.tenantId)
       .query<{ id: string; data: Record<string, unknown>; created_at: string }>(
         `SELECT id,data,created_at FROM records WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind='tutor_memory' ${includeArchived ? "" : "AND COALESCE(data->>'archived','false') <> 'true'"} ORDER BY created_at DESC LIMIT 100`,
-        [ctx.tenantId, ctx.userId, COURSE],
+        [ctx.tenantId, ctx.userId, ctx.courseId],
       )
   ).rows;
   const ids = rows.flatMap((r) =>
@@ -24,7 +24,7 @@ export async function readMemory(ctx: AuthContext, includeArchived = false) {
           section: string | null;
           version_id: string;
           text_content: string;
-        }>(`SELECT c.id,c.version_id,c.page,c.section,c.text_content,v.source_key FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND c.id=ANY($3::text[]) AND c.status='approved' AND v.rights->>'displayExcerpt'='true'`, [ctx.tenantId, COURSE, ids])
+        }>(`SELECT c.id,c.version_id,c.page,c.section,c.text_content,v.source_key FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND c.id=ANY($3::text[]) AND c.status='approved' AND v.rights->>'displayExcerpt'='true'`, [ctx.tenantId, ctx.courseId, ids])
       ).rows
     : [];
   return {
@@ -55,18 +55,18 @@ export async function updateMemory(
     rating?: "up" | "down";
   },
 ) {
-  await authorizeCourse(ctx, COURSE, "read");
+  await authorizeCourse(ctx, ctx.courseId, "read");
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
     if (input.action === "clear-current") {
       await tx.query(
         "UPDATE records SET data=data||'{\"archived\":true}'::jsonb,updated_at=now() WHERE tenant_id=$1 AND owner_id=$2 AND course_id=$3 AND kind='tutor_memory'",
-        [ctx.tenantId, ctx.userId, COURSE],
+        [ctx.tenantId, ctx.userId, ctx.courseId],
       );
     } else {
       const row = (
         await tx.query<{ data: Record<string, unknown> }>(
           "SELECT data FROM records WHERE tenant_id=$1 AND owner_id=$2 AND id=$3 AND course_id=$4 AND kind='tutor_memory' FOR UPDATE",
-          [ctx.tenantId, ctx.userId, input.id, COURSE],
+          [ctx.tenantId, ctx.userId, input.id, ctx.courseId],
         )
       ).rows[0];
       if (!row) throw new SourceError("source_missing", 404);
@@ -98,7 +98,7 @@ export async function updateMemory(
       [
         ctx.tenantId,
         randomUUID(),
-        COURSE,
+        ctx.courseId,
         ctx.userId,
         JSON.stringify({
           action: input.action,

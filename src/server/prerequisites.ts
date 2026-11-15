@@ -202,7 +202,7 @@ async function approvedEvidence(ctx: AuthContext) {
        WHERE c.tenant_id=$1 AND c.course_id=$2 AND v.course_id=$2 AND v.current_version=true AND c.status='approved'
          AND v.rights->>'sendToModel'='true' AND v.rights->>'displayExcerpt'='true'
        ORDER BY v.source_key,c.page NULLS LAST,c.section`,
-      [ctx.tenantId, COURSE],
+      [ctx.tenantId, ctx.courseId],
     )
   ).rows;
 }
@@ -228,7 +228,7 @@ export async function extractPrerequisites(
       .tenant(ctx.tenantId)
       .query<{ data: { graph: Graph } }>(
         "SELECT data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release' ORDER BY created_at DESC,id DESC LIMIT 1",
-        [ctx.tenantId, COURSE],
+        [ctx.tenantId, ctx.courseId],
       )
   ).rows[0];
   const retired = new Set(
@@ -237,7 +237,7 @@ export async function extractPrerequisites(
         .tenant(ctx.tenantId)
         .query<{ id: string }>(
           "SELECT id FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='concept' AND data->>'retired'='true'",
-          [ctx.tenantId, COURSE],
+          [ctx.tenantId, ctx.courseId],
         )
     ).rows.map((r) => r.id),
   );
@@ -756,7 +756,7 @@ export async function extractPrerequisites(
     .tenant(ctx.tenantId)
     .query(
       "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'knowledge_proposal',$3,$4,$5)",
-      [ctx.tenantId, id, COURSE, ctx.userId, JSON.stringify(data)],
+      [ctx.tenantId, id, ctx.courseId, ctx.userId, JSON.stringify(data)],
     );
   return { id, ...data };
 }
@@ -827,7 +827,7 @@ export async function reviewPrerequisiteEdges(ctx: AuthContext, raw: unknown) {
         extracted?: Graph;
         lectureConceptIds?: string[];
       };
-    }>("SELECT data FROM records WHERE tenant_id=$1 AND id=$2 AND course_id=$3 AND kind='knowledge_proposal'", [ctx.tenantId, input.id, COURSE])
+    }>("SELECT data FROM records WHERE tenant_id=$1 AND id=$2 AND course_id=$3 AND kind='knowledge_proposal'", [ctx.tenantId, input.id, ctx.courseId])
   ).rows[0];
   if (!record) throw new SourceError("source_missing", 404);
   const source = record.data.extracted;

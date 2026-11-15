@@ -47,10 +47,10 @@ type MappingRecord = MappingProposal & {
   reviewedAt?: string;
   releaseId?: string;
 };
-async function latest(tx: Queryable, tenantId: string) {
+async function latest(tx: Queryable, tenantId: string, courseId: string) {
   const result = await tx.query<{ id: string; data: { graph: Graph } }>(
     "SELECT id,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release' ORDER BY created_at DESC,id DESC LIMIT 1",
-    [tenantId, COURSE],
+    [tenantId, courseId],
   );
   if (!result.rows[0]) throw new AppError(409, "GRAPH_RELEASE_REQUIRED");
   return result.rows[0];
@@ -76,8 +76,8 @@ async function writeRecord(
   ownerId: string | null = null,
 ) {
   await tx.query(
-    "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(tenant_id,id) DO UPDATE SET data=excluded.data,updated_at=now()",
-    [ctx.tenantId, id, kind, COURSE, ownerId, JSON.stringify(data)],
+    "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT ON CONSTRAINT records_pkey DO UPDATE SET data=excluded.data,updated_at=now()",
+    [ctx.tenantId, id, kind, ctx.courseId, ownerId, JSON.stringify(data)],
   );
 }
 function requireConcept(graph: Graph, id: string) {
@@ -171,21 +171,21 @@ async function ensureEvidence(tx: Queryable, ctx: AuthContext, ids: string[]) {
   if (!ids.length) return;
   const rows = await tx.query<{ id: string }>(
     `SELECT c.id FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND c.id=ANY($3::text[]) AND c.status='approved' AND v.current_version=true AND v.status='published' AND v.rights->>'displayExcerpt'='true'`,
-    [ctx.tenantId, COURSE, ids],
+    [ctx.tenantId, ctx.courseId, ids],
   );
   if (ids.some((id) => !rows.rows.some((r) => r.id === id)))
     throw new AppError(409, "STALE_EVIDENCE");
 }
 export async function getConceptMappings(ctx: AuthContext) {
-  await authorizeCourse(ctx, COURSE, "review");
+  await authorizeCourse(ctx, ctx.courseId, "review");
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
     const rows = await tx.query<{ id: string; data: MappingRecord }>(
       "SELECT id,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='concept_mapping' ORDER BY created_at DESC",
-      [ctx.tenantId, COURSE],
+      [ctx.tenantId, ctx.courseId],
     );
     const releases = await tx.query<{ id: string; data: { graph: Graph } }>(
       "SELECT id,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release' ORDER BY created_at DESC,id DESC LIMIT 1",
-      [ctx.tenantId, COURSE],
+      [ctx.tenantId, ctx.courseId],
     );
     return {
       mappings: rows.rows,
@@ -198,7 +198,7 @@ export async function conceptMappingAction(ctx: AuthContext, input: unknown) {
   const a = mappingInput.parse(input);
   await authorizeCourse(
     ctx,
-    COURSE,
+    ctx.courseId,
     a.action === "propose" ? "review" : "publish",
   );
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
@@ -208,14 +208,14 @@ export async function conceptMappingAction(ctx: AuthContext, input: unknown) {
     );
     await authorizeCourseInTransaction(
       ctx,
-      COURSE,
+      ctx.courseId,
       a.action === "propose" ? "review" : "publish",
       tx,
     );
     await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
-      ctx.tenantId + ":knowledge:" + COURSE,
+      ctx.tenantId + ":knowledge:" + ctx.courseId,
     ]);
-    const release = await latest(tx, ctx.tenantId);
+    const release = await latest(tx, ctx.tenantId, ctx.courseId);
     if (a.action === "propose") {
       const id = randomUUID();
       const data: MappingRecord = {
@@ -258,7 +258,7 @@ export async function conceptMappingAction(ctx: AuthContext, input: unknown) {
     const row = (
       await tx.query<{ data: MappingRecord }>(
         "SELECT data FROM records WHERE tenant_id=$1 AND id=$2 AND kind='concept_mapping' AND course_id=$3 FOR UPDATE",
-        [ctx.tenantId, a.id, COURSE],
+        [ctx.tenantId, a.id, ctx.courseId],
       )
     ).rows[0];
     if (!row) throw new AppError(404, "NOT_FOUND");
@@ -309,7 +309,7 @@ export async function conceptMappingAction(ctx: AuthContext, input: unknown) {
       const students = (
         await tx.query<{ user_id: string }>(
           "SELECT user_id FROM course_access WHERE tenant_id=$1 AND course_id=$2 AND access_role='student' AND active",
-          [ctx.tenantId, COURSE],
+          [ctx.tenantId, ctx.courseId],
         )
       ).rows;
       for (const student of students)

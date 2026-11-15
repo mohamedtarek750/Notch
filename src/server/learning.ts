@@ -178,7 +178,7 @@ const actionSchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("undo-override"), overrideId: str }),
   z.object({ action: z.literal("announcement"), title: pair, body: pair }),
-  z.object({ action: z.literal("enroll"), courseId: z.literal("CET351") }),
+  z.object({ action: z.literal("enroll"), courseId: z.string().min(1).max(40) }),
   z.object({
     action: z.literal("review-attempt"),
     attemptId: str,
@@ -211,7 +211,7 @@ async function put(
   ownerId: string | null = null,
 ) {
   await tx.query(
-    "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT(tenant_id,id) DO UPDATE SET data=EXCLUDED.data,updated_at=now()",
+    "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT ON CONSTRAINT records_pkey DO UPDATE SET data=EXCLUDED.data,updated_at=now()",
     [ctx.tenantId, id, kind, ctx.courseId, ownerId, JSON.stringify(data)],
   );
   return { id, kind, ownerId, data };
@@ -1236,8 +1236,8 @@ export async function learningAction(
       const id = `attempt:${ctx.userId}:${a.idempotencyKey}`;
       const existing = (
         await tx.query<Row>(
-          "SELECT * FROM records WHERE tenant_id=$1 AND id=$2",
-          [ctx.tenantId, id],
+          "SELECT * FROM records WHERE tenant_id=$1 AND id=$2 AND course_id=$3",
+          [ctx.tenantId, id, ctx.courseId],
         )
       ).rows[0];
       if (existing) {
@@ -1537,8 +1537,8 @@ export async function learningAction(
       const previous =
         (
           await tx.query<Row>(
-            "SELECT * FROM records WHERE tenant_id=$1 AND id=$2",
-            [ctx.tenantId, id],
+            "SELECT * FROM records WHERE tenant_id=$1 AND id=$2 AND course_id=$3",
+            [ctx.tenantId, id, ctx.courseId],
           )
         ).rows[0]?.data ?? {};
       const pickedCorrectly =
@@ -1721,8 +1721,8 @@ export async function learningAction(
       const existing =
         (
           await tx.query<Row>(
-            "SELECT * FROM records WHERE tenant_id=$1 AND id=$2",
-            [ctx.tenantId, id],
+            "SELECT * FROM records WHERE tenant_id=$1 AND id=$2 AND course_id=$3",
+            [ctx.tenantId, id, ctx.courseId],
           )
         ).rows[0]?.data ?? {};
       const { action, ...values } = a;
@@ -1868,15 +1868,19 @@ export async function learningAction(
       const id = `state:${a.studentId}:${a.objectiveId}`;
       const prior = (
         await tx.query<Row>(
-          "SELECT * FROM records WHERE tenant_id=$1 AND id=$2",
-          [ctx.tenantId, id],
+          "SELECT * FROM records WHERE tenant_id=$1 AND id=$2 AND course_id=$3",
+          [ctx.tenantId, id, ctx.courseId],
         )
       ).rows[0]?.data ?? { objectiveId: a.objectiveId, ...deriveObjective([]) };
       const priorRecommendation =
         (
           await tx.query<Row>(
-            "SELECT * FROM records WHERE tenant_id=$1 AND id=$2",
-            [ctx.tenantId, `recommendation:${a.studentId}:${a.objectiveId}`],
+            "SELECT * FROM records WHERE tenant_id=$1 AND id=$2 AND course_id=$3",
+            [
+              ctx.tenantId,
+              `recommendation:${a.studentId}:${a.objectiveId}`,
+              ctx.courseId,
+            ],
           )
         ).rows[0]?.data ?? null;
       const overrideId = `override:${randomUUID()}`;
@@ -1973,10 +1977,14 @@ export async function learningAction(
           override.ownerId,
         );
       else
-        await tx.query("DELETE FROM records WHERE tenant_id=$1 AND id=$2", [
-          ctx.tenantId,
-          `recommendation:${override.ownerId}:${override.data.objectiveId}`,
-        ]);
+        await tx.query(
+          "DELETE FROM records WHERE tenant_id=$1 AND id=$2 AND course_id=$3",
+          [
+            ctx.tenantId,
+            `recommendation:${override.ownerId}:${override.data.objectiveId}`,
+            ctx.courseId,
+          ],
+        );
       return put(
         tx,
         ctx,

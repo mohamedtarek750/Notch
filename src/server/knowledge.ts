@@ -94,6 +94,9 @@ export type Graph = {
     origin?: "instructor";
   }[];
 };
+/** A release is always strictly later than the one before it, so "latest" is never a tie. */
+const NEXT_RELEASE_TIME =
+  "GREATEST(clock_timestamp(),COALESCE((SELECT max(created_at) FROM records WHERE tenant_id=$1 AND course_id=$3 AND kind='graph_release'),'epoch'::timestamptz)+interval '1 millisecond')";
 export function validateGraph(graph: Graph) {
   const ids = new Set(graph.concepts.map((c) => c.id));
   if (ids.size !== graph.concepts.length)
@@ -159,9 +162,9 @@ export async function stageComprehensiveGraph(
   await staff(ctx, "review");
   const submitted = comprehensiveInput.parse(input);
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
-    await authorizeCourseInTransaction(ctx, COURSE, "review", tx);
+    await authorizeCourseInTransaction(ctx, ctx.courseId, "review", tx);
     await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
-      ctx.tenantId + ":knowledge:" + COURSE,
+      ctx.tenantId + ":knowledge:" + ctx.courseId,
     ]);
     const existing = (
       await tx.query<{
@@ -169,7 +172,7 @@ export async function stageComprehensiveGraph(
         data: Graph["concepts"][number] & { retired?: boolean };
       }>(
         "SELECT id,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='concept'",
-        [ctx.tenantId, COURSE],
+        [ctx.tenantId, ctx.courseId],
       )
     ).rows;
     const existingByAlias = new Map<string, typeof existing>();
@@ -243,7 +246,7 @@ export async function stageComprehensiveGraph(
       })),
     };
     validateGraph(graph);
-    const evidence = await readCurrentEvidence(tx, ctx.tenantId);
+    const evidence = await readCurrentEvidence(tx, ctx.tenantId, ctx.courseId);
     const allIds = [
       ...new Set([
         ...graph.concepts.flatMap((c) => c.evidenceIds),
@@ -275,7 +278,7 @@ export async function stageComprehensiveGraph(
       const generated = (
         await tx.query<{ id: string }>(
           "SELECT id FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='knowledge_proposal' AND id=ANY($3::text[]) AND data->>'modelId' IS NOT NULL AND data->>'status'<>'rejected'",
-          [ctx.tenantId, COURSE, submitted.generatedProposalIds],
+          [ctx.tenantId, ctx.courseId, submitted.generatedProposalIds],
         )
       ).rows;
       if (
@@ -299,7 +302,7 @@ export async function stageComprehensiveGraph(
         };
       }>(
         "SELECT id,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='knowledge_proposal' AND data->>'fingerprint'=$3 ORDER BY created_at DESC LIMIT 1",
-        [ctx.tenantId, COURSE, fingerprint],
+        [ctx.tenantId, ctx.courseId, fingerprint],
       )
     ).rows[0];
     if (duplicate)
@@ -324,7 +327,7 @@ export async function stageComprehensiveGraph(
     };
     await tx.query(
       "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'knowledge_proposal',$3,$4,$5)",
-      [ctx.tenantId, id, COURSE, ctx.userId, JSON.stringify(data)],
+      [ctx.tenantId, id, ctx.courseId, ctx.userId, JSON.stringify(data)],
     );
     await tx.query(
       "INSERT INTO audit_events(tenant_id,id,actor_id,action,entity_id,data) VALUES($1,$2,$3,$4,$5,$6)",
@@ -508,7 +511,7 @@ export async function proposeKnowledge(
       .tenant(ctx.tenantId)
       .query(
         "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'knowledge_proposal',$3,$4,$5)",
-        [ctx.tenantId, id, COURSE, ctx.userId, JSON.stringify(data)],
+        [ctx.tenantId, id, ctx.courseId, ctx.userId, JSON.stringify(data)],
       );
     await saveTrace(ctx, {
       ...base,
@@ -527,13 +530,13 @@ export async function proposeKnowledge(
   }
 }
 export async function getKnowledge(ctx: AuthContext) {
-  await authorizeCourse(ctx, COURSE, "read");
+  await authorizeCourse(ctx, ctx.courseId, "read");
   const rows = (
     await db
       .tenant(ctx.tenantId)
       .query<{ id: string; kind: string; data: Record<string, unknown> }>(
         `SELECT id,kind,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind IN ('concept','knowledge_proposal','tree_layout') ORDER BY created_at DESC`,
-        [ctx.tenantId, COURSE],
+        [ctx.tenantId, ctx.courseId],
       )
   ).rows;
   const proposals =
@@ -570,7 +573,7 @@ export async function getKnowledge(ctx: AuthContext) {
         .tenant(ctx.tenantId)
         .query<{ id: string; kind: string; data: Record<string, unknown> }>(
           `SELECT id,kind,CASE WHEN row_number() OVER (ORDER BY created_at DESC,id DESC)=1 THEN data ELSE jsonb_build_object('publishedAt',data->'publishedAt') END AS data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release' ORDER BY created_at DESC,id DESC LIMIT 10`,
-          [ctx.tenantId, COURSE],
+          [ctx.tenantId, ctx.courseId],
         )
     ).rows,
     layout:
@@ -596,11 +599,11 @@ export async function saveTreeLayout(ctx: AuthContext, raw: unknown) {
   await db
     .tenant(ctx.tenantId)
     .query(
-      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'tree_layout',$3,NULL,$4) ON CONFLICT(tenant_id,id) DO UPDATE SET data=excluded.data,updated_at=now()",
+      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'tree_layout',$3,NULL,$4) ON CONFLICT ON CONSTRAINT records_pkey DO UPDATE SET data=excluded.data,updated_at=now()",
       [
         ctx.tenantId,
-        "tree_layout:" + COURSE,
-        COURSE,
+        "tree_layout:" + ctx.courseId,
+        ctx.courseId,
         JSON.stringify({ positions }),
       ],
     );
@@ -614,7 +617,7 @@ export async function reviewProposal(
 ) {
   await staff(ctx, "publish");
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
-    await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
+    await authorizeCourseInTransaction(ctx, ctx.courseId, "publish", tx);
     const record = (
       await tx.query<{
         data: {
@@ -626,7 +629,7 @@ export async function reviewProposal(
         };
       }>(
         "SELECT data FROM records WHERE tenant_id=$1 AND id=$2 AND kind='knowledge_proposal' AND course_id=$3 FOR UPDATE",
-        [ctx.tenantId, id, COURSE],
+        [ctx.tenantId, id, ctx.courseId],
       )
     ).rows[0];
     if (!record) throw new SourceError("source_missing", 404);
@@ -654,7 +657,7 @@ export async function reviewProposal(
       validateComprehensiveCoverage(
         data.graph,
         data.coverage,
-        await readCurrentEvidence(tx, ctx.tenantId),
+        await readCurrentEvidence(tx, ctx.tenantId, ctx.courseId),
       );
     await tx.query(
       "UPDATE records SET data=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2",
@@ -665,7 +668,7 @@ export async function reviewProposal(
       [
         ctx.tenantId,
         randomUUID(),
-        COURSE,
+        ctx.courseId,
         ctx.userId,
         JSON.stringify({
           proposalId: id,
@@ -707,14 +710,14 @@ export async function editTree(ctx: AuthContext, raw: unknown) {
   await staff(ctx, "publish");
   const edit = treeEdit.parse(raw);
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
-    await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
+    await authorizeCourseInTransaction(ctx, ctx.courseId, "publish", tx);
     await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
-      ctx.tenantId + ":knowledge:" + COURSE,
+      ctx.tenantId + ":knowledge:" + ctx.courseId,
     ]);
     const prior = (
       await tx.query<{ data: Record<string, unknown> & { graph: Graph } }>(
         "SELECT data FROM records WHERE tenant_id=$1 AND kind='graph_release' AND course_id=$2 ORDER BY created_at DESC,id DESC LIMIT 1",
-        [ctx.tenantId, COURSE],
+        [ctx.tenantId, ctx.courseId],
       )
     ).rows[0];
     if (!prior) throw new SourceError("tree_not_published", 409);
@@ -749,11 +752,11 @@ export async function editTree(ctx: AuthContext, raw: unknown) {
     validateGraph(graph);
     const now = new Date().toISOString();
     await tx.query(
-      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'graph_release',$3,NULL,$4)",
+      `INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data,created_at) VALUES($1,$2,'graph_release',$3,NULL,$4,${NEXT_RELEASE_TIME})`,
       [
         ctx.tenantId,
         randomUUID(),
-        COURSE,
+        ctx.courseId,
         JSON.stringify({
           ...prior.data,
           graph,
@@ -771,7 +774,7 @@ export async function editTree(ctx: AuthContext, raw: unknown) {
         randomUUID(),
         ctx.userId,
         "knowledge.tree_edit",
-        COURSE,
+        ctx.courseId,
         JSON.stringify(edit),
       ],
     );
@@ -781,9 +784,9 @@ export async function editTree(ctx: AuthContext, raw: unknown) {
 export async function publishKnowledge(ctx: AuthContext) {
   await staff(ctx, "publish");
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
-    await authorizeCourseInTransaction(ctx, COURSE, "publish", tx);
+    await authorizeCourseInTransaction(ctx, ctx.courseId, "publish", tx);
     await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
-      ctx.tenantId + ":knowledge:" + COURSE,
+      ctx.tenantId + ":knowledge:" + ctx.courseId,
     ]);
     const proposals = (
       await tx.query<{
@@ -797,7 +800,7 @@ export async function publishKnowledge(ctx: AuthContext) {
         };
       }>(
         "SELECT id,data FROM records WHERE tenant_id=$1 AND kind='knowledge_proposal' AND course_id=$2 AND data->>'status'='approved' FOR UPDATE",
-        [ctx.tenantId, COURSE],
+        [ctx.tenantId, ctx.courseId],
       )
     ).rows;
     const comprehensive = proposals.filter((p) => p.data.coverage);
@@ -812,12 +815,12 @@ export async function publishKnowledge(ctx: AuthContext) {
       validateComprehensiveCoverage(
         full.data.graph,
         full.data.coverage,
-        await readCurrentEvidence(tx, ctx.tenantId),
+        await readCurrentEvidence(tx, ctx.tenantId, ctx.courseId),
       );
     const approved = (
       await tx.query<{ id: string }>(
         `SELECT c.id FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND c.status=$3 AND v.current_version=true AND v.rights->>'sendToModel'='true' AND v.rights->>'displayExcerpt'='true'`,
-        [ctx.tenantId, COURSE, "approved"],
+        [ctx.tenantId, ctx.courseId, "approved"],
       )
     ).rows.map((r) => r.id);
     for (const p of proposals) {
@@ -835,7 +838,7 @@ export async function publishKnowledge(ctx: AuthContext) {
         data: { graph: Graph; coverage?: ComprehensiveCoverage };
       }>(
         "SELECT data FROM records WHERE tenant_id=$1 AND kind='graph_release' AND course_id=$2 ORDER BY created_at DESC LIMIT 1",
-        [ctx.tenantId, COURSE],
+        [ctx.tenantId, ctx.courseId],
       )
     ).rows[0];
     const currentApproved = (
@@ -891,7 +894,7 @@ export async function publishKnowledge(ctx: AuthContext) {
       validateComprehensiveCoverage(
         graph,
         full.data.coverage,
-        await readCurrentEvidence(tx, ctx.tenantId),
+        await readCurrentEvidence(tx, ctx.tenantId, ctx.courseId),
       );
     const releaseId = randomUUID();
     // One scoped statement keeps complete maps within the serverless time budget.
@@ -899,15 +902,15 @@ export async function publishKnowledge(ctx: AuthContext) {
       `INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data)
        SELECT $1,node->>'id','concept',$2,NULL,node
        FROM jsonb_array_elements($3::jsonb) AS node
-       ON CONFLICT(tenant_id,id) DO UPDATE SET data=excluded.data,updated_at=now()`,
-      [ctx.tenantId, COURSE, JSON.stringify(graph.concepts)],
+       ON CONFLICT ON CONSTRAINT records_pkey DO UPDATE SET data=excluded.data,updated_at=now()`,
+      [ctx.tenantId, ctx.courseId, JSON.stringify(graph.concepts)],
     );
     await tx.query(
-      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'graph_release',$3,$4,$5)",
+      `INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data,created_at) VALUES($1,$2,'graph_release',$3,$4,$5,${NEXT_RELEASE_TIME})`,
       [
         ctx.tenantId,
         releaseId,
-        COURSE,
+        ctx.courseId,
         null,
         JSON.stringify({
           graph,
@@ -933,7 +936,7 @@ export async function publishKnowledge(ctx: AuthContext) {
           [
             ctx.tenantId,
             `session-${p.id}`,
-            COURSE,
+            ctx.courseId,
             null,
             JSON.stringify({
               ...(p.data.session as Record<string, unknown>),
@@ -949,11 +952,11 @@ export async function publishKnowledge(ctx: AuthContext) {
       if (p.data.item?.conceptId)
         // A concept becomes assessable the moment its first reviewed question is published.
         await tx.query(
-          "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'objective',$3,NULL,$4) ON CONFLICT(tenant_id,id) DO NOTHING",
+          "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'objective',$3,NULL,$4) ON CONFLICT ON CONSTRAINT records_pkey DO NOTHING",
           [
             ctx.tenantId,
             `objective:${p.data.item.objectiveId}`,
-            COURSE,
+            ctx.courseId,
             JSON.stringify({
               objectiveId: p.data.item.objectiveId,
               conceptId: p.data.item.conceptId,
@@ -970,7 +973,7 @@ export async function publishKnowledge(ctx: AuthContext) {
           [
             ctx.tenantId,
             `item-${p.id}`,
-            COURSE,
+            ctx.courseId,
             null,
             JSON.stringify({
               ...p.data.item,
@@ -994,7 +997,7 @@ export async function publishKnowledge(ctx: AuthContext) {
     }
     await tx.query(
       `UPDATE material_versions SET status='published' WHERE tenant_id=$1 AND course_id=$2 AND current_version=true AND id IN (SELECT version_id FROM evidence_chunks WHERE tenant_id=$1 AND status='approved')`,
-      [ctx.tenantId, COURSE],
+      [ctx.tenantId, ctx.courseId],
     );
     return {
       releaseId,
@@ -1134,7 +1137,7 @@ export async function generateTeaching(
       .tenant(ctx.tenantId)
       .query(
         "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'knowledge_proposal',$3,$4,$5)",
-        [ctx.tenantId, id, COURSE, ctx.userId, JSON.stringify(data)],
+        [ctx.tenantId, id, ctx.courseId, ctx.userId, JSON.stringify(data)],
       );
     await saveTrace(ctx, {
       ...base,
@@ -1164,7 +1167,7 @@ export async function editTeaching(
       .tenant(ctx.tenantId)
       .query<{ data: Record<string, unknown> }>(
         "SELECT data FROM records WHERE tenant_id=$1 AND id=$2 AND course_id=$3 AND kind='knowledge_proposal'",
-        [ctx.tenantId, id, COURSE],
+        [ctx.tenantId, id, ctx.courseId],
       )
   ).rows[0];
   if (!old) throw new SourceError("source_missing", 404);
@@ -1234,7 +1237,7 @@ export async function editTeaching(
       [
         ctx.tenantId,
         randomUUID(),
-        COURSE,
+        ctx.courseId,
         ctx.userId,
         JSON.stringify({ proposalId: id, action: "edit", previous: old.data }),
       ],
