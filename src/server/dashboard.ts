@@ -174,7 +174,19 @@ export async function instructorDashboard(
       const causes = new Map<string, number>();
       for (const e of episodes)
         causes.set(e.data.cause, (causes.get(e.data.cause) ?? 0) + 1);
-      const topCause = [...causes].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+      // Ties follow the diagnosis ladder, so the answer never depends on row order.
+      const ladder = [
+        "prerequisite",
+        "basics-gap",
+        "presentation",
+        "confidence",
+      ];
+      const rank = (cause: string) =>
+        ladder.includes(cause) ? ladder.indexOf(cause) : ladder.length;
+      const topCause =
+        [...causes].sort(
+          (a, b) => b[1] - a[1] || rank(a[0]) - rank(b[0]),
+        )[0]?.[0] ?? null;
       const prerequisiteTargets = new Map<string, number>();
       for (const e of episodes)
         if (e.data.cause === "prerequisite" && e.data.targetLabel)
@@ -456,7 +468,14 @@ export async function conceptDetail(ctx: AuthContext, objectiveId: string) {
       assessed: match?.assessed ?? 0,
     };
   });
-  const topCause = [...causes].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  // Ties follow the diagnosis ladder, so the answer never depends on row order.
+  const ladder = ["prerequisite", "basics-gap", "presentation", "confidence"];
+  const rank = (cause: string) =>
+    ladder.includes(cause) ? ladder.indexOf(cause) : ladder.length;
+  const topCause =
+    [...causes].sort(
+      (a, b) => b[1] - a[1] || rank(a[0]) - rank(b[0]),
+    )[0]?.[0] ?? null;
   const weakest = [...prerequisites].sort(
     (a, b) => (a.readyShare ?? 101) - (b.readyShare ?? 101),
   )[0];
@@ -779,7 +798,7 @@ export async function dashboardAction(ctx: AuthContext, input: unknown) {
       // An approved version is reused for the same question from now on.
       if (a.approvedAnswer && row.data.ladderKey)
         await tx.query(
-          "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'approved_answer',$3,NULL,$4) ON CONFLICT(tenant_id,id) DO UPDATE SET data=excluded.data,updated_at=now()",
+          "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'approved_answer',$3,NULL,$4) ON CONFLICT ON CONSTRAINT records_pkey DO UPDATE SET data=excluded.data,updated_at=now()",
           [
             ctx.tenantId,
             `approved:${row.data.ladderKey}`.slice(0, 200),

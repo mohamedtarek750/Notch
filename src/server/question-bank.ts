@@ -54,7 +54,7 @@ export async function getBankSettings(ctx: AuthContext) {
       .tenant(ctx.tenantId)
       .query<{ data: unknown }>(
         "SELECT data FROM records WHERE tenant_id=$1 AND course_id=$2 AND id=$3 AND kind='qb_settings'",
-        [ctx.tenantId, COURSE, SETTINGS_ID],
+        [ctx.tenantId, ctx.courseId, SETTINGS_ID],
       )
   ).rows[0];
   const parsed = bankSettings.safeParse(row?.data);
@@ -66,8 +66,8 @@ export async function saveBankSettings(ctx: AuthContext, input: unknown) {
   await db
     .tenant(ctx.tenantId)
     .query(
-      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'qb_settings',$3,NULL,$4) ON CONFLICT(tenant_id,id) DO UPDATE SET data=excluded.data,updated_at=now()",
-      [ctx.tenantId, SETTINGS_ID, COURSE, JSON.stringify(settings)],
+      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'qb_settings',$3,NULL,$4) ON CONFLICT ON CONSTRAINT records_pkey DO UPDATE SET data=excluded.data,updated_at=now()",
+      [ctx.tenantId, SETTINGS_ID, ctx.courseId, JSON.stringify(settings)],
     );
   return settings;
 }
@@ -221,7 +221,7 @@ export async function generateBank(
       .tenant(ctx.tenantId)
       .query<{ id: string; data: { graph: Graph } }>(
         "SELECT id,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release' ORDER BY created_at DESC,id DESC LIMIT 1",
-        [ctx.tenantId, COURSE],
+        [ctx.tenantId, ctx.courseId],
       )
   ).rows[0];
   const concepts = [...new Set(input.conceptIds)].map((id) =>
@@ -234,7 +234,7 @@ export async function generateBank(
       .tenant(ctx.tenantId)
       .query<{ concept: string; n: string }>(
         "SELECT data->>'conceptId' AS concept,count(*) AS n FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='item' AND data->>'conceptId'=ANY($3::text[]) GROUP BY 1",
-        [ctx.tenantId, COURSE, input.conceptIds],
+        [ctx.tenantId, ctx.courseId, input.conceptIds],
       )
   ).rows;
   const budget =
@@ -254,7 +254,7 @@ export async function generateBank(
          WHERE c.tenant_id=$1 AND c.course_id=$2 AND c.id=ANY($3::text[]) AND c.status='approved' AND v.current_version=true
            AND v.rights->>'sendToModel'='true' AND v.rights->>'displayExcerpt'='true'
          ORDER BY (v.role='instructor') DESC,c.page NULLS LAST LIMIT 4`,
-        [ctx.tenantId, COURSE, concept.evidenceIds],
+        [ctx.tenantId, ctx.courseId, concept.evidenceIds],
       )
     ).rows;
     if (!evidence.length) {
@@ -372,7 +372,7 @@ export async function generateBank(
         .tenant(ctx.tenantId)
         .query(
           "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'knowledge_proposal',$3,$4,$5)",
-          [ctx.tenantId, id, COURSE, ctx.userId, JSON.stringify(data)],
+          [ctx.tenantId, id, ctx.courseId, ctx.userId, JSON.stringify(data)],
         );
       created.push({ id, conceptId: concept.id, ...entry });
     }
@@ -392,7 +392,7 @@ export async function generateBank(
 
 /** Published bank coverage per concept: what is assessable and at which difficulty. */
 export async function bankCoverage(ctx: AuthContext) {
-  await authorizeCourse(ctx, COURSE, "read");
+  await authorizeCourse(ctx, ctx.courseId, "read");
   if (ctx.role !== "instructor") throw new SourceError("forbidden", 403);
   const rows = (
     await db.tenant(ctx.tenantId).query<{
@@ -400,7 +400,7 @@ export async function bankCoverage(ctx: AuthContext) {
       difficulty: string | null;
       kind: string;
       n: string;
-    }>("SELECT data->>'conceptId' AS concept,data->>'difficulty' AS difficulty,data->>'kind' AS kind,count(*) AS n FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='item' AND data->>'approved'='true' AND data->>'conceptId' IS NOT NULL GROUP BY 1,2,3", [ctx.tenantId, COURSE])
+    }>("SELECT data->>'conceptId' AS concept,data->>'difficulty' AS difficulty,data->>'kind' AS kind,count(*) AS n FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='item' AND data->>'approved'='true' AND data->>'conceptId' IS NOT NULL GROUP BY 1,2,3", [ctx.tenantId, ctx.courseId])
   ).rows;
   const byConcept = new Map<
     string,

@@ -100,7 +100,7 @@ async function put(
   ownerId: string | null,
 ) {
   await tx.query(
-    "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT(tenant_id,id) DO UPDATE SET data=EXCLUDED.data,updated_at=now()",
+    "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT ON CONSTRAINT records_pkey DO UPDATE SET data=EXCLUDED.data,updated_at=now()",
     [ctx.tenantId, id, kind, ctx.courseId, ownerId, JSON.stringify(data)],
   );
 }
@@ -141,8 +141,8 @@ export async function courseEndAction(
       const id = `consent:${ctx.userId}`;
       const previous = (
         await tx.query<Row>(
-          "SELECT * FROM records WHERE tenant_id=$1 AND id=$2",
-          [ctx.tenantId, id],
+          "SELECT * FROM records WHERE tenant_id=$1 AND id=$2 AND course_id=$3",
+          [ctx.tenantId, id, ctx.courseId],
         )
       ).rows[0]?.data;
       const data = {
@@ -169,8 +169,8 @@ export async function courseEndAction(
     return db.tenant(ctx.tenantId).transaction(async (tx) => {
       const consent = (
         await tx.query<Row>(
-          "SELECT * FROM records WHERE tenant_id=$1 AND id=$2",
-          [ctx.tenantId, `consent:${ctx.userId}`],
+          "SELECT * FROM records WHERE tenant_id=$1 AND id=$2 AND course_id=$3",
+          [ctx.tenantId, `consent:${ctx.userId}`, ctx.courseId],
         )
       ).rows[0]?.data;
       let kept = 0;

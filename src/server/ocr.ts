@@ -34,7 +34,7 @@ export async function transcribeSparsePages(
       rights: Record<string, boolean>;
     }>(
       "SELECT bytes,mime_type,rights FROM material_versions WHERE tenant_id=$1 AND id=$2 AND course_id=$3 AND current_version=true",
-      [ctx.tenantId, versionId, COURSE],
+      [ctx.tenantId, versionId, ctx.courseId],
     )
   ).rows[0];
   if (!version) throw new SourceError("stale_source", 409);

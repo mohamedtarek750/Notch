@@ -147,13 +147,14 @@ export function locator(e: CurrentEvidence): SourceLocator {
 export async function readCurrentEvidence(
   tx: Queryable,
   tenantId: string,
+  courseId: string,
 ): Promise<CurrentEvidence[]> {
   return (
     await tx.query<CurrentEvidence>(
       `SELECT c.id,c.version_id,c.page,c.section,c.status,v.source_key,v.title,v.role,v.hash,v.current_version,v.status AS material_status,v.rights
     FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id
     WHERE c.tenant_id=$1 AND c.course_id=$2 AND v.course_id=$2 AND v.current_version=true`,
-      [tenantId, COURSE],
+      [tenantId, courseId],
     )
   ).rows;
 }
@@ -351,7 +352,7 @@ export function validateComprehensiveCoverage(
 
 export async function getPublishedConceptMap(ctx: AuthContext) {
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
-    await authorizeCourseInTransaction(ctx, COURSE, "read", tx);
+    await authorizeCourseInTransaction(ctx, ctx.courseId, "read", tx);
     const release = (
       await tx.query<{
         id: string;
@@ -363,10 +364,10 @@ export async function getPublishedConceptMap(ctx: AuthContext) {
         };
       }>(
         "SELECT id,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release' ORDER BY created_at DESC,id DESC LIMIT 1",
-        [ctx.tenantId, COURSE],
+        [ctx.tenantId, ctx.courseId],
       )
     ).rows[0];
-    const evidence = await readCurrentEvidence(tx, ctx.tenantId);
+    const evidence = await readCurrentEvidence(tx, ctx.tenantId, ctx.courseId);
     const allowed = new Map(
       evidence
         .filter(

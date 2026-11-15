@@ -23,6 +23,7 @@ import {
   Menu,
   MessageSquare,
   Network,
+  Landmark,
   NotebookPen,
   Send,
   Settings2,
@@ -38,6 +39,12 @@ import { ClassDashboard, CourseReport } from "./instructor";
 import { AdvisorDashboard } from "./advisor";
 import { CourseConceptMap } from "./CourseConceptMap";
 import { KnowledgeTree } from "./KnowledgeTree";
+import {
+  AcademicStructure,
+  CourseSwitcher,
+  coursePath,
+  type Catalog,
+} from "./structure";
 import { MaterialsPanel, KnowledgePanel, LaunchPanel } from "./sources";
 import {
   StudentHome,
@@ -144,6 +151,7 @@ const INSTRUCTOR_NAV = [
   ["teaching", "متابعة الفصل", "Class dashboard", Users],
   ["report", "تقرير المقرر", "Course report", ClipboardList],
   ["map", "شجرة المعرفة", "Knowledge tree", Network],
+  ["structure", "الهيكل الأكاديمي", "Academic structure", Landmark],
 ] as const;
 const ADVISOR_NAV = [["advising", "طلابي", "My students", Users]] as const;
 export function Workspace({
@@ -171,7 +179,11 @@ export function Workspace({
   useModalFocus(menu, () => M(false));
   const t: Translate = (a, b) => (lang === "ar" ? a : b);
   const tr = (v: any) => localized(v, lang);
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
   const refresh = async () => {
+    request("/api/catalog", undefined, lang)
+      .then(setCatalog)
+      .catch(() => setCatalog(null));
     const d = await request("/api/workspace", undefined, lang);
     D(d);
     if (d.preferences?.lessonLanguage) LL(d.preferences.lessonLanguage);
@@ -549,7 +561,8 @@ export function Workspace({
               <Menu size={19} />
             </button>
             <i className="workspaceDot" />
-            {t("مساحة", "Workspace")} {roleName(user.role)}
+            {coursePath(catalog, lang) ||
+              `${t("مساحة", "Workspace")} ${roleName(user.role)}`}
             <span className="slash">/</span>
             <strong>
               {nav.find((n) => n[0] === view)?.[lang === "ar" ? 1 : 2] ||
@@ -557,6 +570,7 @@ export function Workspace({
             </strong>
           </div>
           <div className="toolbar">
+            <CourseSwitcher catalog={catalog} lang={lang} t={t} />
             <button onClick={switchLanguage}>
               <Languages size={17} />
               {lang === "ar" ? "English" : "العربية"}
@@ -625,6 +639,14 @@ export function Workspace({
               )}
               {view === "report" && (
                 <CourseReport lang={lang} t={t} onError={E} />
+              )}
+              {view === "structure" && (
+                <AcademicStructure
+                  lang={lang}
+                  t={t}
+                  onError={E}
+                  canEdit={user?.role === "instructor"}
+                />
               )}
               {view === "home" && user?.role === "student" && (
                 <StudentHome

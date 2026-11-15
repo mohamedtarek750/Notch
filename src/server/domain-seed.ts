@@ -332,7 +332,7 @@ export async function seedDomain(
   );
   for (const r of records)
     await tx.query(
-      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT(tenant_id,id) DO NOTHING",
+      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT ON CONSTRAINT records_pkey DO NOTHING",
       [
         tenantId,
         r.id,

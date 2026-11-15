@@ -1086,7 +1086,7 @@ async function publishMap(input: Inputs, receipt: Receipt) {
   if (!proposalId) {
     const evidence = await db
       .tenant(input.ctx.tenantId)
-      .transaction((tx) => readCurrentEvidence(tx, input.ctx.tenantId));
+      .transaction((tx) => readCurrentEvidence(tx, input.ctx.tenantId, input.ctx.courseId));
     const payload = buildStagePayload(
       input.plan,
       input.inventory,

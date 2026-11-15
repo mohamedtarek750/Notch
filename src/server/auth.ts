@@ -30,6 +30,8 @@ export function assertDemoMode(): void {
 }
 export const SESSION_COOKIE = "tilwa_session";
 export const WORKSPACE_COOKIE = "tilwa_workspace";
+export const COURSE_COOKIE = "tilwa_course";
+export const DEFAULT_COURSE = "CET351";
 const ttl = 60 * 60 * 24 * 7;
 export function hashCode(code: string): string {
   return createHash("sha256").update(code).digest("hex");
@@ -132,12 +134,28 @@ export async function requireAuth(
   if (!rows[0]) throw new AppError(401, "UNAUTHORIZED");
   if (roles && !roles.includes(rows[0].role))
     throw new AppError(403, "FORBIDDEN");
+  // The open course is the one remembered for this browser, when the user may open it;
+  // otherwise the first course of the workspace, never one that merely sorts first.
+  const courses = (
+    await db
+      .tenant(data.tid)
+      .query<{ course_id: string }>(
+        "SELECT course_id FROM course_access WHERE tenant_id=$1 AND user_id=$2 AND active ORDER BY course_id",
+        [data.tid, data.uid],
+      )
+  ).rows.map((r) => r.course_id);
+  const wanted = cookieValue(request, COURSE_COOKIE);
   return {
     tenantId: data.tid,
     userId: data.uid,
     role: rows[0].role,
     name: rows[0].name,
-    courseId: "CET351",
+    courseId:
+      wanted && courses.includes(wanted)
+        ? wanted
+        : courses.includes(DEFAULT_COURSE)
+          ? DEFAULT_COURSE
+          : (courses[0] ?? DEFAULT_COURSE),
     locale: localeFrom(request),
     sessionId: data.sid,
   };
