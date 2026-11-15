@@ -29,7 +29,7 @@ const MAX_LECTURE_CONCEPTS = 24;
 const LINK_GROUP = 6;
 const UMBRELLA_PER_GROUP = 12;
 const UMBRELLA_PER_CONCEPT = 3;
-const UMBRELLA_CHARS = 1600;
+const UMBRELLA_CHARS = 2000;
 const EXCERPT_CHARS = 350;
 const MAX_CANDIDATES = 40;
 
@@ -40,7 +40,7 @@ Task: list the distinct concepts this lecture passage actually TEACHES (defines,
 - One concept per distinct idea. Do not fold several methods, assumptions, problems or remedies into one broad concept: a named method, a named assumption, a named failure case and its named fix are each their own concept.
 - Cover every teaching page: a page that explains something must be cited by at least one concept.
 - Skip course logistics, titles, bare code or figure placeholders, generic lists of advantages, and terms that are only mentioned.
-- For each concept give a key local to this response, a bilingual label, common aliases (abbreviations, alternative names), and the evidence IDs of the pages that teach it. At most 14 concepts.`;
+- For each concept give a key local to this response, a bilingual label, common aliases (abbreviations, alternative names, and the name a standard textbook uses when it differs, e.g. "steepest descent" for gradient descent), and the evidence IDs of the pages that teach it. At most 14 concepts.`;
 const LINK_INSTRUCTIONS = `${EXTRACTION_POLICY}
 Task: decide what a student must already understand BEFORE each lecture concept, using the umbrella reference passages. Read every umbrella passage.
 Rules:
@@ -51,6 +51,7 @@ Rules:
 - State a dependency whenever an umbrella passage shows it: the dependent "requires", "is built on", "is derived from", "is defined in terms of", "applies" or "uses" the prerequisite, the learner needs it "first" or "before", or the passage's own definition, formula or procedure for the dependent is written in terms of the prerequisite (for example an update rule that is computed from a gradient depends on the gradient). Mere co-occurrence or similarity is NOT a prerequisite.
 - Consider every lecture concept in turn, including dependencies between two lecture concepts; do not stop after the first concept that has clear evidence.
 - Every edge MUST cite at least one supplied evidence ID whose text shows that dependency: an umbrella evidence ID, or a lectureEvidenceId when the lecture excerpt itself presents one lecture concept as a kind of, a part of, or built from another lecture concept.
+- The umbrella reference is the main source. For EVERY lecture concept, first look in the umbrella passages for what it is defined from, derived from or computed with, and state that dependency citing the umbrella passage; add a foundation when the passage relies on background the lecture does not teach. Cite a lectureEvidenceId only when no umbrella passage shows the dependency.
 - type "prerequisite": the dependent cannot be understood without it. type "optional_bridge": helpful background that is not required.
 - A tool or programming language used in an example is never a prerequisite of the mathematical idea.
 - At most 3 direct prerequisites per concept; prefer the most immediate one over a distant ancestor. If the passages show no dependency for a concept, return no edge for it.
@@ -409,19 +410,35 @@ export async function extractPrerequisites(
       if (w.length > 3) frequency.set(w, (frequency.get(w) ?? 0) + 1);
   const rarity = (w: string) =>
     1 + Math.log(umbrella.length / (frequency.get(w) ?? 1));
-  const window = (text: string, hit: string[]) => {
+  /** The part of a long page around the place (0..1) where the concept is named. */
+  const window = (text: string, at: number) => {
     if (text.length <= UMBRELLA_CHARS) return text;
-    const lower = text.toLowerCase();
-    const at = hit
-      .map((h) => lower.indexOf(h))
-      .filter((n) => n >= 0)
-      .sort((a, b) => a - b)[0];
     const start = Math.max(
       0,
-      Math.min((at ?? 0) - 300, text.length - UMBRELLA_CHARS),
+      Math.min(
+        Math.round(at * text.length) - 400,
+        text.length - UMBRELLA_CHARS,
+      ),
     );
     return text.slice(start, start + UMBRELLA_CHARS);
   };
+  const umbrellaSquashed = new Map(
+    umbrella.map((e) => [e.id, umbrellaText.get(e.id)!.replace(/ /g, "")]),
+  );
+  // Contents, preface, index and bibliography pages name everything and explain nothing.
+  const frontMatter = (text: string) => {
+    const tokens = text.trim().split(" ");
+    const numbers = tokens.filter((w) => /^\d+$/.test(w)).length;
+    return (
+      /\b(contents|index|preface|bibliography|references)\b/.test(
+        tokens.slice(0, 8).join(" "),
+      ) ||
+      (tokens.length > 80 && numbers / tokens.length > 0.2)
+    );
+  };
+  const teaching = umbrella.filter(
+    (e) => !frontMatter(umbrellaText.get(e.id)!),
+  );
   const endpoints = new Map<string, Concept>();
   const edges: Edge[] = [];
   const all = [...lectureConcepts.values()];
@@ -429,36 +446,55 @@ export async function extractPrerequisites(
   for (let i = 0; i < all.length; i += LINK_GROUP) {
     const group = all.slice(i, i + LINK_GROUP);
     const groupIds = new Set(group.map((c) => c.id));
-    // Each concept picks its own best passages, so one concept with many matching
-    // pages cannot use up the whole budget. Rare words weigh more than words that
-    // appear on most pages of the reference ("function", "network").
-    const hints = new Map<string, string[]>();
-    const ranked = group.map((c) => {
-      const terms = names(c);
+    // Each concept picks the pages that actually discuss it: pages where its name
+    // recurs, written in any spacing ("back-propagation", "learning-rate"), ahead of
+    // pages that only share a word. Contents, preface and index pages are skipped.
+    const hints = new Map<string, number>();
+    const phrasesOf = (c: Concept) => [
+      ...new Set(
+        names(c)
+          .map((n) => n.replace(/ /g, "").replace(/s$/, ""))
+          .filter((n) => n.length >= 4),
+      ),
+    ];
+    const groupPhrases = group.map(phrasesOf);
+    const ranked = group.map((c, index) => {
+      const phrases = groupPhrases[index];
       const words = [
         ...new Set(
-          terms
+          names(c)
             .flatMap((term) => term.split(" "))
             .filter((w) => w.length > 3 && !genericWords.has(w)),
         ),
       ];
-      return umbrella
+      return teaching
         .map((e) => {
           const text = umbrellaText.get(e.id)!;
-          const hit = [
-            ...terms.filter((term) => text.includes(` ${term} `)),
-            ...words.filter((w) => text.includes(` ${w} `)),
-          ];
+          const squashed = umbrellaSquashed.get(e.id)!;
+          let repeats = 0,
+            at = -1;
+          for (const phrase of phrases) {
+            const n = squashed.split(phrase).length - 1;
+            if (n > repeats) {
+              repeats = n;
+              at = squashed.indexOf(phrase) / squashed.length;
+            }
+          }
+          const shared = words.reduce(
+            (sum, w) => sum + (text.includes(` ${w} `) ? rarity(w) : 0),
+            0,
+          );
+          // A page that also names other concepts of the lecture can show how they relate.
+          const company = groupPhrases.filter(
+            (other, k) =>
+              k !== index && other.some((phrase) => squashed.includes(phrase)),
+          ).length;
           const score =
-            4 * terms.filter((term) => text.includes(` ${term} `)).length +
-            words.reduce(
-              (sum, w) => sum + (text.includes(` ${w} `) ? rarity(w) : 0),
-              0,
-            );
-          return { e, score, hit };
+            6 * Math.min(repeats, 8) + (repeats ? 2 * company : 0) + shared / 2;
+          return { e, score, at, order: e.page ?? 0 };
         })
         .filter((r) => r.score > 0)
-        .sort((a, b) => b.score - a.score)
+        .sort((a, b) => b.score - a.score || a.order - b.order)
         .slice(0, UMBRELLA_PER_CONCEPT);
     });
     const passages: (typeof umbrella)[number][] = [];
@@ -466,7 +502,7 @@ export async function extractPrerequisites(
       for (const list of ranked) {
         const r = list[rank];
         if (!r) continue;
-        hints.set(r.e.id, [...(hints.get(r.e.id) ?? []), ...r.hit]);
+        if (r.at >= 0 && !hints.has(r.e.id)) hints.set(r.e.id, r.at);
         if (
           passages.length < UMBRELLA_PER_GROUP &&
           !passages.some((e) => e.id === r.e.id)
@@ -475,10 +511,7 @@ export async function extractPrerequisites(
       }
     // A reference page is longer than the budget: send the part around the match.
     const snippets = new Map(
-      passages.map((e) => [
-        e.id,
-        window(e.text_content, hints.get(e.id) ?? []),
-      ]),
+      passages.map((e) => [e.id, window(e.text_content, hints.get(e.id) ?? 0)]),
     );
     if (!passages.length) {
       unsupported.push(...group.map((c) => c.id));
