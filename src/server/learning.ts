@@ -192,6 +192,85 @@ const actionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("start-exam"), studentId: str }),
   z.object({ action: z.literal("end-exam"), studentId: str }),
 ]);
+const LECTURE_CHECK = "lecture:";
+const LECTURE_CHECK_QUESTIONS = 5;
+/**
+ * The concepts each current lecture teaches, read from the published tree: a concept
+ * belongs to the lecture whose approved page it cites first.
+ */
+export async function lectureConcepts(tx: Queryable, ctx: AuthContext) {
+  const pages = (
+    await tx.query<{ id: string; source_key: string; title: string }>(
+      "SELECT c.id,v.source_key,v.title FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND v.role='instructor' AND v.current_version=true",
+      [ctx.tenantId, ctx.courseId],
+    )
+  ).rows;
+  const lectureOf = new Map(pages.map((p) => [p.id, p]));
+  const graph = (
+    await tx.query<Row>(
+      "SELECT * FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release' ORDER BY created_at DESC,id DESC LIMIT 1",
+      [ctx.tenantId, ctx.courseId],
+    )
+  ).rows[0]?.data.graph;
+  const lectures = new Map<
+    string,
+    { key: string; title: string; conceptIds: string[] }
+  >();
+  for (const concept of graph?.concepts ?? []) {
+    if (concept.scope === "foundation") continue;
+    const page = (concept.evidenceIds ?? [])
+      .map((id: string) => lectureOf.get(id))
+      .find(Boolean);
+    if (!page) continue;
+    const lecture = lectures.get(page.source_key) ?? {
+      key: page.source_key,
+      title: page.title,
+      conceptIds: [] as string[],
+    };
+    lecture.conceptIds.push(concept.id);
+    lectures.set(page.source_key, lecture);
+  }
+  return [...lectures.values()].sort((a, b) =>
+    a.title.localeCompare(b.title, undefined, { numeric: true }),
+  );
+}
+/** The short check offered after each lecture: which exist, and the learner's last result. */
+async function lectureChecks(
+  tx: Queryable,
+  ctx: AuthContext,
+  results: LearningRecord[],
+) {
+  const lectures = await lectureConcepts(tx, ctx);
+  if (!lectures.length) return [];
+  const questions = (
+    await tx.query<{ objective: string; n: string }>(
+      "SELECT data->>'objectiveId' AS objective,count(*) AS n FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='item' AND data->>'approved'='true' AND COALESCE(data->>'protected','false')='false' AND data->>'kind' IN ('choice','transfer') GROUP BY 1",
+      [ctx.tenantId, ctx.courseId],
+    )
+  ).rows;
+  return lectures.map((lecture) => {
+    const last = results
+      .filter((r) => r.data.examId === LECTURE_CHECK + lecture.key)
+      .sort((a, b) => String(b.data.at).localeCompare(String(a.data.at)))[0];
+    return {
+      id: LECTURE_CHECK + lecture.key,
+      title: lecture.title,
+      concepts: lecture.conceptIds.length,
+      questions: lecture.conceptIds.reduce(
+        (n, id) =>
+          n + Number(questions.find((q) => q.objective === `c:${id}`)?.n ?? 0),
+        0,
+      ),
+      last: last
+        ? {
+            correct: last.data.correct,
+            served: last.data.served,
+            at: last.data.at,
+          }
+        : null,
+    };
+  });
+}
 async function get(
   tx: Queryable,
   ctx: AuthContext,
@@ -993,6 +1072,14 @@ export async function workspace(ctx: AuthContext) {
       tutorStrictness: "hints-then-answer",
     },
     mockResults: of("mock_result"),
+    lectureChecks:
+      ctx.role === "student"
+        ? await lectureChecks(
+            conn,
+            ctx,
+            of("mock_result").filter((r) => r.ownerId === ctx.userId),
+          )
+        : undefined,
     nudges: ctx.role === "student" ? of("nudge") : undefined,
     consent:
       ctx.role === "student"
@@ -1594,10 +1681,23 @@ export async function learningAction(
     }
     if (a.action === "mock-start") {
       role(ctx, "student");
-      const exam = await get(tx, ctx, a.examId, "exam");
-      const wanted = (exam.data.concepts as any[])
-        .sort((x, y) => y.weight - x.weight)
-        .map((c) => `c:${c.conceptId}`);
+      // The same quiz serves two purposes: an exam rehearsal, or the short check of one lecture.
+      const lecture = a.examId.startsWith(LECTURE_CHECK)
+        ? (await lectureConcepts(tx, ctx)).find(
+            (l) => LECTURE_CHECK + l.key === a.examId,
+          )
+        : null;
+      if (a.examId.startsWith(LECTURE_CHECK) && !lecture)
+        throw new AppError(404, "NOT_FOUND");
+      const exam = lecture
+        ? { id: a.examId }
+        : await get(tx, ctx, a.examId, "exam");
+      const limit = lecture ? LECTURE_CHECK_QUESTIONS : 10;
+      const wanted = lecture
+        ? lecture.conceptIds.map((id) => `c:${id}`)
+        : ((exam as LearningRecord).data.concepts as any[])
+            .sort((x, y) => y.weight - x.weight)
+            .map((c) => `c:${c.conceptId}`);
       const items = (
         await tx.query<Row>(
           "SELECT * FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='item' AND data->>'approved'='true' AND COALESCE(data->>'protected','false')='false' AND data->>'kind' IN ('choice','transfer') ORDER BY id",
@@ -1612,18 +1712,21 @@ export async function learningAction(
           )
         ).rows.map((r) => r.data.familyId),
       );
-      const pools = wanted.map((objectiveId) =>
-        items.filter(
-          (i) =>
-            i.data.objectiveId === objectiveId && !seen.has(i.data.familyId),
-        ),
-      );
+      const pools = wanted.map((objectiveId) => {
+        const mine = items.filter((i) => i.data.objectiveId === objectiveId);
+        const unseen = mine.filter((i) => !seen.has(i.data.familyId));
+        // An exam rehearsal uses unseen questions only. A lecture check prefers them, and
+        // repeats a seen one rather than leave a concept of the lecture unchecked.
+        return lecture
+          ? [...unseen, ...mine.filter((i) => seen.has(i.data.familyId))]
+          : unseen;
+      });
       // Round-robin across the exam's concepts, heaviest first, so one concept cannot fill the quiz.
       const picked: LearningRecord[] = [];
-      for (let round = 0; picked.length < 10; round++) {
+      for (let round = 0; picked.length < limit; round++) {
         const before = picked.length;
         for (const pool of pools)
-          if (pool[round] && picked.length < 10) picked.push(pool[round]);
+          if (pool[round] && picked.length < limit) picked.push(pool[round]);
         if (picked.length === before) break;
       }
       const served: { item: LearningRecord; deliveryId: string }[] = [];

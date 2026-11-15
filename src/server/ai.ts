@@ -1160,6 +1160,12 @@ export async function tutor(
             ladderKey,
             answerMode,
             correctable: true,
+            // Which concepts the question is about: a sign of where the learner needs help.
+            conceptIds: graph
+              ? conceptsNamed(prepared.effectiveQuestion, graph)
+                  .map((c) => c.id)
+                  .slice(0, 5)
+              : [],
           }),
         ],
       );

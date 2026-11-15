@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "./db";
 import { authorizeCourse, type AuthContext } from "./auth";
 import { AppError } from "./errors";
-import { learningPath } from "./learning";
+import { learningPath, lectureConcepts } from "./learning";
 
 /**
  * Instructor dashboard (IN8–IN15). Every figure comes from queries and fixed rules on the
@@ -12,6 +12,7 @@ import { learningPath } from "./learning";
  */
 const SMALL_GROUP = 5;
 const INACTIVE_DAYS = 7;
+const TUTOR_QUESTIONS_FLAG = 3;
 type Row = {
   id: string;
   kind: string;
@@ -118,7 +119,7 @@ export async function instructorDashboard(
   const ids = students.map((s) => s.user_id);
   const records = (
     await conn.query<Row>(
-      "SELECT id,kind,owner_id,data,created_at FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind IN ('state','attempt','diagnosis','help_request','content_gap','tutor_memory','nudge','approved_answer') AND (owner_id IS NULL OR owner_id=ANY($3::text[])) ORDER BY created_at",
+      "SELECT id,kind,owner_id,data,created_at FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind IN ('state','attempt','diagnosis','help_request','content_gap','tutor_memory','nudge','approved_answer','mock_result') AND (owner_id IS NULL OR owner_id=ANY($3::text[])) ORDER BY created_at",
       [ctx.tenantId, ctx.courseId, ids],
     )
   ).rows;
@@ -256,6 +257,25 @@ export async function instructorDashboard(
         });
       if (repeated.length)
         reasons.push({ kind: "repeated-diagnosis", label: repeated[0].label });
+      // Several tutor questions about one concept in a week: the learner is working at it
+      // and may be stuck, even when their answers are correct.
+      const asked = new Map<string, number>();
+      for (const m of of("tutor_memory"))
+        if (
+          m.owner_id === s.user_id &&
+          new Date(m.created_at).getTime() >= now - 7 * 86400000
+        )
+          for (const id of (m.data.conceptIds as string[] | undefined) ?? [])
+            asked.set(id, (asked.get(id) ?? 0) + 1);
+      const most = [...asked].sort((a, b) => b[1] - a[1])[0];
+      if (most && most[1] >= TUTOR_QUESTIONS_FLAG)
+        reasons.push({
+          kind: "asks-tutor",
+          value: most[1],
+          label:
+            concepts.find((c) => c.objectiveId === `c:${most[0]}`)?.label ??
+            null,
+        });
       if (inactive !== null && inactive >= INACTIVE_DAYS)
         reasons.push({ kind: "inactive", value: inactive });
       if (inactive === null) reasons.push({ kind: "not-started" });
@@ -388,6 +408,27 @@ export async function instructorDashboard(
     atRisk,
     summary,
     signup,
+    // How the class did on the short check after each lecture (each learner's latest try).
+    lectureChecks: (await lectureConcepts(conn, ctx)).map((lecture) => {
+      const latest = new Map<string, Row>();
+      for (const r of of("mock_result"))
+        if (r.data.examId === "lecture:" + lecture.key && r.owner_id)
+          latest.set(r.owner_id, r);
+      const tries = [...latest.values()].filter((r) => r.data.served > 0);
+      return {
+        id: "lecture:" + lecture.key,
+        title: lecture.title,
+        taken: tries.length,
+        averagePercent: tries.length
+          ? Math.round(
+              (100 *
+                tries.reduce((n, r) => n + r.data.correct / r.data.served, 0)) /
+                tries.length,
+            )
+          : null,
+        thinData: tries.length < SMALL_GROUP,
+      };
+    }),
     helpRequests: of("help_request")
       .filter((h) => h.data.status === "open")
       .map((h) => ({

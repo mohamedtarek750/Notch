@@ -250,6 +250,22 @@ export function StudentHome({
             </Button>
           )}
         </Box>
+        {(data.lectureChecks || []).some(
+          (c: any) => c.questions > 0 && !c.last,
+        ) && (
+          <Box>
+            <h2>{t("اختبار المحاضرة جاهز", "A lecture check is ready")}</h2>
+            <p>
+              {t(
+                `خمسة أسئلة قصيرة على «${(data.lectureChecks as any[]).find((c) => c.questions > 0 && !c.last).title}» لتعرف ما ثبت وما يحتاج إلى مراجعة.`,
+                `Five short questions on “${(data.lectureChecks as any[]).find((c) => c.questions > 0 && !c.last).title}” to see what stuck and what needs review.`,
+              )}
+            </p>
+            <Button primary onClick={() => go("exam")}>
+              {t("ابدأ الاختبار", "Take the check")}
+            </Button>
+          </Box>
+        )}
         {exam && (
           <Box>
             <h2>{t("جاهزية الامتحان", "Exam readiness")}</h2>
@@ -1217,6 +1233,20 @@ export function ExamReadiness({
     M(null);
     R(r);
   };
+  // One quiz serves an exam rehearsal and the short check after a lecture.
+  const start = async (examId: string) => {
+    const m = await perform("mock-start", { examId });
+    if (m?.items?.length) {
+      answered.current = new Set();
+      shownAt.current = Date.now();
+      I(0);
+      A("");
+      F([]);
+      R(null);
+      L(m.secondsAllowed);
+      M({ ...m, examId, startedAt: Date.now() });
+    } else R({ served: 0, answered: 0, correct: 0, concepts: [], empty: true });
+  };
   useEffect(() => {
     if (!mock) return;
     const timer = setInterval(() => {
@@ -1230,7 +1260,8 @@ export function ExamReadiness({
     }, 1000);
     return () => clearInterval(timer);
   }, [mock]);
-  if (!readiness.length)
+  const checks: any[] = data.lectureChecks || [];
+  if (!readiness.length && !checks.length && !mock && !result)
     return (
       <>
         <div className="pageHead">
@@ -1339,7 +1370,15 @@ export function ExamReadiness({
       </div>
       {result && (
         <Box>
-          <h2>{t("نتيجة الاختبار التجريبي", "Mock quiz result")}</h2>
+          <h2>{t("نتيجة الاختبار", "Quiz result")}</h2>
+          {result.empty && (
+            <p>
+              {t(
+                "لا توجد أسئلة جديدة لم ترها بعد. اطلب من مدرّسك إضافة أسئلة، أو تدرّب على المفاهيم من الصفحة الرئيسية.",
+                "There are no new questions you have not seen. Ask your instructor for more, or practise the concepts from the home page.",
+              )}
+            </p>
+          )}
           <p>
             {t(
               `أجبت ${result.answered} من ${result.served}، منها ${result.correct} صحيحة. ما لم تُجب عنه يُحسب هنا فقط، لا في إتقانك.`,
@@ -1370,6 +1409,47 @@ export function ExamReadiness({
               </div>
             );
           })}
+        </Box>
+      )}
+      {checks.length > 0 && (
+        <Box>
+          <h2>
+            {t("اختبار قصير بعد كل محاضرة", "A short check after each lecture")}
+          </h2>
+          <p>
+            {t(
+              "خمسة أسئلة على مفاهيم المحاضرة. إجاباتك تُحتسب في مستواك مثل التدريب، فتعرف مباشرة ما يحتاج إلى مراجعة.",
+              "Five questions on the lecture's concepts. Your answers count toward your level like practice, so you see at once what needs review.",
+            )}
+          </p>
+          {checks.map((c) => (
+            <div className="row" key={c.id}>
+              <span>
+                <strong>{c.title}</strong>
+                <br />
+                <small>
+                  {c.last
+                    ? t(
+                        `آخر نتيجة: ${c.last.correct} من ${c.last.served}`,
+                        `Last result: ${c.last.correct} of ${c.last.served}`,
+                      )
+                    : c.questions
+                      ? t("لم تُجرِه بعد", "Not taken yet")
+                      : t(
+                          "لم ينشر المدرّس أسئلة لهذه المحاضرة بعد",
+                          "Your instructor has not published questions for this lecture yet",
+                        )}
+                </small>
+              </span>
+              {c.questions > 0 && (
+                <Button primary={!c.last} onClick={() => void start(c.id)}>
+                  {c.last
+                    ? t("أعد الاختبار", "Take it again")
+                    : t("ابدأ الاختبار", "Take the check")}
+                </Button>
+              )}
+            </div>
+          ))}
         </Box>
       )}
       {readiness.map((r) => (
@@ -1414,29 +1494,7 @@ export function ExamReadiness({
             </div>
           ))}
           <div className="actions">
-            <Button
-              primary
-              onClick={async () => {
-                const m = await perform("mock-start", { examId: r.examId });
-                if (m?.items?.length) {
-                  answered.current = new Set();
-                  shownAt.current = Date.now();
-                  I(0);
-                  A("");
-                  F([]);
-                  R(null);
-                  L(m.secondsAllowed);
-                  M({ ...m, examId: r.examId, startedAt: Date.now() });
-                } else
-                  R({
-                    served: 0,
-                    answered: 0,
-                    correct: 0,
-                    concepts: [],
-                    empty: true,
-                  });
-              }}
-            >
+            <Button primary onClick={() => void start(r.examId)}>
               {t("ابدأ اختبارًا تجريبيًّا", "Take mock quiz")}
             </Button>
           </div>
