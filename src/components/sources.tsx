@@ -33,7 +33,8 @@ export function MaterialsPanel({
     [statuses, ST] = useState<Record<string, string>>({}),
     [selected, SL] = useState<any>(null),
     [page, P] = useState<any>(null),
-    [corrected, C] = useState("");
+    [corrected, C] = useState(""),
+    [slides, SD] = useState("");
   const [passage, PT] = useState(""),
     [sourceKey, SK] = useState("GFG-UMBRELLA"),
     [title, TI] = useState(""),
@@ -235,31 +236,93 @@ export function MaterialsPanel({
                       `في هذه النسخة ${selected.chunks.filter((c: any) => c.page && (c.text_content || "").length < 60).length} صفحة مصوّرة أو شبه فارغة من النص.`,
                       `This version has ${selected.chunks.filter((c: any) => c.page && (c.text_content || "").length < 60).length} image-only or nearly text-free pages.`,
                     )}{" "}
-                    <Button
-                      disabled={busy}
-                      onClick={async () => {
-                        const r = await act(() =>
-                          request(
-                            `/api/materials/${selected.material.id}`,
-                            { action: "transcribe" },
-                            lang,
-                          ),
-                        );
-                        if (r?.versionId) await open(r.versionId);
-                      }}
-                    >
-                      {t(
-                        "قراءة الصفحات المصوّرة بالنموذج",
-                        "Read image pages with the model",
-                      )}
-                    </Button>
-                    <small>
-                      {" "}
-                      {t(
-                        "حتى ٨ صفحات في كل مرة. تُنشأ نسخة جديدة وكل صفحاتها تنتظر مراجعتك مقابل الأصل.",
-                        "Up to 8 pages per run. A new version is created and every page awaits your check against the original.",
-                      )}
-                    </small>
+                    {selected.material.metadata?.extractedInBrowser ? (
+                      <>
+                        <label style={{ display: "block", marginTop: 8 }}>
+                          {t(
+                            "اختر ملف PDF نفسه ليقرأ النموذج صفحاته المصوّرة",
+                            "Choose the same PDF so the model can read its image pages",
+                          )}
+                          <input
+                            type="file"
+                            accept="application/pdf,.pdf"
+                            disabled={busy}
+                            onChange={async (e) => {
+                              const chosen = e.target.files?.[0];
+                              e.target.value = "";
+                              if (!chosen) return;
+                              const pages = selected.chunks
+                                .filter(
+                                  (c: any) =>
+                                    c.page &&
+                                    (c.text_content || "").length < 60,
+                                )
+                                .map((c: any) => c.page as number);
+                              SD("");
+                              const r = await act(() =>
+                                readImagePagesOfFile(
+                                  chosen,
+                                  selected.material.id,
+                                  pages,
+                                  lang,
+                                  (done, total) =>
+                                    SD(
+                                      t(
+                                        `النموذج يقرأ الشرائح المصوّرة… ${done} من ${total}`,
+                                        `The model is reading the image slides… ${done} of ${total}`,
+                                      ),
+                                    ),
+                                ),
+                              );
+                              if (r) {
+                                SD(
+                                  t(
+                                    `قرأ النموذج ${r.read} صفحة؛ ${r.unreadable} بلا محتوى مقروء.`,
+                                    `The model read ${r.read} pages; ${r.unreadable} had nothing readable.`,
+                                  ) + (r.stopped ? " " + r.stopped : ""),
+                                );
+                                await open(r.versionId);
+                              }
+                            }}
+                          />
+                        </label>
+                        <small role="status">
+                          {slides ||
+                            t(
+                              "تُنشأ نسخة جديدة وكل صفحاتها تنتظر مراجعتك مقابل الأصل.",
+                              "A new version is created and every page awaits your check against the original.",
+                            )}
+                        </small>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          disabled={busy}
+                          onClick={async () => {
+                            const r = await act(() =>
+                              request(
+                                `/api/materials/${selected.material.id}`,
+                                { action: "transcribe" },
+                                lang,
+                              ),
+                            );
+                            if (r?.versionId) await open(r.versionId);
+                          }}
+                        >
+                          {t(
+                            "قراءة الصفحات المصوّرة بالنموذج",
+                            "Read image pages with the model",
+                          )}
+                        </Button>
+                        <small>
+                          {" "}
+                          {t(
+                            "حتى ٨ صفحات في كل مرة. تُنشأ نسخة جديدة وكل صفحاتها تنتظر مراجعتك مقابل الأصل.",
+                            "Up to 8 pages per run. A new version is created and every page awaits your check against the original.",
+                          )}
+                        </small>
+                      </>
+                    )}
                   </p>
                 )}
               <span className="badge lavender">
@@ -542,6 +605,101 @@ export function MaterialsPanel({
 const PART_PAGES = 150;
 /** Read a large PDF's text in the browser and send it as page text, part by part, so the
  * upload size and page limits do not apply. Scanned pages come through empty. */
+const SLIDES_PER_REQUEST = 4;
+const MAX_SLIDES_PER_UPLOAD = 120;
+/** Render pages that have no text layer to pictures and let the model read them, a few
+ * per request. Each request creates a new revision, so the version id moves forward. */
+async function readSlidePictures(
+  pdf: any,
+  versionId: string,
+  pages: number[],
+  lang: Lang,
+  progress: (done: number, total: number) => void,
+) {
+  let read = 0,
+    unreadable = 0,
+    current = versionId,
+    stopped = "";
+  const wanted = pages.slice(0, MAX_SLIDES_PER_UPLOAD);
+  for (let i = 0; i < wanted.length; i += SLIDES_PER_REQUEST) {
+    const images: { page: number; mime: string; data: string }[] = [];
+    for (const n of wanted.slice(i, i + SLIDES_PER_REQUEST)) {
+      const page = await pdf.getPage(n);
+      let picture = "";
+      // Shrink until the picture fits the request; slides stay readable at this size.
+      for (const [width, quality] of [
+        [1100, 0.6],
+        [900, 0.5],
+        [700, 0.4],
+      ]) {
+        const base = page.getViewport({ scale: 1 });
+        const viewport = page.getViewport({ scale: width / base.width });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(viewport.width);
+        canvas.height = Math.round(viewport.height);
+        await page.render({
+          canvas,
+          canvasContext: canvas.getContext("2d")!,
+          viewport,
+        } as any).promise;
+        picture = canvas.toDataURL("image/jpeg", quality).split(",")[1] ?? "";
+        if (picture.length < 560_000) break;
+      }
+      page.cleanup();
+      if (picture.length >= 100 && picture.length < 600_000)
+        images.push({ page: n, mime: "image/jpeg", data: picture });
+      else unreadable++;
+    }
+    if (images.length) {
+      try {
+        const r = await request(
+          `/api/materials/${current}`,
+          { action: "transcribe-images", images },
+          lang,
+        );
+        current = r.versionId ?? current;
+        read += r.transcribed ?? 0;
+        unreadable += r.unreadable ?? 0;
+      } catch (e) {
+        // Usually the model's rate limit: keep what was read and let the rest be retried.
+        stopped = (e as Error).message;
+        break;
+      }
+    }
+    progress(Math.min(i + SLIDES_PER_REQUEST, wanted.length), wanted.length);
+  }
+  return {
+    versionId: current,
+    read,
+    unreadable,
+    left: pages.length - read - unreadable,
+    stopped,
+  };
+}
+/** For material already uploaded: pick the same PDF again and read its image pages. */
+async function readImagePagesOfFile(
+  file: File,
+  versionId: string,
+  pages: number[],
+  lang: Lang,
+  progress: (done: number, total: number) => void,
+) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+  const task = pdfjs.getDocument({ data: await file.arrayBuffer() });
+  const pdf = await task.promise;
+  try {
+    return await readSlidePictures(
+      pdf,
+      versionId,
+      pages.filter((n) => n <= pdf.numPages),
+      lang,
+      progress,
+    );
+  } finally {
+    await task.destroy();
+  }
+}
 async function uploadLargePdf(
   file: File,
   options: {
@@ -551,6 +709,7 @@ async function uploadLargePdf(
     confirmed: boolean;
     lang: Lang;
     progress: (done: number, total: number) => void;
+    slides?: (done: number, total: number) => void;
   },
 ) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -559,7 +718,9 @@ async function uploadLargePdf(
   const pdf = await task.promise;
   const total = pdf.numPages;
   let parts = 0,
-    empty = 0;
+    empty = 0,
+    read = 0,
+    stopped = "";
   for (let start = 1; start <= total; start += PART_PAGES) {
     const end = Math.min(total, start + PART_PAGES - 1);
     const pages: { page: number; text: string }[] = [];
@@ -572,12 +733,12 @@ async function uploadLargePdf(
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 30000);
-      if (text.length < 20) empty++;
+      if (text.length < 60) empty++;
       pages.push({ page: n, text });
       page.cleanup();
       if (n % 10 === 0 || n === end) options.progress(n, total);
     }
-    await request(
+    const part = await request(
       "/api/materials",
       {
         action: "extracted-pages",
@@ -594,9 +755,22 @@ async function uploadLargePdf(
       options.lang,
     );
     parts++;
+    // Lecture slides that are pictures are read by the model straight away.
+    const pictures = pages.filter((p) => p.text.length < 60).map((p) => p.page);
+    if (options.mode === "lecture" && pictures.length && part?.id && !stopped) {
+      const result = await readSlidePictures(
+        pdf,
+        part.id,
+        pictures,
+        options.lang,
+        options.slides ?? (() => {}),
+      );
+      read += result.read;
+      stopped = result.stopped;
+    }
   }
   await task.destroy();
-  return { pages: total, parts, empty };
+  return { pages: total, parts, empty, read, stopped };
 }
 function UmbrellaUpload({
   mode,
@@ -660,14 +834,28 @@ function UmbrellaUpload({
                       `Reading the file in your browser… ${done} of ${total} pages`,
                     ),
                   ),
+                slides: (done, total) =>
+                  DN(
+                    t(
+                      `النموذج يقرأ الشرائح المصوّرة… ${done} من ${total}`,
+                      `The model is reading the image slides… ${done} of ${total}`,
+                    ),
+                  ),
               }),
             );
             if (result)
               DN(
                 t(
-                  `تم الاستيراد: ${result.pages} صفحة في ${result.parts} جزءًا، كلها بانتظار المراجعة. الصفحات المصوّرة بلا نص: ${result.empty}.`,
-                  `Imported: ${result.pages} pages in ${result.parts} parts, all pending review. Image-only pages without text: ${result.empty}.`,
-                ),
+                  `تم الاستيراد: ${result.pages} صفحة في ${result.parts} جزءًا، كلها بانتظار المراجعة. الصفحات المصوّرة: ${result.empty}، قرأ النموذج منها ${result.read}.`,
+                  `Imported: ${result.pages} pages in ${result.parts} parts, all pending review. Image-only pages: ${result.empty}, of which the model read ${result.read}.`,
+                ) +
+                  (result.stopped
+                    ? " " +
+                      t(
+                        `توقفت القراءة: ${result.stopped} افتح المحاضرة لاحقًا وأكمل قراءة الصفحات المصوّرة.`,
+                        `Reading stopped: ${result.stopped} Open the lecture later to finish reading the image pages.`,
+                      )
+                    : ""),
               );
             return;
           }
