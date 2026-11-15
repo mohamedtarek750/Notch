@@ -7,6 +7,7 @@ import {
   reviewProposal,
   publishKnowledge,
   editTree,
+  saveTreeLayout,
   stageComprehensiveGraph,
   proposalScope,
   type Graph,
@@ -40,6 +41,7 @@ const input = z.object({
     "bank-settings",
     "generate-bank",
     "tree-edit",
+    "tree-layout",
   ]),
   settings: z.unknown().optional(),
   conceptIds: z.unknown().optional(),
@@ -100,6 +102,8 @@ export async function POST(req: Request) {
           lectureSourceKey: body.lectureSourceKey,
         }),
       );
+    if (body.action === "tree-layout")
+      return Response.json(await saveTreeLayout(ctx, body.data));
     if (body.action === "tree-edit")
       return Response.json(await editTree(ctx, body.data));
     if (body.action === "bank-settings")
