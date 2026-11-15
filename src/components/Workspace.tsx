@@ -34,7 +34,8 @@ import {
   X,
 } from "lucide-react";
 import { FieldArt } from "./FieldArt";
-import { ClassDashboard } from "./instructor";
+import { ClassDashboard, CourseReport } from "./instructor";
+import { AdvisorDashboard } from "./advisor";
 import { CourseConceptMap } from "./CourseConceptMap";
 import { MaterialsPanel, KnowledgePanel, LaunchPanel } from "./sources";
 import {
@@ -43,6 +44,9 @@ import {
   DailyReview,
   ExamReadiness,
   TutorChat,
+  ConsentGate,
+  PrivacyBox,
+  CourseFinish,
   type LearnOptions,
 } from "./student";
 type Lang = "ar" | "en";
@@ -135,6 +139,7 @@ const INSTRUCTOR_NAV = [
   ["bank", "٣ · بنك الأسئلة", "3 · Question bank", NotebookPen],
   ["launch", "٤ · الإطلاق", "4 · Launch", ShieldCheck],
   ["teaching", "متابعة الفصل", "Class dashboard", Users],
+  ["report", "تقرير المقرر", "Course report", ClipboardList],
   ["map", "خريطة المقرر", "Course map", Network],
 ] as const;
 const ADVISOR_NAV = [["advising", "طلابي", "My students", Users]] as const;
@@ -174,6 +179,14 @@ export function Workspace({
       .then(async (r) => {
         if (cancelled) return;
         U(r.user);
+        // Each role opens on its own starting screen, also after a page reload.
+        V(
+          r.user?.role === "instructor"
+            ? "launch"
+            : r.user?.role === "advisor"
+              ? "advising"
+              : "home",
+        );
         await refresh();
       })
       .catch((e) => {
@@ -265,7 +278,7 @@ export function Workspace({
       await refresh();
       go(
         role === "instructor"
-          ? "materials"
+          ? "launch"
           : role === "advisor"
             ? "advising"
             : "home",
@@ -558,8 +571,24 @@ export function Workspace({
                 {t("إعادة المحاولة", "Retry")}
               </Button>
             </Box>
+          ) : user?.role === "student" && data.consent === null ? (
+            <ConsentGate lang={lang} t={t} onError={E} done={() => refresh()} />
           ) : (
             <>
+              {view === "finish" && (
+                <CourseFinish
+                  data={data}
+                  lang={lang}
+                  t={t}
+                  perform={performQuiet}
+                  refresh={refresh}
+                  back={() => go("home")}
+                  onError={E}
+                />
+              )}
+              {view === "report" && (
+                <CourseReport lang={lang} t={t} onError={E} />
+              )}
               {view === "home" && user?.role === "student" && (
                 <StudentHome
                   data={data}
@@ -859,13 +888,7 @@ export function Workspace({
               )}
               {view === "qms" && <Quality data={data} t={t} lang={lang} />}
               {view === "advising" && (
-                <Advising
-                  data={data}
-                  t={t}
-                  lang={lang}
-                  perform={perform}
-                  busy={busy}
-                />
+                <AdvisorDashboard lang={lang} t={t} onError={E} />
               )}
               {view === "settings" && (
                 <>
@@ -935,6 +958,15 @@ export function Workspace({
                       {t("تسجيل الخروج", "Sign out")}
                     </Button>
                   </Box>
+                  {user?.role === "student" && data.consent && (
+                    <PrivacyBox
+                      data={data}
+                      lang={lang}
+                      t={t}
+                      refresh={refresh}
+                      onError={E}
+                    />
+                  )}
                 </>
               )}
             </>

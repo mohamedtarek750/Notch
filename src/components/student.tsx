@@ -137,6 +137,29 @@ export function StudentHome({
             </button>
           </p>
         ))}
+      {data.courseEnd?.postTestOpen && (
+        <Box>
+          <h2>{t("نهاية المقرر", "End of course")}</h2>
+          <p>
+            {data.courseEnd.postTest
+              ? data.courseEnd.surveyDone
+                ? t(
+                    "أكملت الاختبار البعدي والاستبيان. افتح ملخصك.",
+                    "You finished the post-test and the survey. Open your summary.",
+                  )
+                : t("بقي استبيان قصير.", "A short survey is left.")
+              : t(
+                  "فتح مدرّسك الاختبار البعدي: يقيس ما تعلّمته في المقرر.",
+                  "Your instructor opened the post-test: it measures what you learned in the course.",
+                )}
+          </p>
+          <Button primary onClick={() => go("finish")}>
+            {data.courseEnd.postTest
+              ? t("متابعة", "Continue")
+              : t("ابدأ الاختبار البعدي", "Start the post-test")}
+          </Button>
+        </Box>
+      )}
       {!answered && !skipped && (
         <Box>
           <h2>{t("اختبار قصير للبداية", "A short check to begin")}</h2>
@@ -1605,5 +1628,493 @@ export function TutorChat({
         </Button>
       </form>
     </aside>
+  );
+}
+
+const post = (body: any, lang: Lang) => request("/api/course-end", body, lang);
+
+/** ST2: what is recorded and who sees it, before anything else. */
+export function ConsentGate({
+  lang,
+  t,
+  done,
+  onError,
+}: {
+  lang: Lang;
+  t: Translate;
+  done: () => void;
+  onError: (s: string) => void;
+}) {
+  const [platform, P] = useState(false),
+    [research, R] = useState(false);
+  return (
+    <>
+      <div className="pageHead">
+        <h1>{t("قبل أن تبدأ", "Before you start")}</h1>
+      </div>
+      <Box>
+        <p>
+          {t(
+            "تسجّل المنصة إجاباتك، ووقت الإجابة، والتلميحات التي استخدمتها، واللغة التي اخترتها، لتساعدك بشكل أفضل. مدرّسك يرى تقدّمك أنت. الباحثون يرون بيانات مجهولة الهوية فقط، وإن وافقت.",
+            "The platform records your answers, your response time, the hints you used and your language choices so it can help you better. Your instructor sees your individual progress. Researchers see only anonymized data, and only if you agree.",
+          )}
+        </p>
+        <label className="checklabel">
+          <input
+            type="checkbox"
+            checked={platform}
+            onChange={(e) => P(e.target.checked)}
+          />
+          {t(
+            "أوافق على استخدام المنصة (مطلوب)",
+            "I agree to use the platform (required)",
+          )}
+        </label>
+        <label className="checklabel">
+          <input
+            type="checkbox"
+            checked={research}
+            onChange={(e) => R(e.target.checked)}
+          />
+          {t(
+            "أوافق على استخدام بياناتي مجهولة الهوية في البحث (اختياري)",
+            "I agree to the anonymized use of my data in research (optional)",
+          )}
+        </label>
+        <p>
+          <small>
+            {t(
+              "يمكنك تغيير هذين الاختيارين في أي وقت من التفضيلات، وطلب حذف بياناتك. رفض البحث لا يغيّر شيئًا في ما تحصل عليه.",
+              "You can change these settings at any time from Preferences, and you can request deletion of your data. Declining research changes nothing about what you get.",
+            )}
+          </small>
+        </p>
+        <Button
+          primary
+          disabled={!platform}
+          onClick={async () => {
+            try {
+              await post({ action: "consent", platform: true, research }, lang);
+              done();
+            } catch (e) {
+              onError((e as Error).message);
+            }
+          }}
+        >
+          {t("متابعة", "Continue")}
+        </Button>
+      </Box>
+    </>
+  );
+}
+
+/** ST18 + SYS3: consent, download and deletion of the learner's own data. */
+export function PrivacyBox({
+  data,
+  lang,
+  t,
+  refresh,
+  onError,
+}: {
+  data: any;
+  lang: Lang;
+  t: Translate;
+  refresh: () => Promise<any>;
+  onError: (s: string) => void;
+}) {
+  const [confirm, C] = useState(false),
+    [asking, A] = useState(false),
+    [note, N] = useState("");
+  const research = data.consent?.research === true;
+  return (
+    <Box cls="end">
+      <h2>{t("بياناتي وخصوصيتي", "My data and privacy")}</h2>
+      <label className="checklabel">
+        <input
+          type="checkbox"
+          checked={research}
+          onChange={async (e) => {
+            try {
+              await post(
+                {
+                  action: "consent",
+                  platform: true,
+                  research: e.target.checked,
+                },
+                lang,
+              );
+              await refresh();
+              N(t("حُفظ اختيارك.", "Your choice was saved."));
+            } catch (err) {
+              onError((err as Error).message);
+            }
+          }}
+        />
+        {t(
+          "أوافق على استخدام بياناتي مجهولة الهوية في البحث",
+          "I agree to the anonymized use of my data in research",
+        )}
+      </label>
+      <div className="actions">
+        <Button
+          onClick={async () => {
+            try {
+              const mine = await request(
+                "/api/course-end?mine=1",
+                undefined,
+                lang,
+              );
+              const url = URL.createObjectURL(
+                new Blob([JSON.stringify(mine, null, 2)], {
+                  type: "application/json",
+                }),
+              );
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "my-tilwa-data.json";
+              a.click();
+              URL.revokeObjectURL(url);
+            } catch (err) {
+              onError((err as Error).message);
+            }
+          }}
+        >
+          {t("نزّل بياناتي", "Download my data")}
+        </Button>
+        <Button onClick={() => A(true)}>
+          {t("اطلب حذف بياناتي", "Request data deletion")}
+        </Button>
+      </div>
+      {asking && (
+        <div className="notice">
+          <p>
+            {research
+              ? t(
+                  "سيُحذف كل ما يرتبط بك: إجاباتك، إتقانك، محادثاتك مع المساعد وتفضيلاتك. لأنك وافقت على البحث، تبقى إجاباتك كصفوف مجهولة لا يمكن ربطها بك. لا يمكن التراجع.",
+                  "Everything linked to you will be deleted: your answers, mastery, tutor conversations and preferences. Because you agreed to research, your answers remain as anonymous rows that cannot be linked to you. This cannot be undone.",
+                )
+              : t(
+                  "سيُحذف كل شيء: إجاباتك، إتقانك، محادثاتك مع المساعد وتفضيلاتك. لن يبقى شيء. لا يمكن التراجع.",
+                  "Everything will be deleted: your answers, mastery, tutor conversations and preferences. Nothing remains. This cannot be undone.",
+                )}
+          </p>
+          <label className="checklabel">
+            <input
+              type="checkbox"
+              checked={confirm}
+              onChange={(e) => C(e.target.checked)}
+            />
+            {t("أفهم وأريد الحذف", "I understand and want my data deleted")}
+          </label>
+          <div className="actions">
+            <Button
+              primary
+              disabled={!confirm}
+              onClick={async () => {
+                try {
+                  const r = await post(
+                    { action: "delete-my-data", confirm: true },
+                    lang,
+                  );
+                  A(false);
+                  C(false);
+                  N(
+                    t(
+                      `حُذف ${r.deleted} سجلًّا.${r.anonymizedRowsKept ? ` بقي ${r.anonymizedRowsKept} صفًّا مجهولًا للبحث.` : ""}`,
+                      `${r.deleted} records deleted.${r.anonymizedRowsKept ? ` ${r.anonymizedRowsKept} anonymous rows remain for research.` : ""}`,
+                    ),
+                  );
+                  await refresh();
+                } catch (err) {
+                  onError((err as Error).message);
+                }
+              }}
+            >
+              {t("تأكيد الحذف", "Confirm deletion")}
+            </Button>
+            <Button onClick={() => A(false)}>{t("إلغاء", "Cancel")}</Button>
+          </div>
+        </div>
+      )}
+      {note && <p role="status">{note}</p>}
+    </Box>
+  );
+}
+
+const SURVEY: [string, string, string][] = [
+  ["usefulness", "المنصة ساعدتني على التعلّم", "The platform helped me learn"],
+  ["trust", "أثق في إجابات المساعد", "I trust the tutor's answers"],
+  ["language", "اللغة كانت مناسبة لي", "The language suited me"],
+  ["ease", "المنصة سهلة الاستخدام", "The platform was easy to use"],
+  ["hints", "التلميحات كانت مفيدة", "The hints were useful"],
+  [
+    "map",
+    "خريطة المهارات وصفت مستواي بدقة",
+    "The skill map described my level accurately",
+  ],
+  ["pace", "استطعت التعلّم بسرعتي", "I could learn at my own pace"],
+  ["recommend", "أنصح زملائي بها", "I would recommend it to classmates"],
+];
+
+/** ST19–ST21: post-test, survey and summary. */
+export function CourseFinish({
+  data,
+  lang,
+  t,
+  perform,
+  refresh,
+  back,
+  onError,
+}: {
+  data: any;
+  lang: Lang;
+  t: Translate;
+  perform: Perform;
+  refresh: () => Promise<any>;
+  back: () => void;
+  onError: (s: string) => void;
+}) {
+  const end = data.courseEnd || {};
+  const [test, T] = useState<any>(null),
+    [index, I] = useState(0),
+    [answer, A] = useState(""),
+    [left, L] = useState(0),
+    [ratings, R] = useState<Record<string, number>>({}),
+    [comment, C] = useState("");
+  const shownAt = useRef(0);
+  const finish = async (items: any[]) => {
+    try {
+      await post(
+        {
+          action: "posttest-finish",
+          deliveryIds: items.map((i) => i.deliveryId),
+        },
+        lang,
+      );
+      T(null);
+      await refresh();
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
+  useEffect(() => {
+    if (!test) return;
+    const timer = setInterval(() => {
+      const remaining = Math.max(
+        0,
+        test.secondsAllowed - Math.round((Date.now() - test.startedAt) / 1000),
+      );
+      L(remaining);
+      if (remaining === 0) void finish(test.items);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [test]);
+  if (test) {
+    const current = test.items[index];
+    const item = current.item.data;
+    return (
+      <>
+        <div className="pageHead">
+          <h1>{t("الاختبار البعدي", "Post-test")}</h1>
+          <p role="timer">
+            {t("الوقت المتبقي", "Time left")}: {Math.floor(left / 60)}:
+            {String(left % 60).padStart(2, "0")} ·{" "}
+            {t(
+              `سؤال ${index + 1} من ${test.items.length}`,
+              `Question ${index + 1} of ${test.items.length}`,
+            )}
+          </p>
+        </div>
+        <Box cls="practice">
+          <h2 dir="auto">{localized(item.stem, lang)}</h2>
+          <fieldset className="answer-options">
+            <legend>{t("إجابتك", "Your answer")}</legend>
+            {(item.options || []).map((o: any) => (
+              <label key={o.id} className={answer === o.id ? "selected" : ""}>
+                <input
+                  type="radio"
+                  name="posttest"
+                  checked={answer === o.id}
+                  onChange={() => A(o.id)}
+                />
+                <span dir="auto">{localized(o.label, lang)}</span>
+              </label>
+            ))}
+          </fieldset>
+          <div className="actions">
+            <Button
+              primary
+              disabled={!answer}
+              onClick={async () => {
+                await perform("attempt", {
+                  deliveryId: current.deliveryId,
+                  answer,
+                  elapsedMs: Date.now() - shownAt.current,
+                  idempotencyKey: crypto.randomUUID(),
+                });
+                A("");
+                shownAt.current = Date.now();
+                if (index + 1 >= test.items.length) await finish(test.items);
+                else I(index + 1);
+              }}
+            >
+              {index + 1 >= test.items.length
+                ? t("سلّم الاختبار", "Submit")
+                : t("التالي", "Next")}
+            </Button>
+          </div>
+        </Box>
+      </>
+    );
+  }
+  const nodes: Node[] = (data.path?.nodes || []).filter(
+    (n: Node) => n.objectiveId,
+  );
+  const ready = nodes.filter((n) => n.status === "secure");
+  const weak = nodes.filter((n) => n.status !== "secure");
+  const pre = (data.attempts || []).filter((a: any) => a.data.diagnostic);
+  const preShare = pre.length
+    ? Math.round(
+        (100 * pre.filter((a: any) => a.data.correct === true).length) /
+          pre.length,
+      )
+    : null;
+  const postShare = end.postTest
+    ? Math.round(
+        (100 * end.postTest.correct) / Math.max(1, end.postTest.served),
+      )
+    : null;
+  return (
+    <>
+      <div className="pageHead">
+        <h1>{t("نهاية المقرر", "End of course")}</h1>
+      </div>
+      {!end.postTest && (
+        <Box>
+          <h2>{t("الاختبار البعدي", "Post-test")}</h2>
+          <p>
+            {t(
+              "يساعدنا على قياس ما تعلّمته. مؤقَّت، وبلا تلميحات ولا مساعد أثناءه.",
+              "This helps us measure how much you learned. It is timed, with no hints and no tutor during it.",
+            )}
+          </p>
+          <Button
+            primary
+            onClick={async () => {
+              try {
+                const r = await post({ action: "posttest-start" }, lang);
+                if (!r.items.length) return back();
+                shownAt.current = Date.now();
+                I(0);
+                A("");
+                L(r.secondsAllowed);
+                T({ ...r, startedAt: Date.now() });
+              } catch (e) {
+                onError((e as Error).message);
+              }
+            }}
+          >
+            {t("ابدأ الاختبار البعدي", "Start the post-test")}
+          </Button>
+        </Box>
+      )}
+      {end.postTest && !end.surveyDone && (
+        <Box>
+          <h2>{t("رأيك في دقيقتين", "Your feedback, in two minutes")}</h2>
+          <p>
+            <small>
+              {t(
+                "١ = لا أوافق إطلاقًا، ٥ = أوافق تمامًا",
+                "1 = strongly disagree, 5 = strongly agree",
+              )}
+            </small>
+          </p>
+          {SURVEY.map(([id, ar, en]) => (
+            <div className="row" key={id}>
+              <span>{t(ar, en)}</span>
+              <span>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <label key={n} style={{ marginInlineStart: 8 }}>
+                    <input
+                      type="radio"
+                      name={`survey-${id}`}
+                      checked={ratings[id] === n}
+                      onChange={() => R({ ...ratings, [id]: n })}
+                      aria-label={`${t(ar, en)}: ${n}`}
+                    />{" "}
+                    {n}
+                  </label>
+                ))}
+              </span>
+            </div>
+          ))}
+          <label>
+            {t("تعليق (اختياري)", "Comment (optional)")}
+            <textarea
+              dir="auto"
+              value={comment}
+              onChange={(e) => C(e.target.value)}
+            />
+          </label>
+          <Button
+            primary
+            disabled={Object.keys(ratings).length < SURVEY.length}
+            onClick={async () => {
+              try {
+                await post({ action: "survey", ratings, comment }, lang);
+                await refresh();
+              } catch (e) {
+                onError((e as Error).message);
+              }
+            }}
+          >
+            {t("إرسال", "Submit")}
+          </Button>
+        </Box>
+      )}
+      {end.postTest && end.surveyDone && (
+        <Box>
+          <h2>{t("ملخص ما تعلّمته", "Your summary")}</h2>
+          <p>
+            {t(
+              `المفاهيم الجاهزة: ${ready.length} من ${nodes.length}.`,
+              `Concepts ready: ${ready.length} of ${nodes.length}.`,
+            )}
+          </p>
+          {ready.length > 0 && (
+            <p>
+              {t("أتقنت", "Mastered")}: {list(ready, lang)}
+            </p>
+          )}
+          {weak.length > 0 && (
+            <p>
+              {t("ما زال يحتاج تدريبًا", "Still weak")}: {list(weak, lang)}
+            </p>
+          )}
+          <p>
+            {preShare !== null && postShare !== null
+              ? t(
+                  `من ${preShare}٪ في اختبار البداية إلى ${postShare}٪ في الاختبار البعدي.`,
+                  `From ${preShare}% on the starting check to ${postShare}% on the post-test.`,
+                )
+              : postShare !== null
+                ? t(
+                    `الاختبار البعدي: ${postShare}٪.`,
+                    `Post-test: ${postShare}%.`,
+                  )
+                : ""}
+          </p>
+          <p>{t("شكرًا لمشاركتك.", "Thank you for taking part.")}</p>
+          <div className="actions">
+            <Button primary onClick={back}>
+              {t("واصل التدريب", "Keep practising")}
+            </Button>
+            <Button onClick={() => window.print()}>
+              {t("نزّل الملخص", "Download summary")}
+            </Button>
+          </div>
+        </Box>
+      )}
+    </>
   );
 }

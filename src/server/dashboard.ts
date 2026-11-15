@@ -42,8 +42,64 @@ export function gapTopic(question: string) {
     .join(" ");
 }
 
-export async function instructorDashboard(ctx: AuthContext, now = Date.now()) {
-  await instructorOnly(ctx, "read");
+/** The students an advisor is assigned; an advisor never sees anyone else. */
+async function advisees(ctx: AuthContext) {
+  await authorizeCourse(ctx, ctx.courseId, "read");
+  if (ctx.role !== "advisor") throw new AppError(403, "FORBIDDEN");
+  return (
+    await db
+      .tenant(ctx.tenantId)
+      .query<{ student_id: string }>(
+        "SELECT student_id FROM advisor_assignments WHERE tenant_id=$1 AND advisor_id=$2 AND active=true",
+        [ctx.tenantId, ctx.userId],
+      )
+  ).rows.map((r) => r.student_id);
+}
+/** AD2 + AD5: the advisor's caseload with the same rule-based flags the instructor sees. */
+export async function advisorCaseload(ctx: AuthContext, now = Date.now()) {
+  const mine = await advisees(ctx);
+  const overview = await instructorDashboard(ctx, now, mine);
+  const cleared = (
+    await db
+      .tenant(ctx.tenantId)
+      .query<Row>(
+        "SELECT id,kind,owner_id,data,created_at FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='flag_clear' AND data->>'by'=$3",
+        [ctx.tenantId, ctx.courseId, ctx.userId],
+      )
+  ).rows;
+  // A flag the advisor cleared stays hidden from them for a week; the instructor still sees it.
+  const hidden = new Set(
+    cleared
+      .filter((c) => now - new Date(c.data.at).getTime() < 7 * 86400000)
+      .map((c) => c.owner_id),
+  );
+  const caseload = overview.summary.map((s) => ({
+    ...s,
+    reasons: hidden.has(s.studentId) ? [] : s.reasons,
+    flagsCleared: hidden.has(s.studentId),
+  }));
+  const withReason = (kind: string) =>
+    caseload.filter((s) => s.reasons.some((r) => r.kind === kind));
+  return {
+    size: mine.length,
+    caseload: caseload.sort((a, b) => b.reasons.length - a.reasons.length),
+    earlyWarning: {
+      inactive: withReason("inactive"),
+      repeatedDiagnosis: withReason("repeated-diagnosis"),
+      stuck: withReason("stuck"),
+      askedForHelp: withReason("asked-for-help"),
+      notStarted: withReason("not-started"),
+    },
+    label: overview.label,
+  };
+}
+export async function instructorDashboard(
+  ctx: AuthContext,
+  now = Date.now(),
+  /** Set only by advisorCaseload, after it has checked the assignment. */
+  onlyStudents?: string[],
+) {
+  if (!onlyStudents) await instructorOnly(ctx, "read");
   const conn = db.tenant(ctx.tenantId);
   const students = (
     await conn.query<{ user_id: string; name: Label }>(
@@ -51,6 +107,14 @@ export async function instructorDashboard(ctx: AuthContext, now = Date.now()) {
       [ctx.tenantId, ctx.courseId],
     )
   ).rows;
+  if (onlyStudents) {
+    const keep = new Set(onlyStudents);
+    students.splice(
+      0,
+      students.length,
+      ...students.filter((s) => keep.has(s.user_id)),
+    );
+  }
   const ids = students.map((s) => s.user_id);
   const records = (
     await conn.query<Row>(
@@ -151,7 +215,7 @@ export async function instructorDashboard(ctx: AuthContext, now = Date.now()) {
     )
     .slice(0, 3);
 
-  const atRisk = students
+  const atRiskAll = students
     .map((s) => {
       const inactive = daysSince(lastActivity(s.user_id), now);
       const stuck = stuckOn(s.user_id);
@@ -190,6 +254,15 @@ export async function instructorDashboard(ctx: AuthContext, now = Date.now()) {
         reasons,
       };
     })
+    .map((s) => ({
+      ...s,
+      ready: concepts.filter(
+        (c) => stateOf(s.studentId, c.objectiveId!)?.status === "secure",
+      ).length,
+      assessable: concepts.length,
+    }));
+  const summary = atRiskAll;
+  const atRisk = atRiskAll
     .filter((s) => s.reasons.length)
     // Someone who asked for help comes before someone who merely has not started.
     .sort(
@@ -282,6 +355,7 @@ export async function instructorDashboard(ctx: AuthContext, now = Date.now()) {
     heatmap,
     roadblocks,
     atRisk,
+    summary,
     helpRequests: of("help_request")
       .filter((h) => h.data.status === "open")
       .map((h) => ({
@@ -300,7 +374,10 @@ export async function instructorDashboard(ctx: AuthContext, now = Date.now()) {
 
 /** IN14: one student's map, recent activity and diagnosis episodes. No tutor transcripts. */
 export async function studentView(ctx: AuthContext, studentId: string) {
-  await instructorOnly(ctx, "read");
+  if (ctx.role === "advisor") {
+    if (!(await advisees(ctx)).includes(studentId))
+      throw new AppError(404, "NOT_FOUND");
+  } else await instructorOnly(ctx, "read");
   const conn = db.tenant(ctx.tenantId);
   const student = (
     await conn.query<{ name: Label }>(
@@ -375,12 +452,60 @@ const action = z.discriminatedUnion("action", [
     action: z.literal("help-resolved"),
     id: z.string().min(1).max(160),
   }),
+  z.object({
+    action: z.literal("flag-clear"),
+    studentId: z.string().min(1).max(160),
+    note: z.string().trim().min(3).max(600),
+  }),
 ]);
 
 export async function dashboardAction(ctx: AuthContext, input: unknown) {
   const a = action.parse(input);
-  await instructorOnly(ctx, "write");
   const at = new Date().toISOString();
+  if (ctx.role === "advisor") {
+    // An advisor may only nudge, or clear a flag for, their own advisees.
+    const mine = await advisees(ctx);
+    if (a.action === "nudge") {
+      const allowed = a.studentIds.filter((id) => mine.includes(id));
+      for (const studentId of allowed)
+        await db
+          .tenant(ctx.tenantId)
+          .query(
+            "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'nudge',$3,$4,$5)",
+            [
+              ctx.tenantId,
+              `nudge:${randomUUID()}`,
+              ctx.courseId,
+              studentId,
+              JSON.stringify({
+                text: a.text,
+                from: ctx.userId,
+                fromRole: ctx.role,
+                at,
+              }),
+            ],
+          );
+      return { sent: allowed.length };
+    }
+    if (a.action === "flag-clear" && mine.includes(a.studentId)) {
+      await db
+        .tenant(ctx.tenantId)
+        .query(
+          "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'flag_clear',$3,$4,$5)",
+          [
+            ctx.tenantId,
+            `flag-clear:${randomUUID()}`,
+            ctx.courseId,
+            a.studentId,
+            JSON.stringify({ by: ctx.userId, note: a.note, at }),
+          ],
+        );
+      return { cleared: true };
+    }
+    throw new AppError(403, "FORBIDDEN");
+  }
+  if (a.action === "flag-clear") throw new AppError(403, "FORBIDDEN");
+  await instructorOnly(ctx, "write");
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
     const audit = (name: string, entity: string, data: unknown) =>
       tx.query(

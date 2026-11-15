@@ -1,5 +1,6 @@
 import { requireAuth } from "@/server/auth";
 import {
+  advisorCaseload,
   dashboardAction,
   instructorDashboard,
   studentView,
@@ -8,12 +9,14 @@ import { checkOrigin, errorResponse, localeFrom } from "@/server/errors";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
-    const ctx = await requireAuth(request, ["instructor"]);
+    const ctx = await requireAuth(request, ["instructor", "advisor"]);
     const student = new URL(request.url).searchParams.get("student");
     return Response.json(
       student
         ? await studentView(ctx, student)
-        : await instructorDashboard(ctx),
+        : ctx.role === "advisor"
+          ? await advisorCaseload(ctx)
+          : await instructorDashboard(ctx),
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
@@ -31,7 +34,7 @@ export async function POST(request: Request) {
       );
     return Response.json(
       await dashboardAction(
-        await requireAuth(request, ["instructor"]),
+        await requireAuth(request, ["instructor", "advisor"]),
         await request.json(),
       ),
       { headers: { "Cache-Control": "no-store" } },

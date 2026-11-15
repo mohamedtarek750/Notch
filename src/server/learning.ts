@@ -279,6 +279,8 @@ export function deriveObjective(
       !a.assisted &&
       // A run of very fast answers is not evidence either way.
       !a.lowConfidence &&
+      // The post-test measures learning gain and is kept apart from practice.
+      !(a as { posttest?: boolean }).posttest &&
       typeof a.correct === "boolean" &&
       a.moderation !== "pending",
   );
@@ -986,6 +988,20 @@ export async function workspace(ctx: AuthContext) {
     },
     mockResults: of("mock_result"),
     nudges: ctx.role === "student" ? of("nudge") : undefined,
+    consent:
+      ctx.role === "student"
+        ? (of("consent").find((r) => r.ownerId === ctx.userId)?.data ?? null)
+        : undefined,
+    courseEnd:
+      ctx.role === "student"
+        ? {
+            postTestOpen: of("course_settings")[0]?.data.postTestOpen === true,
+            postTest:
+              of("posttest_result").find((r) => r.ownerId === ctx.userId)
+                ?.data ?? null,
+            surveyDone: of("survey").some((r) => r.ownerId === ctx.userId),
+          }
+        : undefined,
     learningGain:
       ctx.role === "instructor" ? learningGain(of("attempt")) : undefined,
     fixture: true,
@@ -1295,6 +1311,7 @@ export async function learningAction(
         hintsUsed: delivery.data.hintsUsed ?? 0,
         diagnostic: delivery.data.diagnostic === true,
         mock: delivery.data.mock === true,
+        posttest: delivery.data.posttest === true,
       };
       await put(tx, ctx, id, "attempt", data, ctx.userId);
       await put(
@@ -1555,7 +1572,15 @@ export async function learningAction(
     }
     if (a.action === "course-settings") {
       role(ctx, "instructor");
+      const current =
+        (
+          await tx.query<Row>(
+            "SELECT * FROM records WHERE tenant_id=$1 AND id='course-settings'",
+            [ctx.tenantId],
+          )
+        ).rows[0]?.data ?? {};
       return put(tx, ctx, "course-settings", "course_settings", {
+        ...current,
         tutorStrictness: a.tutorStrictness,
         setBy: ctx.userId,
         at: new Date().toISOString(),
