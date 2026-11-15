@@ -27,7 +27,7 @@ import {
 import { z } from "zod";
 import { GeminiGateway, indexEmbeddings } from "@/server/ai";
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 const input = z.object({
   action: z.enum([
     "propose",
