@@ -104,8 +104,19 @@ export async function POST(req: Request) {
       );
     if (body.action === "tree-layout")
       return Response.json(await saveTreeLayout(ctx, body.data));
-    if (body.action === "tree-edit")
-      return Response.json(await editTree(ctx, body.data));
+    if (body.action === "tree-edit") {
+      // From the shared tree a line may belong to another course; access is checked there.
+      const target = (body.data as { courseId?: unknown } | undefined)
+        ?.courseId;
+      return Response.json(
+        await editTree(
+          typeof target === "string" && target
+            ? { ...ctx, courseId: target }
+            : ctx,
+          body.data,
+        ),
+      );
+    }
     if (body.action === "bank-settings")
       return Response.json(await saveBankSettings(ctx, body.settings));
     if (body.action === "generate-bank")

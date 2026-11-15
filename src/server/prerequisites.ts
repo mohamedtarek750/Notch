@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db } from "./db";
 import { type AuthContext } from "./auth";
-import { COURSE, SourceError, staff, type Evidence } from "./sources";
+import { majorCourses, SourceError, staff, type Evidence } from "./sources";
 import {
   GeminiGateway,
   prepareStaffGeneration,
@@ -199,10 +199,10 @@ async function approvedEvidence(ctx: AuthContext) {
     await db.tenant(ctx.tenantId).query<Evidence>(
       `SELECT c.id,c.version_id,c.page,c.section,c.text_content,c.language,c.status,c.review_note,v.source_key,v.title,v.role,v.hash
        FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id
-       WHERE c.tenant_id=$1 AND c.course_id=$2 AND v.course_id=$2 AND v.current_version=true AND c.status='approved'
+       WHERE c.tenant_id=$1 AND (c.course_id=$2 OR (v.role='umbrella' AND c.course_id=ANY($3::text[]))) AND v.current_version=true AND c.status='approved'
          AND v.rights->>'sendToModel'='true' AND v.rights->>'displayExcerpt'='true'
        ORDER BY v.source_key,c.page NULLS LAST,c.section`,
-      [ctx.tenantId, ctx.courseId],
+      [ctx.tenantId, ctx.courseId, await majorCourses(ctx)],
     )
   ).rows;
 }

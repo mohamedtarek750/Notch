@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { majorCourses } from "./sources";
 import { db, type Queryable } from "./db";
 import {
   authorizeCourse,
@@ -178,7 +179,10 @@ const actionSchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("undo-override"), overrideId: str }),
   z.object({ action: z.literal("announcement"), title: pair, body: pair }),
-  z.object({ action: z.literal("enroll"), courseId: z.string().min(1).max(40) }),
+  z.object({
+    action: z.literal("enroll"),
+    courseId: z.string().min(1).max(40),
+  }),
   z.object({
     action: z.literal("review-attempt"),
     attemptId: str,
@@ -381,8 +385,8 @@ export async function publishedPrerequisiteSupport(
   const validEvidence = new Set(
     (
       await tx.query<{ id: string }>(
-        "SELECT c.id FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND c.status='approved' AND v.current_version=true AND v.rights->>'displayExcerpt'='true'",
-        [ctx.tenantId, ctx.courseId],
+        "SELECT c.id FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND (c.course_id=$2 OR (v.role='umbrella' AND c.course_id=ANY($3::text[]))) AND c.status='approved' AND v.current_version=true AND v.rights->>'displayExcerpt'='true'",
+        [ctx.tenantId, ctx.courseId, await majorCourses(ctx, tx)],
       )
     ).rows.map((r) => r.id),
   );

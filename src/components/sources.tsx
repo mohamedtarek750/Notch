@@ -140,6 +140,28 @@ export function MaterialsPanel({
         act={act}
         open={open}
       />
+      {(data?.sharedUmbrellas || []).length > 0 && (
+        <Box>
+          <h2>{t("مراجع التخصص", "References of this major")}</h2>
+          <p>
+            {t(
+              "رُفعت هذه المراجع في مقرر آخر من التخصص نفسه، وتُستخدم هنا تلقائيًّا عند استخراج المتطلبات. لا حاجة إلى رفعها مرة أخرى.",
+              "These references were uploaded in another course of the same major and are used here automatically when prerequisites are extracted. There is no need to upload them again.",
+            )}
+          </p>
+          {(data.sharedUmbrellas as any[]).map((u) => (
+            <div key={u.id} className="row">
+              <strong>{u.title}</strong>
+              <span>
+                {t(
+                  `${u.approved} قسمًا معتمدًا`,
+                  `${u.approved} approved sections`,
+                )}
+              </span>
+            </div>
+          ))}
+        </Box>
+      )}
       <UmbrellaUpload
         mode="umbrella"
         lang={lang}
@@ -1794,9 +1816,10 @@ export function LaunchPanel({
     ).length +
     (materials.lectures || []).filter((l: any) => l.sections.approved > 0)
       .length;
-  const umbrellaApproved = (materials.umbrellas || []).filter(
-    (u: any) => u.sections.approved > 0,
-  ).length;
+  const umbrellaApproved =
+    (materials.umbrellas || []).filter((u: any) => u.sections.approved > 0)
+      .length +
+    (materials.sharedUmbrellas || []).filter((u: any) => u.approved > 0).length;
   const release = (knowledge.releases || [])[0]?.data;
   const concepts = release?.graph?.concepts?.length || 0;
   const prerequisites = (release?.graph?.edges || []).filter(

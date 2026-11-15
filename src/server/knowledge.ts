@@ -6,7 +6,7 @@ import {
   authorizeCourse,
   authorizeCourseInTransaction,
 } from "./auth";
-import { COURSE, SourceError, staff, type Evidence } from "./sources";
+import { majorCourses, SourceError, staff, type Evidence } from "./sources";
 import {
   GeminiGateway,
   prepareModel,
@@ -83,6 +83,8 @@ export type Graph = {
     coverageLevel?: "explained" | "named_only";
     scope?: "course" | "foundation";
     referenceLinks?: z.infer<typeof referenceLinkSchema>[];
+    /** Set when the instructor linked this concept in from another course of the major. */
+    importedFrom?: string;
   }[];
   edges: {
     from: string;
@@ -582,6 +584,13 @@ export async function getKnowledge(ctx: AuthContext) {
   };
 }
 const layoutInput = z.object({
+  /** A layout key from the union tree; omitted for the open course's own tree. */
+  key: z
+    .string()
+    .regex(
+      /^tree_layout:(university|major:[a-z0-9]{4,20}|course:[A-Za-z0-9]{2,40})$/,
+    )
+    .optional(),
   positions: z
     .record(
       z.string().min(1).max(120),
@@ -595,7 +604,17 @@ const layoutInput = z.object({
 /** Where the instructor placed each concept on the knowledge tree. Display only. */
 export async function saveTreeLayout(ctx: AuthContext, raw: unknown) {
   await staff(ctx, "review");
-  const { positions } = layoutInput.parse(raw);
+  const { positions, key } = layoutInput.parse(raw);
+  if (key) {
+    // The shared tree of a major or of the university belongs to no single course.
+    await db
+      .tenant(ctx.tenantId)
+      .query(
+        "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'tree_layout',NULL,NULL,$3) ON CONFLICT ON CONSTRAINT records_pkey DO UPDATE SET data=excluded.data,updated_at=now()",
+        [ctx.tenantId, key, JSON.stringify({ positions })],
+      );
+    return { saved: Object.keys(positions).length };
+  }
   await db
     .tenant(ctx.tenantId)
     .query(
@@ -699,6 +718,8 @@ const treeEdit = z.object({
   from: z.string().min(1).max(120),
   to: z.string().min(1).max(120),
   type: z.enum(["prerequisite", "optional_bridge"]).default("prerequisite"),
+  /** The course a prerequisite is taught in, when it is not yet part of this course's tree. */
+  fromCourse: z.string().min(1).max(40).optional(),
 });
 /**
  * Instructor edits the published knowledge tree directly: draw a line between two
@@ -725,8 +746,38 @@ export async function editTree(ctx: AuthContext, raw: unknown) {
       e.from === edit.from && e.to === edit.to;
     const existing = prior.data.graph.edges.find(same);
     let edges = prior.data.graph.edges;
+    let concepts = prior.data.graph.concepts;
     if (edit.op === "add") {
       if (existing) throw new SourceError("duplicate_edge", 409);
+      if (
+        edit.fromCourse &&
+        edit.fromCourse !== ctx.courseId &&
+        !concepts.some((c) => c.id === edit.from)
+      ) {
+        // A line from another course of the same major brings that concept in as background.
+        if (!(await majorCourses(ctx, tx)).includes(edit.fromCourse))
+          throw new SourceError("phantom_endpoint");
+        const source = (
+          await tx.query<{ data: { graph: Graph } }>(
+            "SELECT data FROM records WHERE tenant_id=$1 AND kind='graph_release' AND course_id=$2 ORDER BY created_at DESC,id DESC LIMIT 1",
+            [ctx.tenantId, edit.fromCourse],
+          )
+        ).rows[0]?.data.graph.concepts.find((c) => c.id === edit.from);
+        if (!source) throw new SourceError("phantom_endpoint");
+        const imported = {
+          id: source.id,
+          label: source.label,
+          aliases: source.aliases ?? [],
+          evidenceIds: [],
+          scope: "foundation" as const,
+          importedFrom: edit.fromCourse,
+        };
+        concepts = [...concepts, imported];
+        await tx.query(
+          "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'concept',$3,NULL,$4) ON CONFLICT ON CONSTRAINT records_pkey DO NOTHING",
+          [ctx.tenantId, imported.id, ctx.courseId, JSON.stringify(imported)],
+        );
+      }
       edges = [
         ...edges,
         {
@@ -748,7 +799,7 @@ export async function editTree(ctx: AuthContext, raw: unknown) {
           ? edges.filter((e) => !same(e))
           : edges.map((e) => (same(e) ? { ...e, type: edit.type } : e));
     }
-    const graph: Graph = { concepts: prior.data.graph.concepts, edges };
+    const graph: Graph = { concepts, edges };
     validateGraph(graph);
     const now = new Date().toISOString();
     await tx.query(
@@ -819,8 +870,8 @@ export async function publishKnowledge(ctx: AuthContext) {
       );
     const approved = (
       await tx.query<{ id: string }>(
-        `SELECT c.id FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.course_id=$2 AND c.status=$3 AND v.current_version=true AND v.rights->>'sendToModel'='true' AND v.rights->>'displayExcerpt'='true'`,
-        [ctx.tenantId, ctx.courseId, "approved"],
+        `SELECT c.id FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND (c.course_id=$2 OR (v.role='umbrella' AND c.course_id=ANY($4::text[]))) AND c.status=$3 AND v.current_version=true AND v.rights->>'sendToModel'='true' AND v.rights->>'displayExcerpt'='true'`,
+        [ctx.tenantId, ctx.courseId, "approved", await majorCourses(ctx, tx)],
       )
     ).rows.map((r) => r.id);
     for (const p of proposals) {
