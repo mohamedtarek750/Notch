@@ -147,8 +147,10 @@ const INSTRUCTOR_NAV = [
 const ADVISOR_NAV = [["advising", "طلابي", "My students", Users]] as const;
 export function Workspace({
   inviteOnlyPilot = false,
+  openPilot = false,
 }: {
   inviteOnlyPilot?: boolean;
+  openPilot?: boolean;
 }) {
   // English by default; a person's own choice is remembered on their device.
   const [lang, L] = useState<Lang>("en"),
@@ -423,53 +425,62 @@ export function Workspace({
             {error}
           </div>
         )}
-        <Box cls="login-access">
-          {inviteOnlyPilot && (
-            <p id="pilot-access-instruction">
-              {t(
-                "أدخل رمز مساحة التجربة الذي وصلك، ثم اختَر دورك للوصول إلى المصادر المراجَعة. لو سبق الدخول على هذا المتصفح، تقدر تكمل من غير إعادة إدخال الرمز.",
-                "Enter the pilot workspace code you received, then choose a role to open the reviewed materials. If you have used this browser before, you can continue without entering the code again.",
-              )}
-            </p>
-          )}
-          <label>
-            {inviteOnlyPilot
-              ? t("رمز مساحة التجربة", "Pilot workspace code")
-              : t(
-                  "رمز مساحة سابقة (اختياري)",
-                  "Existing workspace code (optional)",
+        {openPilot ? (
+          <p>
+            {t(
+              "تجربة مفتوحة ببيانات اصطناعية. اختَر دورك للدخول مباشرة.",
+              "Open test with synthetic data. Choose a role to enter.",
+            )}
+          </p>
+        ) : (
+          <Box cls="login-access">
+            {inviteOnlyPilot && (
+              <p id="pilot-access-instruction">
+                {t(
+                  "أدخل رمز مساحة التجربة الذي وصلك، ثم اختَر دورك للوصول إلى المصادر المراجَعة. لو سبق الدخول على هذا المتصفح، تقدر تكمل من غير إعادة إدخال الرمز.",
+                  "Enter the pilot workspace code you received, then choose a role to open the reviewed materials. If you have used this browser before, you can continue without entering the code again.",
                 )}
-            <input
-              value={recovery}
-              onChange={(e) => RC(e.target.value)}
-              type="password"
-              dir="ltr"
-              autoComplete="off"
-              spellCheck={false}
-              aria-describedby={
-                inviteOnlyPilot
-                  ? "pilot-access-instruction pilot-access-note"
-                  : "pilot-access-note"
-              }
-              placeholder={
-                inviteOnlyPilot
-                  ? t("الصق رمز المساحة هنا", "Paste your workspace code")
-                  : t("للرجوع من جهاز آخر", "Resume on another device")
-              }
-            />
-          </label>
-          <small id="pilot-access-note">
-            {inviteOnlyPilot
-              ? t(
-                  "هذه تجربة بدعوة فقط، بحسابات وأدوار وبيانات طلاب اصطناعية. تسجيل الخروج يحتفظ بمساحتك على هذا المتصفح.",
-                  "This is an invite-only pilot with synthetic accounts, roles and student records. Signing out preserves your workspace on this browser.",
-                )
-              : t(
-                  "حسابات وبيانات تعليمية اصطناعية. كل زائر يحصل على مساحة منفصلة. يحتفظ تسجيل الخروج بمساحتك على هذا المتصفح.",
-                  "Synthetic demo accounts and learning records. Each visitor has a separate workspace. Signing out preserves your workspace on this browser.",
-                )}
-          </small>
-        </Box>
+              </p>
+            )}
+            <label>
+              {inviteOnlyPilot
+                ? t("رمز مساحة التجربة", "Pilot workspace code")
+                : t(
+                    "رمز مساحة سابقة (اختياري)",
+                    "Existing workspace code (optional)",
+                  )}
+              <input
+                value={recovery}
+                onChange={(e) => RC(e.target.value)}
+                type="password"
+                dir="ltr"
+                autoComplete="off"
+                spellCheck={false}
+                aria-describedby={
+                  inviteOnlyPilot
+                    ? "pilot-access-instruction pilot-access-note"
+                    : "pilot-access-note"
+                }
+                placeholder={
+                  inviteOnlyPilot
+                    ? t("الصق رمز المساحة هنا", "Paste your workspace code")
+                    : t("للرجوع من جهاز آخر", "Resume on another device")
+                }
+              />
+            </label>
+            <small id="pilot-access-note">
+              {inviteOnlyPilot
+                ? t(
+                    "هذه تجربة بدعوة فقط، بحسابات وأدوار وبيانات طلاب اصطناعية. تسجيل الخروج يحتفظ بمساحتك على هذا المتصفح.",
+                    "This is an invite-only pilot with synthetic accounts, roles and student records. Signing out preserves your workspace on this browser.",
+                  )
+                : t(
+                    "حسابات وبيانات تعليمية اصطناعية. كل زائر يحصل على مساحة منفصلة. يحتفظ تسجيل الخروج بمساحتك على هذا المتصفح.",
+                    "Synthetic demo accounts and learning records. Each visitor has a separate workspace. Signing out preserves your workspace on this browser.",
+                  )}
+            </small>
+          </Box>
+        )}
         <div className="role-cards">
           {(
             [

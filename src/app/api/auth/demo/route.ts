@@ -9,7 +9,12 @@ import {
   cookieValue,
   isInviteOnlyPilot,
 } from "@/server/auth";
-import { createWorkspace, resolveWorkspace } from "@/server/seed";
+import { openPilotTenant } from "@/server/access-mode";
+import {
+  createWorkspace,
+  resolveWorkspace,
+  workspaceOfTenant,
+} from "@/server/seed";
 import {
   AppError,
   checkOrigin,
@@ -31,11 +36,17 @@ export async function POST(request: Request) {
       .parse(await request.json());
     locale = body.locale ?? locale;
     const inviteOnly = isInviteOnlyPilot();
-    const code = body.workspaceCode ?? cookieValue(request, WORKSPACE_COOKIE);
-    if (inviteOnly && !code) throw new AppError(401, "INVITE_REQUIRED");
+    const open = openPilotTenant();
+    const code =
+      body.workspaceCode ??
+      (open ? undefined : cookieValue(request, WORKSPACE_COOKIE));
+    if (inviteOnly && !code && !open)
+      throw new AppError(401, "INVITE_REQUIRED");
     const workspace = code
       ? await resolveWorkspace(code)
-      : await createWorkspace();
+      : open
+        ? await workspaceOfTenant(open)
+        : await createWorkspace();
     const userId = workspace.users[body.role];
     if (!userId) throw new AppError(403, "FORBIDDEN");
     const token = await createSession(workspace.tenantId, userId);
@@ -61,15 +72,16 @@ export async function POST(request: Request) {
       "Set-Cookie",
       setCookie(SESSION_COOKIE, token, request),
     );
-    response.headers.append(
-      "Set-Cookie",
-      setCookie(
-        WORKSPACE_COOKIE,
-        workspace.workspaceCode,
-        request,
-        60 * 60 * 24 * 90,
-      ),
-    );
+    if (workspace.workspaceCode)
+      response.headers.append(
+        "Set-Cookie",
+        setCookie(
+          WORKSPACE_COOKIE,
+          workspace.workspaceCode,
+          request,
+          60 * 60 * 24 * 90,
+        ),
+      );
     return response;
   } catch (e) {
     return errorResponse(e, locale);
