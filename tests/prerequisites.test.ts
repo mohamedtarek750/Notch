@@ -59,6 +59,9 @@ import {
 } from "../src/server/course-end";
 import {
   advisorCaseload,
+  conceptDetail,
+  examClassReadiness,
+  reviewPack,
   dashboardAction,
   gapTopic,
   instructorDashboard,
@@ -1707,5 +1710,56 @@ describe("advisor caseload, consent and the end of the course", () => {
     expect(rows.length).toBe(kept.anonymizedRowsKept);
     expect(rows.every((r) => r.owner_id === null)).toBe(true);
     expect(JSON.stringify(rows)).not.toContain(student.userId);
+  });
+});
+
+describe("instructor concept detail, sign-ups and exam review", () => {
+  const naive = stableConceptId("Naive Bayes");
+  it("counts sign-ups without exposing who consented to what", async () => {
+    const d = await instructorDashboard(instructor);
+    expect(d.signup.enrolled).toBe(d.students);
+    expect(d.signup.joined + d.signup.notJoined.length).toBe(d.signup.enrolled);
+    expect(typeof d.signup.researchConsent).toBe("number");
+    expect(JSON.stringify(d.signup.notJoined)).not.toContain("research");
+  });
+  it("explains a hard concept from the record and suggests one fix by rule", async () => {
+    const detail = await conceptDetail(instructor, `c:${naive}`);
+    expect(detail.label.en).toBe("Naive Bayes");
+    expect(
+      detail.distribution.ready +
+        detail.distribution.learning +
+        detail.distribution.notStarted,
+    ).toBeLessThanOrEqual(detail.distribution.students);
+    expect(detail.prerequisites.map((p) => p.label.en)).toContain(
+      "Bayes theorem",
+    );
+    expect(Object.keys(detail.causes)).toContain("prerequisite");
+    // Diagnoses point at the prerequisite, so that is the suggested fix.
+    expect(detail.suggestion).toMatchObject({ kind: "review-prerequisite" });
+    expect(detail.thinData).toBe(true);
+    await expect(conceptDetail(instructor, "c:missing")).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(conceptDetail(student, `c:${naive}`)).rejects.toMatchObject({
+      status: 403,
+    });
+  });
+  it("ranks exam concepts by class readiness and builds a pack of reviewed questions", async () => {
+    const exams = await examClassReadiness(instructor);
+    expect(exams).toHaveLength(1);
+    const shares = exams[0].concepts.map((c) => c.suggestedShare);
+    expect(shares.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(99);
+    for (const c of exams[0].concepts)
+      if (c.readiness !== null) expect(c.readiness % 10).toBe(0);
+    const pack = await reviewPack(
+      instructor,
+      exams[0].concepts.map((c) => c.objectiveId),
+    );
+    expect(pack.questions.length).toBe(4);
+    // The instructor's pack carries the answers; a student cannot ask for one.
+    expect(pack.questions[0].key).toBe("a");
+    await expect(reviewPack(student, [`c:${naive}`])).rejects.toMatchObject({
+      status: 403,
+    });
   });
 });

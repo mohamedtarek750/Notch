@@ -371,6 +371,7 @@ export function Learn({
     [explained, X] = useState<any>(null),
     [explaining, XB] = useState(false),
     [busy, B] = useState(false),
+    [preferred, PF] = useState(""),
     [formatTried, FT] = useState(false),
     [note, NO] = useState(
       resume?.afterPrerequisite === "passed"
@@ -386,6 +387,11 @@ export function Learn({
           : "",
     );
   const shownAt = useRef(0);
+  useEffect(() => {
+    try {
+      PF(localStorage.getItem("tilwa_format") || "");
+    } catch {}
+  }, []);
   useEffect(() => {
     if (!node) return;
     request("/api/knowledge/map", undefined, lang)
@@ -571,13 +577,29 @@ export function Learn({
             {FORMATS.map(([id, ar, en]) => (
               <Button
                 key={id}
+                primary={preferred === id}
                 disabled={explaining}
-                onClick={() => explain(id)}
+                onClick={() => {
+                  // The format picked last becomes the default offered first next time.
+                  try {
+                    localStorage.setItem("tilwa_format", id);
+                  } catch {}
+                  PF(id);
+                  explain(id);
+                }}
               >
                 {t(ar, en)}
               </Button>
             ))}
           </div>
+          <p>
+            <small>
+              {t(
+                "هذه طريقة العرض فقط؛ لا تغيّر ما يُحتسب لك. آخر طريقة اخترتها تبقى مميّزة.",
+                "This only changes how content is shown, not what is scored. The format you picked last stays highlighted.",
+              )}
+            </small>
+          </p>
           {explaining && (
             <p role="status">
               {t("جارٍ تجهيز الشرح…", "Preparing the explanation…")}
@@ -2115,6 +2137,310 @@ export function CourseFinish({
           </div>
         </Box>
       )}
+    </>
+  );
+}
+
+/** ST12: the course as nested layers — lectures, the concepts inside each, and what each
+ * concept is built on. Never more than about thirty nodes at once. */
+export function Roadmap({
+  data,
+  lang,
+  t,
+  learn,
+}: {
+  data: any;
+  lang: Lang;
+  t: Translate;
+  learn: (objectiveId: string) => void;
+}) {
+  const nodes: Node[] = data.path?.nodes || [];
+  const [concepts, C] = useState<any[]>([]),
+    [cluster, CL] = useState<string | null>(null),
+    [trail, TR] = useState<string[]>([]);
+  useEffect(() => {
+    request("/api/knowledge/map", undefined, lang)
+      .then((m) => C(m.concepts || []))
+      .catch(() => undefined);
+  }, []);
+  const struggling = new Set(
+    (data.diagnoses || []).map((d: any) => d.data.objectiveId),
+  );
+  const state = (n: Node) =>
+    n.status === "developing" && n.objectiveId && struggling.has(n.objectiveId)
+      ? { label: t("يحتاج دعمًا", "At risk"), color: "#d9534f" }
+      : statusInfo(n.status, t);
+  const clusterOf = (n: Node) =>
+    concepts.find((c) => c.id === n.conceptId)?.lectureEvidence?.[0]?.title ||
+    t("معرفة مساندة", "Background knowledge");
+  const clusters = [...new Set(nodes.map(clusterOf))];
+  const here = data.path?.next?.conceptId;
+  const current = trail.length
+    ? nodes.find((n) => n.conceptId === trail.at(-1))
+    : null;
+  const inside = (n: Node) =>
+    nodes.filter((x) =>
+      n.blockedBy
+        .concat(n.covered as any)
+        .some((b) => b.conceptId === x.conceptId),
+    );
+  const dependsOn = (n: Node) => {
+    const detail = concepts.find((c) => c.id === n.conceptId);
+    return { detail, parts: inside(n) };
+  };
+  const Card = ({ n }: { n: Node }) => {
+    const s = state(n);
+    return (
+      <button
+        onClick={() => TR([...trail, n.conceptId])}
+        style={{
+          border: `2px solid ${s.color}`,
+          borderRadius: 12,
+          padding: "10px 14px",
+          margin: 6,
+          background: n.conceptId === here ? "#eef2ff" : "#fff",
+          textAlign: "start",
+          minWidth: 180,
+          cursor: "pointer",
+        }}
+      >
+        <strong>{localized(n.label, lang)}</strong>
+        <br />
+        <small>
+          <Dot color={s.color} />
+          {s.label}
+          {n.conceptId === here && ` · ${t("أنت هنا", "You are here")}`}
+        </small>
+      </button>
+    );
+  };
+  if (!nodes.length)
+    return (
+      <>
+        <div className="pageHead">
+          <h1>{t("خريطة المقرر", "Roadmap")}</h1>
+        </div>
+        <Box>
+          <p>
+            {t(
+              "لم تُنشر مفاهيم لها أسئلة بعد.",
+              "No concepts with questions have been published yet.",
+            )}
+          </p>
+        </Box>
+      </>
+    );
+  return (
+    <>
+      <div className="pageHead">
+        <h1>{t("خريطة المقرر", "Roadmap")}</h1>
+        <p>
+          <button className="textbtn" onClick={() => (CL(null), TR([]))}>
+            {t("المقرر كله", "Whole course")}
+          </button>
+          {cluster && (
+            <>
+              {" › "}
+              <button className="textbtn" onClick={() => TR([])}>
+                {cluster}
+              </button>
+            </>
+          )}
+          {trail.map((id, i) => (
+            <span key={id + i}>
+              {" › "}
+              <button
+                className="textbtn"
+                onClick={() => TR(trail.slice(0, i + 1))}
+              >
+                {localized(nodes.find((n) => n.conceptId === id)?.label, lang)}
+              </button>
+            </span>
+          ))}
+        </p>
+        <p>
+          {["secure", "inferred", "developing", "unassessed"].map((s) => (
+            <span key={s} style={{ marginInlineEnd: 14 }}>
+              <Dot color={statusInfo(s, t).color} />
+              <small>{statusInfo(s, t).label}</small>
+            </span>
+          ))}
+          <span>
+            <Dot color="#d9534f" />
+            <small>{t("يحتاج دعمًا", "At risk")}</small>
+          </span>
+        </p>
+      </div>
+      {!cluster && !current && (
+        <Box>
+          <h2>{t("اختر جزءًا لتفتحه", "Pick a part to open it")}</h2>
+          {clusters.map((name) => {
+            const inCluster = nodes.filter((n) => clusterOf(n) === name);
+            const ready = inCluster.filter((n) => n.status === "secure").length;
+            return (
+              <button
+                key={name}
+                onClick={() => CL(name)}
+                style={{
+                  border: "2px solid #c9cde0",
+                  borderRadius: 14,
+                  padding: "14px 18px",
+                  margin: 6,
+                  background: inCluster.some((n) => n.conceptId === here)
+                    ? "#eef2ff"
+                    : "#fff",
+                  textAlign: "start",
+                  minWidth: 220,
+                  cursor: "pointer",
+                }}
+              >
+                <strong>{name}</strong>
+                <br />
+                <small>
+                  {t(
+                    `${inCluster.length} مفهومًا · جاهز ${ready}`,
+                    `${inCluster.length} concepts · ${ready} ready`,
+                  )}
+                  {inCluster.some((n) => n.conceptId === here) &&
+                    ` · ${t("أنت هنا", "You are here")}`}
+                </small>
+              </button>
+            );
+          })}
+        </Box>
+      )}
+      {cluster && !current && (
+        <Box>
+          <h2>{cluster}</h2>
+          {nodes
+            .filter((n) => clusterOf(n) === cluster)
+            .slice(0, 30)
+            .map((n) => (
+              <Card key={n.conceptId} n={n} />
+            ))}
+        </Box>
+      )}
+      {current && (
+        <Box>
+          <h2>{localized(current.label, lang)}</h2>
+          <p>
+            <Dot color={state(current).color} />
+            {state(current).label}
+          </p>
+          {dependsOn(current).detail?.summary && (
+            <p>{localized(dependsOn(current).detail.summary, lang)}</p>
+          )}
+          {!current.objectiveId && (
+            <p className="notice">
+              {t(
+                "هذه معرفة مساندة، ليست من أسئلة مقررك. موجودة هنا لأنها تساعد على ما بعدها.",
+                "This is background knowledge, not part of your course questions. It is here because it helps with what builds on it.",
+              )}
+            </p>
+          )}
+          {current.blockedBy.length > 0 && (
+            <p className="notice">
+              {t(
+                `هذا المفهوم يعتمد على ${list(current.blockedBy, lang)}، ولم تتقنه بعد. الأفضل أن تبدأ من هناك.`,
+                `This concept builds on ${list(current.blockedBy, lang)}, which you haven't mastered yet. It is better to start there first.`,
+              )}
+            </p>
+          )}
+          {current.objectiveId && (
+            <Button primary onClick={() => learn(current.objectiveId!)}>
+              {t("تدرّب على هذا", "Practise this")}
+            </Button>
+          )}
+          <h3>
+            {t("ما بداخله: ما يعتمد عليه", "Inside it: what it builds on")}
+          </h3>
+          {dependsOn(current).parts.length === 0 ? (
+            <p>
+              {t(
+                "لا يعتمد على مفاهيم أخرى منشورة: هذا من الأساسيات.",
+                "It does not build on other published concepts: this is a foundation.",
+              )}
+            </p>
+          ) : (
+            dependsOn(current).parts.map((n) => (
+              <Card key={n.conceptId} n={n} />
+            ))
+          )}
+          {current.unlocks.length > 0 && (
+            <p>
+              <small>
+                {t("يفتح لك بعده", "It unlocks")}: {list(current.unlocks, lang)}
+              </small>
+            </p>
+          )}
+        </Box>
+      )}
+    </>
+  );
+}
+
+/** SYS2: is each part of the system up? */
+export function StatusPage({
+  lang,
+  t,
+  back,
+}: {
+  lang: Lang;
+  t: Translate;
+  back: () => void;
+}) {
+  const [status, S] = useState<any>(null),
+    [failed, F] = useState(false);
+  const check = () => {
+    F(false);
+    request("/api/status", undefined, lang)
+      .then(S)
+      .catch(() => F(true));
+  };
+  useEffect(check, []);
+  const names: Record<string, string> = {
+    login: t("الدخول", "Sign-in"),
+    practice: t("التدريب", "Practice"),
+    tutor: t("المساعد", "Tutor"),
+    dashboards: t("اللوحات", "Dashboards"),
+  };
+  return (
+    <>
+      <div className="pageHead">
+        <button className="textbtn" onClick={back}>
+          {lang === "ar" ? "→" : "←"} {t("رجوع", "Back")}
+        </button>
+        <h1>{t("حالة النظام", "System status")}</h1>
+      </div>
+      <Box>
+        {failed && (
+          <p>
+            {t(
+              "تعذّر الوصول إلى الخادم. تحقق من اتصالك ثم أعد المحاولة.",
+              "The server could not be reached. Check your connection and try again.",
+            )}
+          </p>
+        )}
+        {status &&
+          Object.entries(status.subsystems).map(([k, up]) => (
+            <div className="row" key={k}>
+              <strong>{names[k] || k}</strong>
+              <span>
+                <Dot color={up ? "#2e9e6b" : "#d9534f"} />
+                {up ? t("يعمل", "Working") : t("متوقف", "Down")}
+              </span>
+            </div>
+          ))}
+        {status && (
+          <p>
+            <small>
+              {t("آخر فحص", "Last checked")}:{" "}
+              {String(status.checkedAt).slice(0, 19).replace("T", " ")}
+            </small>
+          </p>
+        )}
+        <Button onClick={check}>{t("افحص مجددًا", "Check again")}</Button>
+      </Box>
     </>
   );
 }

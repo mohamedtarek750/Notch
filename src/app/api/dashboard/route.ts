@@ -1,6 +1,9 @@
 import { requireAuth } from "@/server/auth";
 import {
   advisorCaseload,
+  conceptDetail,
+  examClassReadiness,
+  reviewPack,
   dashboardAction,
   instructorDashboard,
   studentView,
@@ -10,7 +13,21 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const ctx = await requireAuth(request, ["instructor", "advisor"]);
-    const student = new URL(request.url).searchParams.get("student");
+    const params = new URL(request.url).searchParams;
+    const student = params.get("student");
+    if (params.get("concept"))
+      return Response.json(await conceptDetail(ctx, params.get("concept")!), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    if (params.get("exams"))
+      return Response.json(await examClassReadiness(ctx), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    if (params.get("pack"))
+      return Response.json(
+        await reviewPack(ctx, params.get("pack")!.split(",").filter(Boolean)),
+        { headers: { "Cache-Control": "no-store" } },
+      );
     return Response.json(
       student
         ? await studentView(ctx, student)

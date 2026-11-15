@@ -333,6 +333,25 @@ export async function instructorDashboard(
     }))
     .sort((a, b) => Number(!!b.flag) - Number(!!a.flag));
 
+  // IN7: who has joined. Consent is reported as counts only, never per person.
+  const consents = (
+    await conn.query<Row>(
+      "SELECT id,kind,owner_id,data,created_at FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='consent' AND owner_id=ANY($3::text[])",
+      [ctx.tenantId, ctx.courseId, ids],
+    )
+  ).rows;
+  const joined = new Set(consents.map((c) => c.owner_id));
+  const signup = {
+    enrolled: ids.length,
+    joined: joined.size,
+    researchConsent: consents.filter((c) => c.data.research === true).length,
+    tookStartingCheck: ids.filter((id) =>
+      attemptsBy(id).some((a) => a.data.diagnostic),
+    ).length,
+    notJoined: students
+      .filter((s) => !joined.has(s.user_id))
+      .map((s) => ({ studentId: s.user_id, name: s.name })),
+  };
   const week = now - 7 * 86400000;
   const activeThisWeek = ids.filter((id) =>
     attemptsBy(id).some((a) => new Date(a.data.at).getTime() >= week),
@@ -356,6 +375,7 @@ export async function instructorDashboard(
     roadblocks,
     atRisk,
     summary,
+    signup,
     helpRequests: of("help_request")
       .filter((h) => h.data.status === "open")
       .map((h) => ({
@@ -369,6 +389,200 @@ export async function instructorDashboard(
     contentGaps,
     tutorAnswers,
     label: Object.fromEntries(concepts.map((c) => [c.objectiveId, c.label])),
+  };
+}
+
+/** IN9: why a concept is hard for the class — facts from the record, a fix chosen by rule. */
+export async function conceptDetail(ctx: AuthContext, objectiveId: string) {
+  await instructorOnly(ctx, "read");
+  const conn = db.tenant(ctx.tenantId);
+  const overview = await instructorDashboard(ctx);
+  const cell = overview.heatmap.find((c) => c.objectiveId === objectiveId);
+  if (!cell) throw new AppError(404, "NOT_FOUND");
+  const rows = (
+    await conn.query<Row>(
+      "SELECT id,kind,owner_id,data,created_at FROM records WHERE tenant_id=$1 AND course_id=$2 AND ((kind='attempt' AND data->>'objectiveId'=$3) OR (kind='item' AND data->>'objectiveId'=$3) OR (kind='diagnosis' AND data->>'objectiveId'=$3))",
+      [ctx.tenantId, ctx.courseId, objectiveId],
+    )
+  ).rows;
+  const attempts = rows.filter((r) => r.kind === "attempt");
+  const questions = rows
+    .filter((r) => r.kind === "item")
+    .map((item) => {
+      const mine = attempts.filter((a) => a.data.itemId === item.id);
+      const wrong = mine.filter((a) => a.data.correct === false);
+      const picks = new Map<string, number>();
+      for (const a of wrong)
+        if (a.data.answer)
+          picks.set(a.data.answer, (picks.get(a.data.answer) ?? 0) + 1);
+      const commonest = [...picks].sort((a, b) => b[1] - a[1])[0];
+      return {
+        itemId: item.id,
+        stem: item.data.stem,
+        difficulty: item.data.difficulty ?? null,
+        answers: mine.length,
+        missed: wrong.length,
+        unknown: mine.filter((a) => a.data.unknown).length,
+        commonWrongAnswer: commonest
+          ? {
+              label:
+                (item.data.options ?? []).find(
+                  (o: any) => o.id === commonest[0],
+                )?.label ?? null,
+              count: commonest[1],
+            }
+          : null,
+      };
+    })
+    .filter((q) => q.answers > 0)
+    .sort((a, b) => b.missed - a.missed)
+    .slice(0, 5);
+  const causes = new Map<string, number>();
+  const formats = new Map<string, { used: number; helped: number }>();
+  for (const d of rows.filter((r) => r.kind === "diagnosis")) {
+    causes.set(d.data.cause, (causes.get(d.data.cause) ?? 0) + 1);
+    if (d.data.format) {
+      const f = formats.get(d.data.format) ?? { used: 0, helped: 0 };
+      f.used++;
+      if (d.data.helped === true) f.helped++;
+      formats.set(d.data.format, f);
+    }
+  }
+  const prerequisites = cell.prerequisites.map((label) => {
+    const match = overview.heatmap.find((c) => c.label.en === label.en);
+    return {
+      label,
+      readyShare: match?.readyShare ?? null,
+      assessed: match?.assessed ?? 0,
+    };
+  });
+  const topCause = [...causes].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const weakest = [...prerequisites].sort(
+    (a, b) => (a.readyShare ?? 101) - (b.readyShare ?? 101),
+  )[0];
+  // One suggested fix, chosen by rule from the facts above; the instructor decides.
+  const suggestion =
+    topCause === "prerequisite" && weakest
+      ? { kind: "review-prerequisite", label: weakest.label }
+      : questions[0] &&
+          questions[0].missed >= 2 &&
+          questions[0].missed === questions[0].answers
+        ? { kind: "improve-question", stem: questions[0].stem }
+        : topCause === "presentation" || topCause === "confidence"
+          ? { kind: "add-worked-example" }
+          : null;
+  return {
+    objectiveId,
+    label: cell.label,
+    distribution: {
+      students: cell.students,
+      ready: cell.ready,
+      learning: cell.learning,
+      notStarted: cell.students - cell.assessed,
+    },
+    prerequisites,
+    questions,
+    causes: Object.fromEntries(causes),
+    formats: Object.fromEntries(formats),
+    suggestion,
+    thinData: cell.assessed < SMALL_GROUP,
+  };
+}
+
+/** IN16: for each exam, where the class is least ready. Readiness is a range, not a score. */
+export async function examClassReadiness(ctx: AuthContext) {
+  await instructorOnly(ctx, "read");
+  const conn = db.tenant(ctx.tenantId);
+  const overview = await instructorDashboard(ctx);
+  const rows = (
+    await conn.query<Row>(
+      "SELECT id,kind,owner_id,data,created_at FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind IN ('exam','state')",
+      [ctx.tenantId, ctx.courseId],
+    )
+  ).rows;
+  const states = rows.filter((r) => r.kind === "state");
+  return rows
+    .filter((r) => r.kind === "exam")
+    .map((exam) => {
+      const concepts = (exam.data.concepts as any[])
+        .map((c) => {
+          const objectiveId = `c:${c.conceptId}`;
+          const cell = overview.heatmap.find(
+            (h) => h.objectiveId === objectiveId,
+          );
+          const probabilities = states
+            .filter((s) => s.data.objectiveId === objectiveId)
+            .map((s) => Number(s.data.bkt?.probability ?? 0.2));
+          const average = probabilities.length
+            ? probabilities.reduce((a, b) => a + b, 0) / probabilities.length
+            : null;
+          return {
+            conceptId: c.conceptId,
+            objectiveId,
+            label: cell?.label ?? null,
+            weight: c.weight,
+            assessed: probabilities.length,
+            belowThreshold: probabilities.filter((p) => p < 0.85).length,
+            // Rounded to the nearest ten: a range, never a precise figure.
+            readiness: average === null ? null : Math.round(average * 10) * 10,
+          };
+        })
+        .sort(
+          (a, b) =>
+            (a.readiness ?? -1) - (b.readiness ?? -1) || b.weight - a.weight,
+        );
+      const need = concepts.reduce(
+        (n, c) => n + c.weight * (100 - (c.readiness ?? 0)),
+        0,
+      );
+      return {
+        examId: exam.id,
+        name: exam.data.name,
+        date: exam.data.date,
+        students: overview.students,
+        concepts: concepts.map((c) => ({
+          ...c,
+          // Review time in proportion to weight times how far the class is from ready.
+          suggestedShare: need
+            ? Math.round((100 * c.weight * (100 - (c.readiness ?? 0))) / need)
+            : 0,
+        })),
+      };
+    });
+}
+
+/** IN17: a review pack of reviewed questions for chosen concepts, answers included, for class. */
+export async function reviewPack(ctx: AuthContext, objectiveIds: string[]) {
+  await instructorOnly(ctx, "read");
+  const items = (
+    await db
+      .tenant(ctx.tenantId)
+      .query<Row>(
+        "SELECT id,kind,owner_id,data,created_at FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='item' AND data->>'approved'='true' AND data->>'objectiveId'=ANY($3::text[]) ORDER BY id",
+        [ctx.tenantId, ctx.courseId, objectiveIds.slice(0, 12)],
+      )
+  ).rows;
+  const pools = objectiveIds.map((o) =>
+    items.filter((i) => i.data.objectiveId === o),
+  );
+  const picked: Row[] = [];
+  for (let round = 0; picked.length < 10; round++) {
+    const before = picked.length;
+    for (const pool of pools)
+      if (pool[round] && picked.length < 10) picked.push(pool[round]);
+    if (picked.length === before) break;
+  }
+  return {
+    questions: picked.map((i) => ({
+      itemId: i.id,
+      concept: i.data.conceptLabel ?? null,
+      difficulty: i.data.difficulty ?? null,
+      stem: i.data.stem,
+      steps: i.data.steps ?? null,
+      options: i.data.options ?? [],
+      key: i.data.key,
+      feedback: i.data.feedback ?? null,
+    })),
   };
 }
 

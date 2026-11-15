@@ -1700,6 +1700,62 @@ export function KnowledgePanel({
     </>
   );
 }
+/** IN1: what the platform does, what the instructor controls, what it never does. */
+function InstructorIntro({ t }: { t: Translate }) {
+  const [seen, S] = useState(true);
+  useEffect(() => {
+    try {
+      S(localStorage.getItem("tilwa_instructor_intro") === "1");
+    } catch {}
+  }, []);
+  if (seen) return null;
+  return (
+    <Box>
+      <h2>{t("قبل أن تبدأ", "Before you start")}</h2>
+      <p>
+        <strong>{t("ما تفعله المنصة", "What the platform does")}:</strong>{" "}
+        {t(
+          "تبني خريطة مفاهيم من موادك أنت، وتقترح ما يسبق كل مفهوم، وتكتب مسودات أسئلة، ثم تقود كل طالب في مساره وتجيبه من موادك فقط.",
+          "It builds a concept map from your own material, proposes what precedes each concept, drafts questions, then guides each student along their path and answers them only from your material.",
+        )}
+      </p>
+      <p>
+        <strong>{t("ما تتحكم فيه", "What you control")}:</strong>{" "}
+        {t(
+          "لا شيء يصل إلى الطلاب قبل اعتمادك ونشره. قرارك يغلب اقتراح النظام دائمًا ويُسجَّل.",
+          "Nothing reaches students before you approve and publish it. Your decision always wins over the system's suggestion and is logged.",
+        )}
+      </p>
+      <p>
+        <strong>{t("ما لا تفعله أبدًا", "What it never does")}:</strong>{" "}
+        {t(
+          "لا تضع درجات، ولا تغيّر درجة، ولا تجيب من خارج موادك.",
+          "It does not grade for you, does not change a grade, and does not answer outside your material.",
+        )}
+      </p>
+      <p>
+        <strong>
+          {t("أين قد يخطئ النموذج", "Where the AI can be wrong")}:
+        </strong>{" "}
+        {t(
+          "قد يقترح علاقة غير صحيحة أو سؤالًا ضعيفًا أو إجابة ناقصة. تراها كلها قبل النشر، وتصحح إجابات المساعد من «متابعة الفصل».",
+          "It may propose a wrong link, a weak question or an incomplete answer. You see all of them before publishing, and you correct tutor answers from the class dashboard.",
+        )}
+      </p>
+      <Button
+        primary
+        onClick={() => {
+          try {
+            localStorage.setItem("tilwa_instructor_intro", "1");
+          } catch {}
+          S(true);
+        }}
+      >
+        {t("ابدأ", "Get started")}
+      </Button>
+    </Box>
+  );
+}
 /** IN6: what must be true before students can use the course, in plain words. */
 export function LaunchPanel({
   lang,
@@ -1824,6 +1880,7 @@ export function LaunchPanel({
           )}
         </p>
       </div>
+      <InstructorIntro t={t} />
       <Box>
         {checks.map((c, i) => (
           <div className="row" key={i}>
