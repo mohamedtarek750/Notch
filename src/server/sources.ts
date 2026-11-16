@@ -45,6 +45,26 @@ export const sourceMessages: Record<string, [string, string]> = {
     "ليست لديك صلاحية لتنفيذ هذا الإجراء.",
     "You are not allowed to perform this action.",
   ],
+  provider_busy: [
+    "النموذج مزدحم الآن عند المزوّد. انتظر دقيقة ثم أعد المحاولة؛ لم يتغيّر شيء في بياناتك.",
+    "The model is overloaded at the provider right now. Wait a minute and try again; nothing in your data changed.",
+  ],
+  provider_quota: [
+    "استُنفدت حصة النموذج المجانية مؤقتًا. انتظر دقيقة، وإن تكرر فالحصة اليومية انتهت وتتجدد غدًا.",
+    "The model's free quota is used up for the moment. Wait a minute; if it repeats, the daily quota is finished and renews tomorrow.",
+  ],
+  provider_key: [
+    "مفتاح النموذج غير مقبول عند المزوّد. راجع المفتاح في إعدادات الاستضافة.",
+    "The provider did not accept the model key. Check the key in the hosting settings.",
+  ],
+  provider_rejected: [
+    "رفض المزوّد الطلب بصيغته الحالية. أبلغ فريق المنصّة.",
+    "The provider rejected the request as sent. Report this to the platform team.",
+  ],
+  provider_slow: [
+    "تأخر ردّ النموذج أكثر من المهلة. أعد المحاولة بعد قليل.",
+    "The model took longer than the time limit to answer. Try again shortly.",
+  ],
   parse_failed: [
     "تعذّرت قراءة الملف. جرّب ملفًا نصيًا أو أرفق نصًا مصححًا.",
     "Could not parse this file. Attach a corrected extract.",
