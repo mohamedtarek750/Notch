@@ -190,7 +190,7 @@ export class GeminiGateway implements ModelGateway {
       process.env.GEMINI_AUTHORING_THINKING !== "low"
         ? ThinkingLevel.MEDIUM
         : ThinkingLevel.LOW;
-    const request = () =>
+    const request = (level: ThinkingLevel) =>
       client.models.generateContent({
         model,
         contents: JSON.stringify(input.payload),
@@ -200,7 +200,7 @@ export class GeminiGateway implements ModelGateway {
           responseJsonSchema: input.schema,
           maxOutputTokens: authoring ? 12000 : 2400,
           ...(/^gemini-3/.test(model)
-            ? { thinkingConfig: { thinkingLevel: thinking } }
+            ? { thinkingConfig: { thinkingLevel: level } }
             : {}),
           // Extraction should give the same map for the same lecture on a re-run.
           ...(input.operation === "propose"
@@ -209,19 +209,28 @@ export class GeminiGateway implements ModelGateway {
         },
       });
     // The provider answers 503/429 during demand spikes, which are common on the free
-    // tier. Three spaced retries absorb most of them without hiding a real outage.
+    // tier. Measured during one: medium thinking was refused while low thinking on the
+    // same model answered at once. So a busy answer is retried once as asked, then with
+    // low thinking: a somewhat thinner result beats no result, and the instructor reviews it.
+    const plan = [
+      { level: thinking, wait: 0 },
+      { level: thinking, wait: 2000 },
+      { level: ThinkingLevel.LOW, wait: 1000 },
+      { level: ThinkingLevel.LOW, wait: 8000 },
+    ];
     let result: Awaited<ReturnType<typeof request>> | undefined;
-    for (let attempt = 0; ; attempt++) {
+    for (const [attempt, step] of plan.entries()) {
+      if (step.wait) await new Promise((r) => setTimeout(r, step.wait));
       try {
-        result = await request();
+        result = await request(step.level);
         break;
       } catch (error) {
         const status = (error as { status?: number }).status;
-        if (attempt >= 3 || (status !== 503 && status !== 429))
+        if (attempt === plan.length - 1 || (status !== 503 && status !== 429))
           throw providerError(error);
-        await new Promise((r) => setTimeout(r, [2000, 6000, 15000][attempt]));
       }
     }
+    if (!result) throw new SourceError("provider_busy", 503);
     return {
       value: parseJson(result.text),
       tokens: result.usageMetadata?.totalTokenCount || 0,
