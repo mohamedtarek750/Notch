@@ -1,6 +1,6 @@
-# Tilwa | تِلوا
+# Notch
 
-**Know your path · اعرف طريقك**
+**taking education up a notch· اعرف طريقك**
 
 **التجربة المنشورة / Hosted pilot:** [https://tilwa.vercel.app](https://tilwa.vercel.app) — افتح الرابط مباشرة، وأدخل رمز مساحة التجربة الموجودة، ثم اختر **مدرّس** أو **طالب** أو **مرشد أكاديمي**. لا يلزم تسجيل دخول Vercel؛ رمز المساحة هو الدعوة إلى الحسابات الاصطناعية. احصل عليه من الملف الخاص `.tilwa-private/demo-workspace-code` ولا تنشره.
 
