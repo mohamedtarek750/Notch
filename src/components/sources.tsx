@@ -700,7 +700,7 @@ async function readImagePagesOfFile(
     await task.destroy();
   }
 }
-async function uploadLargePdf(
+export async function uploadLargePdf(
   file: File,
   options: {
     mode: "umbrella" | "lecture";
@@ -721,6 +721,9 @@ async function uploadLargePdf(
     empty = 0,
     read = 0,
     stopped = "";
+  // The current version and source key of each uploaded part, for the steps that follow.
+  const versionIds: string[] = [],
+    sourceKeys: string[] = [];
   for (let start = 1; start <= total; start += PART_PAGES) {
     const end = Math.min(total, start + PART_PAGES - 1);
     const pages: { page: number; text: string }[] = [];
@@ -755,6 +758,8 @@ async function uploadLargePdf(
       options.lang,
     );
     parts++;
+    let versionId: string | undefined = part?.id;
+    if (part?.sourceKey) sourceKeys.push(part.sourceKey);
     // Lecture slides that are pictures are read by the model straight away.
     const pictures = pages.filter((p) => p.text.length < 60).map((p) => p.page);
     if (options.mode === "lecture" && pictures.length && part?.id && !stopped) {
@@ -767,10 +772,12 @@ async function uploadLargePdf(
       );
       read += result.read;
       stopped = result.stopped;
+      versionId = result.versionId;
     }
+    if (versionId) versionIds.push(versionId);
   }
   await task.destroy();
-  return { pages: total, parts, empty, read, stopped };
+  return { pages: total, parts, empty, read, stopped, versionIds, sourceKeys };
 }
 function UmbrellaUpload({
   mode,

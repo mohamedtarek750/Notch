@@ -164,7 +164,7 @@ export function CourseConceptMap({ lang }: { lang: MapLanguage }) {
     const url = URL.createObjectURL(new Blob([content], { type: mime }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Tilwa-CET351-approved-map-${new Date().toISOString().slice(0, 10)}.${kind}`;
+    a.download = `Notch-approved-map-${new Date().toISOString().slice(0, 10)}.${kind}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -739,8 +739,8 @@ export function CourseConceptMap({ lang }: { lang: MapLanguage }) {
           </section>
           <p className="map-source-note">
             {t(
-              "GeeksforGeeks مسجّل كمرجع جامع برابط. تظهر مقاطع المقال فقط إذا وُجد تصريح استخدام ومراجعة. ملحق تِلوا الأصلي مصدر مساند مستقل، وليس نصًا من GFG.",
-              "GeeksforGeeks is registered as an umbrella reference link. Article passages appear only with permission and review. Tilwa’s original supplement is a separate foundational source, not GFG article text.",
+              "GeeksforGeeks مسجّل كمرجع جامع برابط. تظهر مقاطع المقال فقط إذا وُجد تصريح استخدام ومراجعة. ملحق Notch الأصلي مصدر مساند مستقل، وليس نصًا من GFG.",
+              "GeeksforGeeks is registered as an umbrella reference link. Article passages appear only with permission and review. Notch’s original supplement is a separate foundational source, not GFG article text.",
             )}
           </p>
         </>
@@ -816,8 +816,8 @@ function LocatorLinks({
             <bdi>
               {s.sourceKey === "TILWA-PILOT-FOUNDATIONS"
                 ? lang === "ar"
-                  ? "ملحق تِلوا"
-                  : "Tilwa supplement"
+                  ? "ملحق Notch"
+                  : "Notch supplement"
                 : s.sourceKey}
             </bdi>
             <span>
