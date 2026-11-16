@@ -212,9 +212,13 @@ export class GeminiGateway implements ModelGateway {
     // tier. Measured during one: medium thinking was refused while low thinking on the
     // same model answered at once. So a busy answer is retried once as asked, then with
     // low thinking: a somewhat thinner result beats no result, and the instructor reviews it.
+    // Extraction is asked for rarely and should miss nothing, so it waits longer for the
+    // thorough setting before settling for the lighter one.
+    const patient = input.operation === "propose";
     const plan = [
       { level: thinking, wait: 0 },
-      { level: thinking, wait: 2000 },
+      { level: thinking, wait: patient ? 5000 : 2000 },
+      ...(patient ? [{ level: thinking, wait: 15000 }] : []),
       { level: ThinkingLevel.LOW, wait: 1000 },
       { level: ThinkingLevel.LOW, wait: 8000 },
     ];

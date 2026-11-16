@@ -23,6 +23,7 @@ import {
   Menu,
   MessageSquare,
   Network,
+  Sparkles,
   Landmark,
   NotebookPen,
   Send,
@@ -39,6 +40,7 @@ import { ClassDashboard, CourseReport } from "./instructor";
 import { AdvisorDashboard } from "./advisor";
 import { CourseConceptMap } from "./CourseConceptMap";
 import { KnowledgeTree } from "./KnowledgeTree";
+import { BuildStudio } from "./build";
 import {
   AcademicStructure,
   CourseSwitcher,
@@ -139,6 +141,7 @@ const STUDENT_NAV = [
   ["exam", "جاهزية الامتحان", "Exam readiness", GraduationCap],
 ] as const;
 const INSTRUCTOR_NAV = [
+  ["build", "ابنِ الشجرة", "Build the tree", Sparkles],
   ["materials", "١ · رفع المواد", "1 · Upload materials", Upload],
   [
     "knowledge",
@@ -199,7 +202,7 @@ export function Workspace({
         // Each role opens on its own starting screen, also after a page reload.
         V(
           r.user?.role === "instructor"
-            ? "launch"
+            ? "build"
             : r.user?.role === "advisor"
               ? "advising"
               : "home",
@@ -307,7 +310,7 @@ export function Workspace({
       await refresh();
       go(
         role === "instructor"
-          ? "launch"
+          ? "build"
           : role === "advisor"
             ? "advising"
             : "home",
@@ -352,7 +355,7 @@ export function Workspace({
   const renderNav = () => (
     <>
       <div className="brand">
-        <img src="/brand/tilwa.png" alt="Tilwa | تِلوا" width={99} height={47} />
+        <img src="/brand/notch-white.png" alt="Notch" width={132} height={36} />
       </div>
       <nav
         className="railnav"
@@ -383,7 +386,7 @@ export function Workspace({
         <span className="avatar">{tr(user?.name).slice(0, 1) || "س"}</span>
         <div>
           <strong>
-            {tr(user?.name) || t("مساحة تِلوا", "Tilwa workspace")}
+            {tr(user?.name) || t("مساحة Notch", "Notch workspace")}
           </strong>
           <small>{roleName(user?.role)}</small>
         </div>
@@ -400,7 +403,7 @@ export function Workspace({
   if (loading)
     return (
       <div className="boot" role="status">
-        <img src="/brand/tilwa.png" width={140} alt="Tilwa | تِلوا" />
+        <img src="/brand/notch-dark.png" width={170} alt="Notch" />
         <p>{t("بنجهّز مساحة تعلّمك…", "Preparing your learning workspace…")}</p>
       </div>
     );
@@ -419,14 +422,13 @@ export function Workspace({
             {lang === "ar" ? "English" : "العربية"}
           </button>
         </div>
-        <img src="/brand/tilwa.png" className="login-logo" alt="Tilwa | تِلوا" />
+        <img src="/brand/notch-dark.png" className="login-logo" alt="Notch" />
         <span className="overline">
-          CET351 ·{" "}
           {inviteOnlyPilot
             ? t("تجربة جامعية بدعوة", "Invite-only university pilot")
             : t("تجربة تعليمية جامعية", "University learning pilot")}
         </span>
-        <h1>{t("اعرف طريقك.", "Know your path.")}</h1>
+        <h1>{t("نرتقي بالتعليم درجة.", "Taking education up a notch.")}</h1>
         <p>
           {t(
             "كل خطوة تعلّم، لها دليل. ادخل لمساحتك وكمّل رحلتك.",
@@ -639,6 +641,9 @@ export function Workspace({
               )}
               {view === "report" && (
                 <CourseReport lang={lang} t={t} onError={E} />
+              )}
+              {view === "build" && user?.role === "instructor" && (
+                <BuildStudio lang={lang} t={t} onError={E} go={go} />
               )}
               {view === "structure" && (
                 <AcademicStructure
@@ -1053,8 +1058,8 @@ export function Workspace({
           )}
           <footer className="workspace-note">
             {t(
-              "تجربة تِلوا · بيانات أشخاص وسجل مؤسسي اصطناعي",
-              "Tilwa pilot · Synthetic people and institutional history",
+              "تجربة Notch · بيانات أشخاص وسجل مؤسسي اصطناعي",
+              "Notch pilot · Synthetic people and institutional history",
             )}{" "}
             ·{" "}
             {data?.mode === "local"
@@ -1184,12 +1189,9 @@ function Home({
           <h1>
             {user.role === "student"
               ? t("أهلًا بعودتك، سلمى", "Welcome back, Salma")
-              : t("أهلًا بمساحتك في تِلوا", "Welcome to your Tilwa workspace")}
+              : t("أهلًا بمساحتك في Notch", "Welcome to your Notch workspace")}
           </h1>
-          <p>
-            {t("اعرف طريقك", "Know your path")} <span className="sep">/</span>{" "}
-            {t("Know your path", "اعرف طريقك")}
-          </p>
+          <p>{t("نرتقي بالتعليم درجة", "Taking education up a notch")}</p>
         </div>
         <span className="headDate">
           <CalendarDays size={16} />
@@ -1507,7 +1509,7 @@ function SessionPanel({
   const tutor = (
     <div className="tutor">
       <div className="sectionTop">
-        <h2>{t("مساعد تِلوا", "Tilwa tutor")}</h2>
+        <h2>{t("مساعد Notch", "Notch tutor")}</h2>
         <MessageSquare size={18} />
       </div>
       <small>
@@ -1762,7 +1764,7 @@ function SessionPanel({
       </div>
       <button className="btn primary mobileTutor" onClick={() => DR(true)}>
         <MessageSquare size={18} />
-        {t("اسأل تِلوا", "Ask Tilwa")}
+        {t("اسأل Notch", "Ask Notch")}
       </button>
       {drawer && (
         <div className="drawer-backdrop" onClick={() => DR(false)}>
@@ -1770,7 +1772,7 @@ function SessionPanel({
             className="tutor-drawer"
             role="dialog"
             aria-modal="true"
-            aria-label={t("مساعد تِلوا", "Tilwa tutor")}
+            aria-label={t("مساعد Notch", "Notch tutor")}
             onClick={(e) => e.stopPropagation()}
           >
             <button

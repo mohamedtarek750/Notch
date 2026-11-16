@@ -34,8 +34,8 @@ export function SourceViewer({ id }: { id: string }) {
   return (
     <main className="source-view" dir={lang === "ar" ? "rtl" : "ltr"}>
       <header>
-        <a href="/" aria-label="Tilwa | تِلوا">
-          <img src="/brand/tilwa.png" width={100} alt="Tilwa | تِلوا" />
+        <a href="/" aria-label="Notch">
+          <img src="/brand/notch-dark.png" width={120} alt="Notch" />
         </a>
         <Button onClick={() => L(lang === "ar" ? "en" : "ar")}>
           {lang === "ar" ? "English" : "العربية"}

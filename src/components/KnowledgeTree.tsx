@@ -51,7 +51,7 @@ const W = 190,
   MINE = "#b45309";
 
 /** Starting place of each concept: one column further than the deepest concept before it. */
-function arrange(concepts: Concept[], edges: Edge[], lang: Lang) {
+export function arrange(concepts: Concept[], edges: Edge[], lang: Lang) {
   const depth = new Map(concepts.map((c) => [c.id, 0]));
   for (let round = 0; round < concepts.length; round++) {
     let moved = false;
@@ -86,7 +86,7 @@ function arrange(concepts: Concept[], edges: Edge[], lang: Lang) {
   return at;
 }
 /** A line leaves and enters on the sides that face each other, wherever the boxes are. */
-function route(a: Point, b: Point) {
+export function route(a: Point, b: Point) {
   const dx = b.x - a.x,
     dy = b.y - a.y;
   if (Math.abs(dx) >= W * 0.6) {
@@ -228,16 +228,105 @@ type Gesture =
   | { kind: "link"; from: string; x: number; y: number; over: string }
   | { kind: "pan"; x: number; y: number; ox: number; oy: number };
 
+/** A still picture of a proposed tree, before anything is published. */
+export function TreePreview({
+  concepts,
+  edges,
+  lang,
+}: {
+  concepts: Concept[];
+  edges: Edge[];
+  lang: Lang;
+}) {
+  const at = arrange(concepts, edges, lang);
+  const all = Object.values(at);
+  const width = Math.max(...all.map((p) => p.x), 0) + W + PAD,
+    height = Math.max(...all.map((p) => p.y), 0) + H + PAD;
+  return (
+    <div
+      style={{
+        overflow: "auto",
+        maxHeight: 520,
+        background: "#fafbfe",
+        border: "1px solid #dfe2ee",
+        borderRadius: 10,
+        direction: "ltr",
+      }}
+    >
+      <svg width={width} height={height} role="img">
+        <defs>
+          <marker
+            id="tip-preview"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerUnits="userSpaceOnUse"
+            markerWidth="11"
+            markerHeight="11"
+            orient="auto"
+          >
+            <path d="M0 0L10 5L0 10z" fill={MODEL} />
+          </marker>
+        </defs>
+        {edges.map((e) =>
+          at[e.from] && at[e.to] ? (
+            <path
+              key={`${e.from}|${e.to}`}
+              d={route(at[e.from], at[e.to])}
+              fill="none"
+              stroke={MODEL}
+              strokeWidth={1.6}
+              strokeDasharray={e.type === "prerequisite" ? undefined : "5 5"}
+              markerEnd="url(#tip-preview)"
+            />
+          ) : null,
+        )}
+        {concepts.map((c) => (
+          <g key={c.id} transform={`translate(${at[c.id].x} ${at[c.id].y})`}>
+            <rect
+              width={W}
+              height={H}
+              rx={9}
+              fill={c.scope === "foundation" ? "#eef0f6" : "#ffffff"}
+              stroke={MODEL}
+              strokeWidth={1.2}
+            />
+            <foreignObject width={W} height={H}>
+              <div
+                dir={lang === "ar" ? "rtl" : "ltr"}
+                style={{
+                  height: H,
+                  padding: "0 8px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  font: "600 12px/1.25 Arial, 'Tilwa Arabic', sans-serif",
+                  color: "#20233c",
+                  overflow: "hidden",
+                }}
+              >
+                {c.label[lang]}
+              </div>
+            </foreignObject>
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
 export function KnowledgeTree({
   lang,
   t,
   onError,
   go,
+  initialScope = "course",
 }: {
   lang: Lang;
   t: Translate;
   onError: (message: string) => void;
   go: (view: string) => void;
+  initialScope?: Scope;
 }) {
   const [graph, setGraph] = useState<{
       concepts: Concept[];
@@ -255,7 +344,7 @@ export function KnowledgeTree({
     [first, setFirst] = useState(""),
     [then, setThen] = useState(""),
     [note, setNote] = useState(""),
-    [scope, setScope] = useState<Scope>("course"),
+    [scope, setScope] = useState<Scope>(initialScope),
     [shared, setShared] = useState<Shared | null>(null);
   const svg = useRef<SVGSVGElement>(null),
     frame = useRef(0),
