@@ -12,6 +12,7 @@ import {
 } from "../src/server/sources";
 import {
   extractPrerequisites,
+  extractStep,
   reviewPrerequisiteEdges,
 } from "../src/server/prerequisites";
 import {
@@ -106,7 +107,9 @@ async function teach(ctx: AuthContext) {
       },
     ],
   });
-  await approvePendingUmbrella(ctx, reference.id);
+  // A reference the major already has is recognised and reused as it is.
+  if (!("duplicate" in reference))
+    await approvePendingUmbrella(ctx, reference.id);
   const proposal = await extractPrerequisites(ctx, model, {
     lectureSourceKey: lecture.sourceKey,
   });
@@ -285,7 +288,7 @@ describe("faculty, major and course structure", () => {
     };
     // No reference was uploaded in this course: the one from its major is used.
     const key = await lectureOnly(sibling);
-    expect((await listMaterials(sibling)).sharedUmbrellas).toHaveLength(2);
+    expect((await listMaterials(sibling)).sharedUmbrellas).toHaveLength(1);
     const proposal = await extractPrerequisites(sibling, model, {
       lectureSourceKey: key,
     });
@@ -352,5 +355,129 @@ describe("faculty, major and course structure", () => {
         fromCourse: outsider.id,
       }),
     ).rejects.toMatchObject({ code: "phantom_endpoint" });
+  });
+  it("extracts step by step: one model call per request, resumable, with a second look", async () => {
+    const create = async (code: string) =>
+      (
+        (await catalogAction(instructor, {
+          action: "create-course",
+          majorId,
+          code,
+          title: "Course " + code,
+        })) as any
+      ).id as string;
+    const course = { ...instructor, courseId: await create("ST301") };
+    const lecture = await importExtractedPages(course, {
+      mode: "lecture",
+      title: "Lecture S",
+      pages: [
+        {
+          page: 1,
+          text: "Gradient descent lowers the error by stepping against the gradient of the loss.",
+        },
+      ],
+    });
+    await approvePendingUmbrella(course, lecture.id);
+    // The reference of the major is recognised when uploaded again, not stored twice.
+    const again = await importExtractedPages(course, {
+      mode: "umbrella",
+      title: "Calculus reference",
+      rightsConfirmed: true,
+      rightsReference: "Course textbook",
+      pages: [
+        {
+          page: 10,
+          text: "Gradient descent is computed from the derivative of the loss; gradient descent needs the derivative first.",
+        },
+      ],
+    });
+    expect(again).toMatchObject({ duplicate: true });
+    expect((await listMaterials(course)).umbrellas).toHaveLength(0);
+    let calls = 0,
+      failNext = true;
+    const counted: ModelGateway = {
+      modelId: "deterministic-step-replay-NOT-GEMINI",
+      async generate(request) {
+        calls++;
+        const payload = request.payload as any;
+        // The step-by-step run asks for the thorough setting.
+        expect(request.thorough).toBe(true);
+        if (!payload.evidence && failNext) {
+          failNext = false;
+          throw Object.assign(new Error("busy"), { status: 503 });
+        }
+        if (payload.evidence) return model.generate(request);
+        // First look finds nothing; the second look finds the relationship.
+        return calls < 4
+          ? { tokens: 5, value: { foundations: [], edges: [] } }
+          : model.generate(request);
+      },
+    };
+    const step = () =>
+      extractStep(course, { lectureSourceKey: lecture.sourceKey }, counted);
+    const first = await step();
+    expect(first).toMatchObject({ done: false, next: { kind: "links" } });
+    expect(calls).toBe(1);
+    // A failed call loses nothing: the concept answer is not asked for again.
+    await expect(step()).rejects.toBeTruthy();
+    expect(calls).toBe(2);
+    const third = await step();
+    expect(calls).toBe(3);
+    expect(third).toMatchObject({ done: false, next: { kind: "recheck" } });
+    const last = await step();
+    expect(calls).toBe(4);
+    expect(last.done).toBe(true);
+    if (!last.done) throw new Error("unreachable");
+    // The concept another course of the major already teaches keeps its identity.
+    expect(last.proposal.graph.edges).toMatchObject([
+      {
+        from: stableConceptId("Derivative"),
+        to: stableConceptId("Gradient Descent"),
+      },
+    ]);
+    // Finished: nothing is left over to replay.
+    const left = await db
+      .tenant(tenant)
+      .query(
+        "SELECT 1 FROM records WHERE tenant_id=$1 AND kind='extraction_job'",
+        [tenant],
+      );
+    expect(left.rows).toHaveLength(0);
+  });
+  it("empties a synthetic test workspace on request, keeping people and structure", async () => {
+    // A workspace holding real people can never be emptied this way.
+    await db.query("UPDATE tenants SET synthetic=false WHERE id=$1", [tenant]);
+    await expect(
+      catalogAction(instructor, {
+        action: "reset-workspace",
+        confirm: "RESET",
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    await db.query("UPDATE tenants SET synthetic=true WHERE id=$1", [tenant]);
+    await expect(
+      catalogAction(student, { action: "reset-workspace", confirm: "RESET" }),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(
+      catalogAction(instructor, { action: "reset-workspace", confirm: "yes" }),
+    ).rejects.toBeTruthy();
+    const result = (await catalogAction(instructor, {
+      action: "reset-workspace",
+      confirm: "RESET",
+    })) as any;
+    expect(result.removed.sources).toBeGreaterThan(0);
+    expect((await listMaterials(instructor)).lectures).toHaveLength(0);
+    expect((await getKnowledge(instructor)).releases).toHaveLength(0);
+    const kept = await catalog(instructor);
+    expect(kept.faculties).toHaveLength(1);
+    expect(kept.courses.length).toBeGreaterThan(1);
+    // A full reset also removes the added structure.
+    await catalogAction(instructor, {
+      action: "reset-workspace",
+      confirm: "RESET",
+      keepStructure: false,
+    });
+    const bare = await catalog(instructor);
+    expect(bare.faculties).toHaveLength(0);
+    expect(bare.courses.map((c) => c.id)).toEqual(["CET351"]);
   });
 });

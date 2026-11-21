@@ -413,6 +413,26 @@ export async function importExtractedPages(ctx: AuthContext, raw: unknown) {
   const sourceKey =
     (input.mode === "umbrella" ? UMBRELLA_PREFIX : LECTURE_PREFIX) +
     hashBytes(keyText(ctx, input.title)).slice(0, 12).toUpperCase();
+  if (input.mode === "umbrella") {
+    // The same reference already uploaded in another course of this major serves this
+    // course too: recognise it instead of storing a second copy.
+    const twin = (
+      await db
+        .tenant(ctx.tenantId)
+        .query<{ id: string; source_key: string; course_id: string }>(
+          "SELECT id,source_key,course_id FROM material_versions WHERE tenant_id=$1 AND course_id=ANY($2::text[]) AND role='umbrella' AND current_version=true AND hash=$3 LIMIT 1",
+          [ctx.tenantId, await majorCourses(ctx), hashBytes(text)],
+        )
+    ).rows[0];
+    if (twin)
+      return {
+        id: twin.id,
+        sourceKey: twin.source_key,
+        duplicate: true as const,
+        duplicateOf: twin.course_id,
+        pages: pages.length,
+      };
+  }
   const result = await persistMaterial(ctx, {
     sourceKey,
     title: input.title,

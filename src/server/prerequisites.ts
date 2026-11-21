@@ -24,11 +24,13 @@ import { lectureKeys } from "./coverage";
  * stored as one pending proposal; nothing routes a learner before review and publication.
  */
 export const PREREQUISITE_KIND = "prerequisite-extraction";
-const MAX_CONCEPT_CALLS = 4;
-const MAX_LECTURE_CONCEPTS = 24;
-const LINK_GROUP = 6;
+const MAX_CONCEPT_CALLS = 10;
+const MAX_LECTURE_CONCEPTS = 60;
+// Fewer pages per call: each page gets the model's full attention.
+const CONCEPT_CALL_CHARS = 9000;
+const LINK_GROUP = 3;
 const UMBRELLA_PER_GROUP = 12;
-const UMBRELLA_PER_CONCEPT = 3;
+const UMBRELLA_PER_CONCEPT = 4;
 const UMBRELLA_CHARS = 2000;
 const EXCERPT_CHARS = 350;
 const MAX_CANDIDATES = 40;
@@ -40,7 +42,7 @@ Task: list the distinct concepts this lecture passage actually TEACHES (defines,
 - One concept per distinct idea. Do not fold several methods, assumptions, problems or remedies into one broad concept: a named method, a named assumption, a named failure case and its named fix are each their own concept.
 - Cover every teaching page: a page that explains something must be cited by at least one concept.
 - Skip course logistics, titles, bare code or figure placeholders, generic lists of advantages, and terms that are only mentioned.
-- For each concept give a key local to this response, a bilingual label, common aliases (abbreviations, alternative names, and the name a standard textbook uses when it differs, e.g. "steepest descent" for gradient descent), and the evidence IDs of the pages that teach it. At most 14 concepts.`;
+- For each concept give a key local to this response, a bilingual label, common aliases (abbreviations, alternative names, and the name a standard textbook uses when it differs, e.g. "steepest descent" for gradient descent), and the evidence IDs of the pages that teach it. At most 20 concepts. Do not leave out a concept because it looks minor: every idea a page defines or works through must appear.`;
 const LINK_INSTRUCTIONS = `${EXTRACTION_POLICY}
 Task: decide what a student must already understand BEFORE each lecture concept, using the umbrella reference passages. Read every umbrella passage.
 Rules:
@@ -207,10 +209,35 @@ async function approvedEvidence(ctx: AuthContext) {
   ).rows;
 }
 
+/** What the model is about to do, shown to the instructor while they wait. */
+export type ExtractionStep = {
+  kind: "concepts" | "links" | "recheck";
+  part: number;
+  of: number;
+  about: string[];
+};
+/** Thrown by a step-by-step run when the next model call belongs to the next request. */
+export class ExtractionPause extends Error {
+  constructor(public step: ExtractionStep) {
+    super("extraction_pause");
+  }
+}
+/**
+ * A step-by-step run: answers already obtained are replayed from `answers`, exactly one
+ * new model call is made per request, and a failed call loses nothing. This lets an
+ * extraction take as long as it needs without one long request.
+ */
+export type ExtractionJob = {
+  answers: Record<string, { value: unknown; tokens: number }>;
+  called?: boolean;
+  /** The answer added by this request, forgotten again if it turns out unusable. */
+  last?: string;
+};
 export async function extractPrerequisites(
   ctx: AuthContext,
   gateway: ModelGateway = new GeminiGateway(),
   rawInput: unknown,
+  job?: ExtractionJob,
 ) {
   await staff(ctx, "generate");
   const input = extractionInput.parse(rawInput);
@@ -244,6 +271,24 @@ export async function extractPrerequisites(
   const known: Known[] = (release?.data.graph.concepts ?? [])
     .filter((c) => !retired.has(c.id))
     .map((c) => ({ id: c.id, label: c.label, aliases: c.aliases ?? [] }));
+  // Concepts already taught in the other courses of this major are known too, so the
+  // same idea is recognised instead of being added twice, and a new lecture can be
+  // linked to what a sibling course teaches.
+  const siblings = await majorCourses(ctx);
+  if (siblings.length) {
+    const taught = (
+      await db
+        .tenant(ctx.tenantId)
+        .query<{ course_id: string; graph: Graph }>(
+          "SELECT DISTINCT ON (course_id) course_id,data->'graph' AS graph FROM records WHERE tenant_id=$1 AND kind='graph_release' AND course_id=ANY($2::text[]) ORDER BY course_id,created_at DESC,id DESC",
+          [ctx.tenantId, siblings],
+        )
+    ).rows;
+    for (const row of taught)
+      for (const c of row.graph?.concepts ?? [])
+        if (!known.some((k) => k.id === c.id))
+          known.push({ id: c.id, label: c.label, aliases: c.aliases ?? [] });
+  }
   const knownByName = new Map<string, Known[]>();
   for (const k of known)
     for (const n of names(k))
@@ -275,13 +320,30 @@ export async function extractPrerequisites(
   const supplied = new Set<string>();
   const generatedAt = new Date().toISOString();
   /** One traced provider call. Budget is reserved before the call is made. */
+  let sequence = 0;
   const call = async (
     operation: string,
     system: string,
     schema: Record<string, unknown>,
     payload: unknown,
     evidenceIds: string[],
+    step: ExtractionStep,
   ) => {
+    const key = `${operation}:${sequence++}`;
+    if (job) {
+      const answered = job.answers[key];
+      if (answered) {
+        stats.calls++;
+        stats.tokens += answered.tokens;
+        return {
+          value: answered.value,
+          finish: async (_outcome: string) => {},
+        };
+      }
+      if (job.called) throw new ExtractionPause(step);
+      job.called = true;
+      job.last = key;
+    }
     const base = {
       id: randomUUID(),
       operation,
@@ -299,8 +361,10 @@ export async function extractPrerequisites(
         system,
         schema,
         payload,
+        thorough: Boolean(job),
       });
       stats.tokens += response.tokens;
+      if (job) job.answers[key] = response;
       return {
         value: response.value,
         finish: (outcome: string) =>
@@ -325,8 +389,12 @@ export async function extractPrerequisites(
   // Pass 1 — what does the lecture teach? Every approved page is read in order.
   const lectureConcepts = new Map<string, Concept>();
   const nameToId = new Map<string, string>();
-  const budget = prepared.maxContextCharacters - 1500;
-  for (const batch of batchPages(lecture, budget, MAX_CONCEPT_CALLS)) {
+  const budget = Math.min(
+    prepared.maxContextCharacters - 1500,
+    CONCEPT_CALL_CHARS,
+  );
+  const batches = batchPages(lecture, budget, MAX_CONCEPT_CALLS);
+  for (const [batchIndex, batch] of batches.entries()) {
     const ids = batch.map((e) => e.id);
     ids.forEach((id) => supplied.add(id));
     const result = await call(
@@ -342,6 +410,12 @@ export async function extractPrerequisites(
         })),
       },
       ids,
+      {
+        kind: "concepts",
+        part: batchIndex + 1,
+        of: batches.length,
+        about: [`${batch[0].page ?? ""}`, `${batch.at(-1)!.page ?? ""}`],
+      },
     );
     stats.conceptCalls++;
     const parsed = conceptOutput.safeParse(result.value);
@@ -443,8 +517,24 @@ export async function extractPrerequisites(
   const edges: Edge[] = [];
   const all = [...lectureConcepts.values()];
   const unsupported: string[] = [];
-  for (let i = 0; i < all.length; i += LINK_GROUP) {
-    const group = all.slice(i, i + LINK_GROUP);
+  // Work list: every concept in small groups, then a second look at each concept that
+  // came out with no prerequisite, using other passages and every lecture concept.
+  const queue: { group: Concept[]; recheck: boolean }[] = [];
+  for (let i = 0; i < all.length; i += LINK_GROUP)
+    queue.push({ group: all.slice(i, i + LINK_GROUP), recheck: false });
+  const firstPass = queue.length;
+  for (let q = 0; ; q++) {
+    if (q === firstPass && job) {
+      // The thorough, step-by-step run looks again at whatever is still unlinked.
+      const linkedNow = new Set(
+        edges.filter((e) => e.type === "prerequisite").map((e) => e.to),
+      );
+      const alone = all.filter((c) => !linkedNow.has(c.id));
+      for (let i = 0; i < alone.length; i += LINK_GROUP)
+        queue.push({ group: alone.slice(i, i + LINK_GROUP), recheck: true });
+    }
+    if (q >= queue.length) break;
+    const { group, recheck } = queue[q];
     const groupIds = new Set(group.map((c) => c.id));
     // Each concept picks the pages that actually discuss it: pages where its name
     // recurs, written in any spacing ("back-propagation", "learning-rate"), ahead of
@@ -467,35 +557,48 @@ export async function extractPrerequisites(
             .filter((w) => w.length > 3 && !genericWords.has(w)),
         ),
       ];
-      return teaching
-        .map((e) => {
-          const text = umbrellaText.get(e.id)!;
-          const squashed = umbrellaSquashed.get(e.id)!;
-          let repeats = 0,
-            at = -1;
-          for (const phrase of phrases) {
-            const n = squashed.split(phrase).length - 1;
-            if (n > repeats) {
-              repeats = n;
-              at = squashed.indexOf(phrase) / squashed.length;
+      return (
+        teaching
+          .map((e) => {
+            const text = umbrellaText.get(e.id)!;
+            const squashed = umbrellaSquashed.get(e.id)!;
+            let repeats = 0,
+              at = -1;
+            for (const phrase of phrases) {
+              const n = squashed.split(phrase).length - 1;
+              if (n > repeats) {
+                repeats = n;
+                at = squashed.indexOf(phrase) / squashed.length;
+              }
             }
-          }
-          const shared = words.reduce(
-            (sum, w) => sum + (text.includes(` ${w} `) ? rarity(w) : 0),
-            0,
-          );
-          // A page that also names other concepts of the lecture can show how they relate.
-          const company = groupPhrases.filter(
-            (other, k) =>
-              k !== index && other.some((phrase) => squashed.includes(phrase)),
-          ).length;
-          const score =
-            6 * Math.min(repeats, 8) + (repeats ? 2 * company : 0) + shared / 2;
-          return { e, score, at, order: e.page ?? 0 };
-        })
-        .filter((r) => r.score > 0)
-        .sort((a, b) => b.score - a.score || a.order - b.order)
-        .slice(0, UMBRELLA_PER_CONCEPT);
+            const shared = words.reduce(
+              (sum, w) => sum + (text.includes(` ${w} `) ? rarity(w) : 0),
+              0,
+            );
+            // A page that also names other concepts of the lecture can show how they relate.
+            const company = groupPhrases.filter(
+              (other, k) =>
+                k !== index &&
+                other.some((phrase) => squashed.includes(phrase)),
+            ).length;
+            const score =
+              6 * Math.min(repeats, 8) +
+              (repeats ? 2 * company : 0) +
+              shared / 2;
+            return { e, score, at, order: e.page ?? 0 };
+          })
+          .filter((r) => r.score > 0)
+          .sort((a, b) => b.score - a.score || a.order - b.order)
+          // The second look prefers the next-best passages; with a short reference it
+          // reads the best ones again rather than nothing.
+          .filter(
+            (_, rank, list) =>
+              !recheck ||
+              list.length <= UMBRELLA_PER_CONCEPT ||
+              rank >= UMBRELLA_PER_CONCEPT,
+          )
+          .slice(0, UMBRELLA_PER_CONCEPT)
+      );
     });
     const passages: (typeof umbrella)[number][] = [];
     for (let rank = 0; rank < UMBRELLA_PER_CONCEPT; rank++)
@@ -524,7 +627,11 @@ export async function extractPrerequisites(
       ...all.filter((c) => !groupIds.has(c.id)),
       ...known.filter((k) => !lectureConcepts.has(k.id)),
     ]
-      .filter((c) => names(c).some((n) => passageText.includes(` ${n} `)))
+      .filter(
+        (c) =>
+          (recheck && lectureConcepts.has(c.id)) ||
+          names(c).some((n) => passageText.includes(` ${n} `)),
+      )
       .slice(0, MAX_CANDIDATES);
     const excerpts = group.map((c) => {
       const page = lecture.find((e) => e.id === c.evidenceIds[0])!;
@@ -558,8 +665,16 @@ export async function extractPrerequisites(
           })),
         },
         ids,
+        {
+          kind: recheck ? "recheck" : "links",
+          part: recheck ? q - firstPass + 1 : q + 1,
+          of: recheck ? queue.length - firstPass : firstPass,
+          about: group.map((c) => c.label.en),
+        },
       );
     } catch (error) {
+      // A step-by-step run stops here and repeats this call later: nothing is skipped.
+      if (job) throw error;
       // Lecture concepts already extracted are kept; the instructor sees the run was partial.
       note(error);
       stats.failedCalls++;
@@ -571,6 +686,8 @@ export async function extractPrerequisites(
     const parsed = linkOutput.safeParse(result.value);
     if (!parsed.success) {
       await result.finish("invalid_output");
+      // A step-by-step run asks again rather than leave this group without an answer.
+      if (job) throw new SourceError("invalid_output", 422);
       note(parsed.error);
       stats.failedCalls++;
       stats.partial = true;
@@ -854,4 +971,59 @@ export async function reviewPrerequisiteEdges(ctx: AuthContext, raw: unknown) {
   );
   if (!concepts.length) throw new SourceError("invalid_review", 400);
   return reviewProposal(ctx, input.id, "approved", { concepts, edges });
+}
+
+/**
+ * One request of a step-by-step extraction. Returns the finished proposal, or the step
+ * that the next request will perform. Answers gathered so far are kept between requests.
+ */
+export async function extractStep(
+  ctx: AuthContext,
+  rawInput: unknown,
+  gateway: ModelGateway = new GeminiGateway(),
+) {
+  await staff(ctx, "generate");
+  const input = extractionInput.parse(rawInput);
+  const id = "extraction_job:" + input.lectureSourceKey;
+  const scoped = db.tenant(ctx.tenantId);
+  const stored = (
+    await scoped.query<{ data: { answers: ExtractionJob["answers"] } }>(
+      "SELECT data FROM records WHERE tenant_id=$1 AND course_id=$2 AND id=$3 AND kind='extraction_job'",
+      [ctx.tenantId, ctx.courseId, id],
+    )
+  ).rows[0];
+  const job: ExtractionJob = { answers: stored?.data.answers ?? {} };
+  const save = () =>
+    scoped.query(
+      "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'extraction_job',$3,NULL,$4) ON CONFLICT ON CONSTRAINT records_pkey DO UPDATE SET data=excluded.data,updated_at=now()",
+      [
+        ctx.tenantId,
+        id,
+        ctx.courseId,
+        JSON.stringify({ answers: job.answers }),
+      ],
+    );
+  try {
+    const proposal = await extractPrerequisites(ctx, gateway, input, job);
+    await scoped.query(
+      "DELETE FROM records WHERE tenant_id=$1 AND course_id=$2 AND id=$3 AND kind='extraction_job'",
+      [ctx.tenantId, ctx.courseId, id],
+    );
+    return { done: true as const, proposal };
+  } catch (error) {
+    if (
+      error instanceof SourceError &&
+      error.code === "invalid_output" &&
+      job.last
+    )
+      delete job.answers[job.last];
+    await save();
+    if (error instanceof ExtractionPause)
+      return {
+        done: false as const,
+        next: error.step,
+        completed: Object.keys(job.answers).length,
+      };
+    throw error;
+  }
 }

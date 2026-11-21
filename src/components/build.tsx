@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Box, Button, request, type Translate } from "./Workspace";
 import { uploadLargePdf } from "./sources";
 import { KnowledgeTree, TreePreview } from "./KnowledgeTree";
+import { ResetBox } from "./structure";
 
 type Lang = "ar" | "en";
 type Edge = {
@@ -65,6 +66,7 @@ export function BuildStudio({
     [current, setCurrent] = useState(0),
     [detail, setDetail] = useState(""),
     [tip, setTip] = useState(0),
+    [log, setLog] = useState<string[]>([]),
     [proposals, setProposals] = useState<Proposal[]>([]),
     [failed, setFailed] = useState<string[]>([]),
     [decisions, setDecisions] = useState<
@@ -139,9 +141,35 @@ export function BuildStudio({
     setCurrent(0);
     setProposals([]);
     setFailed([]);
+    setLog([]);
     setPhase("working");
     let done = 0;
     const next = () => setCurrent(++done);
+    // What the model is doing right now, in plain words, kept as a short running log.
+    const say = (line: string) => {
+      setDetail(line);
+      setLog((all) => [...all.slice(-5), line]);
+    };
+    const describe = (step: {
+      kind: string;
+      part: number;
+      of: number;
+      about: string[];
+    }) =>
+      step.kind === "concepts"
+        ? t(
+            `يقرأ الصفحات ${step.about[0]}–${step.about[1]} ويستخرج ما تشرحه من مفاهيم (جزء ${step.part} من ${step.of})`,
+            `Reading pages ${step.about[0]}–${step.about[1]} and listing the concepts they teach (part ${step.part} of ${step.of})`,
+          )
+        : step.kind === "links"
+          ? t(
+              `يبحث في المرجع عمّا يسبق: ${step.about.join("، ")} (مجموعة ${step.part} من ${step.of})`,
+              `Searching the reference for what comes before: ${step.about.join(", ")} (group ${step.part} of ${step.of})`,
+            )
+          : t(
+              `يراجع مرة ثانية ما لم يجد له سابقًا: ${step.about.join("، ")} (${step.part} من ${step.of})`,
+              `Taking a second look at what had no prerequisite: ${step.about.join(", ")} (${step.part} of ${step.of})`,
+            );
     const found: Proposal[] = [],
       problems: string[] = [];
     const upload = async (file: File, mode: "umbrella" | "lecture") => {
@@ -191,37 +219,49 @@ export function BuildStudio({
       for (const { file, keys: sourceKeys } of keys) {
         setDetail(
           t(
-            "قد يستغرق هذا دقيقة أو أكثر لكل محاضرة.",
-            "This can take a minute or more for each lecture.",
+            "يأخذ النموذج وقته كاملًا هنا حتى لا تفوته علاقة؛ قد يستغرق عدة دقائق لكل محاضرة.",
+            "The model takes all the time it needs here so no relationship is missed; this can take several minutes per lecture.",
           ),
         );
         for (const lectureSourceKey of sourceKeys) {
-          // The provider can be busy for a while: try again a few times before giving up.
-          for (let attempt = 0; ; attempt++) {
+          // One model call per request: each answer is saved, so the run can take as
+          // long as it needs, and a busy provider only means waiting, never starting over.
+          let waits = 0;
+          for (;;) {
             try {
-              const proposal = await request(
+              const r = await request(
                 "/api/knowledge",
-                { action: "extract-prerequisites", lectureSourceKey },
+                { action: "extract-step", lectureSourceKey },
                 lang,
               );
-              found.push({
-                id: proposal.id,
-                title: titleOf(file),
-                graph: proposal.graph,
-              });
-              break;
+              waits = 0;
+              if (r.done) {
+                found.push({
+                  id: r.proposal.id,
+                  title: titleOf(file),
+                  graph: r.proposal.graph,
+                });
+                say(
+                  t(
+                    `اكتملت «${titleOf(file)}»: ${r.proposal.graph.concepts.length} مفهومًا و${r.proposal.graph.edges.length} علاقة.`,
+                    `“${titleOf(file)}” is done: ${r.proposal.graph.concepts.length} concepts and ${r.proposal.graph.edges.length} relationships.`,
+                  ),
+                );
+                break;
+              }
+              say(describe(r.next));
             } catch (e) {
-              if (attempt >= 2) {
+              if (++waits > 12) {
                 problems.push(`${titleOf(file)}: ${(e as Error).message}`);
                 break;
               }
               setDetail(
                 t(
-                  "النموذج مزدحم؛ ننتظر قليلًا ثم نعيد المحاولة…",
-                  "The model is busy; waiting a moment before trying again…",
+                  "النموذج مزدحم الآن؛ ننتظر ثم نكمل من حيث توقفنا…",
+                  "The model is busy right now; waiting, then carrying on from where we stopped…",
                 ),
               );
-              await new Promise((r) => setTimeout(r, 20000));
+              await new Promise((r) => setTimeout(r, 30000));
             }
           }
         }
@@ -364,6 +404,18 @@ export function BuildStudio({
               `Step ${Math.min(current + 1, steps.length)} of ${steps.length}`,
             )}
           </small>
+          {log.length > 0 && (
+            <ul
+              className="working-log"
+              aria-label={t("ما تمّ للتو", "Just done")}
+            >
+              {log.map((line, i) => (
+                <li key={i} className={i === log.length - 1 ? "now" : ""}>
+                  {line}
+                </li>
+              ))}
+            </ul>
+          )}
           <ul className="working-steps">
             {steps.map((s, i) => (
               <li
@@ -391,6 +443,17 @@ export function BuildStudio({
           )}{" "}
           <button className="textbtn" onClick={() => go("bank")}>
             {t("التالي: بنك الأسئلة", "Next: question bank")}
+          </button>
+          {" · "}
+          <button
+            className="textbtn"
+            onClick={() => {
+              setLectures([]);
+              setReferences([]);
+              setPhase("pick");
+            }}
+          >
+            {t("ارفع محاضرات أخرى", "Upload more lectures")}
           </button>
         </div>
         <KnowledgeTree
@@ -636,6 +699,7 @@ export function BuildStudio({
           )}
         </small>
       </p>
+      <ResetBox lang={lang} t={t} onError={onError} />
     </>
   );
 }

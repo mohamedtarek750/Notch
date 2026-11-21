@@ -352,6 +352,81 @@ export function AcademicStructure({
           </form>
         </Box>
       )}
+      {canEdit && <ResetBox lang={lang} t={t} onError={onError} />}
     </>
+  );
+}
+
+/** Testing aid: empty the workspace and start again, without leaving the app. */
+export function ResetBox({
+  lang,
+  t,
+  onError,
+}: {
+  lang: Lang;
+  t: Translate;
+  onError: (message: string) => void;
+}) {
+  const [word, setWord] = useState(""),
+    [structure, setStructure] = useState(false),
+    [busy, setBusy] = useState(false);
+  return (
+    <details style={{ marginTop: 24 }}>
+      <summary>{t("إعادة ضبط بيانات الاختبار", "Reset test data")}</summary>
+      <Box>
+        <p>
+          {t(
+            "يمسح كل ما رُفع وأُنتج في هذه المساحة: المحاضرات والمراجع والشجرة والأسئلة وسجلات الطلاب. لا يمكن التراجع عنه.",
+            "Removes everything uploaded and produced in this workspace: lectures, references, the tree, questions and learner records. This cannot be undone.",
+          )}
+        </p>
+        <label className="checklabel">
+          <input
+            type="checkbox"
+            checked={structure}
+            onChange={(e) => setStructure(e.target.checked)}
+          />{" "}
+          {t(
+            "امسح أيضًا الكليات والتخصصات والمقررات المضافة",
+            "Also remove the faculties, majors and courses that were added",
+          )}
+        </label>
+        <label style={{ display: "block", margin: "10px 0" }}>
+          {t("اكتب RESET للتأكيد", "Type RESET to confirm")}
+          <input
+            value={word}
+            onChange={(e) => setWord(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <Button
+          disabled={busy || word !== "RESET"}
+          onClick={async () => {
+            setBusy(true);
+            onError("");
+            try {
+              await request(
+                "/api/catalog",
+                {
+                  action: "reset-workspace",
+                  confirm: "RESET",
+                  keepStructure: !structure,
+                },
+                lang,
+              );
+              window.location.reload();
+            } catch (e) {
+              onError((e as Error).message);
+              setBusy(false);
+            }
+          }}
+        >
+          {busy
+            ? t("جارٍ المسح…", "Resetting…")
+            : t("امسح البيانات وابدأ من جديد", "Reset and start again")}
+        </Button>
+      </Box>
+    </details>
   );
 }

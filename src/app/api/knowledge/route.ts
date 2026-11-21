@@ -15,6 +15,7 @@ import {
 import { knowledgeErrorResponse } from "@/server/coverage";
 import {
   extractPrerequisites,
+  extractStep,
   extractionQuality,
   reviewPrerequisiteEdges,
 } from "@/server/prerequisites";
@@ -37,6 +38,7 @@ const input = z.object({
     "edit",
     "stage-comprehensive",
     "extract-prerequisites",
+    "extract-step",
     "review-edges",
     "bank-settings",
     "generate-bank",
@@ -96,6 +98,10 @@ export async function POST(req: Request) {
         { status: 413 },
       );
     const body = input.parse(JSON.parse(raw));
+    if (body.action === "extract-step")
+      return Response.json(
+        await extractStep(ctx, { lectureSourceKey: body.lectureSourceKey }),
+      );
     if (body.action === "extract-prerequisites")
       return Response.json(
         await extractPrerequisites(ctx, undefined, {

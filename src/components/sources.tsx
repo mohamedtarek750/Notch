@@ -724,6 +724,7 @@ export async function uploadLargePdf(
   // The current version and source key of each uploaded part, for the steps that follow.
   const versionIds: string[] = [],
     sourceKeys: string[] = [];
+  let duplicates = 0;
   for (let start = 1; start <= total; start += PART_PAGES) {
     const end = Math.min(total, start + PART_PAGES - 1);
     const pages: { page: number; text: string }[] = [];
@@ -758,6 +759,11 @@ export async function uploadLargePdf(
       options.lang,
     );
     parts++;
+    // A reference this major already has is recognised, not stored again.
+    if (part?.duplicate) {
+      duplicates++;
+      continue;
+    }
     let versionId: string | undefined = part?.id;
     if (part?.sourceKey) sourceKeys.push(part.sourceKey);
     // Lecture slides that are pictures are read by the model straight away.
@@ -777,7 +783,16 @@ export async function uploadLargePdf(
     if (versionId) versionIds.push(versionId);
   }
   await task.destroy();
-  return { pages: total, parts, empty, read, stopped, versionIds, sourceKeys };
+  return {
+    pages: total,
+    parts,
+    empty,
+    read,
+    stopped,
+    versionIds,
+    sourceKeys,
+    duplicates,
+  };
 }
 function UmbrellaUpload({
   mode,
