@@ -345,6 +345,7 @@ export function KnowledgeTree({
     [then, setThen] = useState(""),
     [note, setNote] = useState(""),
     [scope, setScope] = useState<Scope>(initialScope),
+    [hand, setHand] = useState(false),
     [shared, setShared] = useState<Shared | null>(null);
   const svg = useRef<SVGSVGElement>(null),
     frame = useRef(0),
@@ -493,10 +494,14 @@ export function KnowledgeTree({
         ?.closest(`[${attribute}]`) as HTMLElement | null
     )?.getAttribute(attribute) ?? "";
   const down = (e: ReactPointerEvent<SVGSVGElement>) => {
-    if (e.button !== 0) return;
-    const port = under(e, "data-port"),
-      node = under(e, "data-node"),
+    if (e.button !== 0 && e.button !== 1) return;
+    // In "move the canvas" mode, or with the middle button, every drag moves the view,
+    // also when it starts on a concept: a crowded tree leaves little empty background.
+    const panning = hand || e.button === 1;
+    const port = panning ? "" : under(e, "data-port"),
+      node = panning ? "" : under(e, "data-node"),
       p = world(e);
+    if (e.button === 1) e.preventDefault();
     svg.current!.setPointerCapture(e.pointerId);
     const next: Gesture = port
       ? { kind: "link", from: port, x: p.x, y: p.y, over: "" }
@@ -575,7 +580,7 @@ export function KnowledgeTree({
       const box = svg.current?.getBoundingClientRect();
       const cx = (box?.width ?? 800) / 2,
         cy = (box?.height ?? 500) / 2,
-        k = Math.min(2, Math.max(0.3, v.k * factor));
+        k = Math.min(2, Math.max(0.08, v.k * factor));
       return {
         k,
         x: cx - ((cx - v.x) / v.k) * k,
@@ -593,7 +598,7 @@ export function KnowledgeTree({
       k = Math.min(
         1,
         Math.max(
-          0.3,
+          0.08,
           Math.min(
             box.width / (maxX - minX + PAD * 2),
             box.height / (maxY - minY + PAD * 2),
@@ -602,6 +607,23 @@ export function KnowledgeTree({
       );
     setView({ k, x: PAD - minX * k, y: PAD - minY * k });
   };
+  const shift = (dx: number, dy: number) =>
+    setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
+  // The wheel or a two-finger swipe moves the view (Ctrl + wheel zooms). It needs a
+  // listener that may cancel the event, or the page would scroll instead.
+  useEffect(() => {
+    const element = svg.current;
+    if (!element) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) zoom(e.deltaY < 0 ? 1.1 : 1 / 1.1);
+      else if (e.shiftKey) shift(-e.deltaY, 0);
+      else shift(-e.deltaX, -e.deltaY);
+    };
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, concepts.length]);
   const tidy = () => {
     const next = arrange(concepts, edges, lang);
     setPlaces(next);
@@ -708,6 +730,37 @@ export function KnowledgeTree({
                 {t("تصغير", "Zoom out")}
               </Button>
               <Button onClick={() => fit()}>{t("أظهر الكل", "Fit all")}</Button>
+              <span
+                role="group"
+                aria-label={t("حرّك اللوحة", "Move the view")}
+                style={{ display: "inline-flex", gap: 4 }}
+              >
+                {(
+                  [
+                    ["←", t("يسار", "Left"), 160, 0],
+                    ["↑", t("أعلى", "Up"), 0, 160],
+                    ["↓", t("أسفل", "Down"), 0, -160],
+                    ["→", t("يمين", "Right"), -160, 0],
+                  ] as const
+                ).map(([arrow, label, dx, dy]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    className="secondary"
+                    aria-label={label}
+                    title={label}
+                    style={{ minWidth: 38 }}
+                    onClick={() => shift(dx, dy)}
+                  >
+                    {arrow}
+                  </button>
+                ))}
+              </span>
+              <Button primary={hand} onClick={() => setHand(!hand)}>
+                {hand
+                  ? t("وضع التحريك مفعّل", "Moving the canvas: on")
+                  : t("حرّك اللوحة باليد", "Move the canvas by hand")}
+              </Button>
               <Button onClick={tidy}>{t("رتّب تلقائيًّا", "Auto-arrange")}</Button>
               <label style={{ marginInlineStart: "auto" }}>
                 {t("نوع الخط الجديد", "New line type")}{" "}
@@ -729,8 +782,8 @@ export function KnowledgeTree({
             </div>
             <p>
               {t(
-                "اسحب المفهوم لتحريكه. اسحب من النقطة البرتقالية على حافته إلى مفهوم آخر لرسم خط. اسحب الخلفية لتحريك اللوحة. اضغط أي خط لتغيير نوعه أو حذفه.",
-                "Drag a concept to move it. Drag from the orange dot on its edge to another concept to draw a line. Drag the background to pan. Press any line to change its type or remove it.",
+                "اسحب المفهوم لتحريكه. اسحب من النقطة البرتقالية على حافته إلى مفهوم آخر لرسم خط. لتحريك اللوحة: حرّك عجلة الفأرة أو اسحب الخلفية أو استعمل الأسهم. للتكبير: Ctrl مع العجلة. اضغط أي خط لتغيير نوعه أو حذفه.",
+                "Drag a concept to move it. Drag from the orange dot on its edge to another concept to draw a line. To move around: scroll the wheel, drag the background, or use the arrows. To zoom: Ctrl + wheel. Press any line to change its type or remove it.",
               )}
             </p>
             <p>
@@ -752,24 +805,40 @@ export function KnowledgeTree({
             <svg
               ref={svg}
               width="100%"
-              height={560}
               role="group"
+              tabIndex={0}
               aria-label={t("شجرة المعرفة", "Knowledge tree")}
+              onKeyDown={(e) => {
+                const step =
+                  {
+                    ArrowLeft: [120, 0],
+                    ArrowRight: [-120, 0],
+                    ArrowUp: [0, 120],
+                    ArrowDown: [0, -120],
+                  }[e.key] ?? null;
+                if (step && e.target === e.currentTarget) {
+                  e.preventDefault();
+                  shift(step[0], step[1]);
+                }
+              }}
               style={{
                 touchAction: "none",
                 direction: "ltr",
+                height: "max(560px, 72vh)",
                 background: "#fafbfe",
                 border: "1px solid #dfe2ee",
                 borderRadius: 10,
-                cursor: gesture?.kind === "pan" ? "grabbing" : "default",
+                cursor:
+                  gesture?.kind === "pan"
+                    ? "grabbing"
+                    : hand
+                      ? "grab"
+                      : "default",
               }}
               onPointerDown={down}
               onPointerMove={move}
               onPointerUp={up}
               onPointerCancel={up}
-              onWheel={(e) => {
-                if (e.ctrlKey || e.metaKey) zoom(e.deltaY < 0 ? 1.1 : 1 / 1.1);
-              }}
             >
               <defs>
                 {[MODEL, MINE].map((c) => (
