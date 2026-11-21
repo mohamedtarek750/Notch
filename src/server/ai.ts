@@ -14,6 +14,8 @@ export type ModelRequest = {
   system: string;
   payload: unknown;
   schema: Record<string, unknown>;
+  /** Take as long as needed: deepest thinking, long waits when the provider is busy. */
+  thorough?: boolean;
 };
 export interface ModelGateway {
   readonly modelId: string;
@@ -178,7 +180,7 @@ export class GeminiGateway implements ModelGateway {
     initializeNetwork();
     const client = new GoogleGenAI({
       apiKey: process.env.GEMINI_API_KEY,
-      httpOptions: { timeout: 45000 },
+      httpOptions: { timeout: input.thorough ? 150000 : 45000 },
     });
     const authoring = input.operation !== "tutor";
     const model =
@@ -198,7 +200,7 @@ export class GeminiGateway implements ModelGateway {
           systemInstruction: input.system,
           responseMimeType: "application/json",
           responseJsonSchema: input.schema,
-          maxOutputTokens: authoring ? 12000 : 2400,
+          maxOutputTokens: input.thorough ? 32000 : authoring ? 12000 : 2400,
           ...(/^gemini-3/.test(model)
             ? { thinkingConfig: { thinkingLevel: level } }
             : {}),
@@ -215,13 +217,23 @@ export class GeminiGateway implements ModelGateway {
     // Extraction is asked for rarely and should miss nothing, so it waits longer for the
     // thorough setting before settling for the lighter one.
     const patient = input.operation === "propose";
-    const plan = [
-      { level: thinking, wait: 0 },
-      { level: thinking, wait: patient ? 5000 : 2000 },
-      ...(patient ? [{ level: thinking, wait: 15000 }] : []),
-      { level: ThinkingLevel.LOW, wait: 1000 },
-      { level: ThinkingLevel.LOW, wait: 8000 },
-    ];
+    const plan = input.thorough
+      ? [
+          // Nobody is waiting on the clock: ask for the deepest thinking, and step
+          // down only after the provider has refused it twice.
+          { level: ThinkingLevel.HIGH, wait: 0 },
+          { level: ThinkingLevel.HIGH, wait: 12000 },
+          { level: ThinkingLevel.MEDIUM, wait: 6000 },
+          { level: ThinkingLevel.MEDIUM, wait: 20000 },
+          { level: ThinkingLevel.LOW, wait: 6000 },
+        ]
+      : [
+          { level: thinking, wait: 0 },
+          { level: thinking, wait: patient ? 5000 : 2000 },
+          ...(patient ? [{ level: thinking, wait: 15000 }] : []),
+          { level: ThinkingLevel.LOW, wait: 1000 },
+          { level: ThinkingLevel.LOW, wait: 8000 },
+        ];
     let result: Awaited<ReturnType<typeof request>> | undefined;
     for (const [attempt, step] of plan.entries()) {
       if (step.wait) await new Promise((r) => setTimeout(r, step.wait));
@@ -559,7 +571,7 @@ export function budgetLimits(ctx: AuthContext) {
       ctx.role === "instructor"
         ? Number.isFinite(staffTokens) && staffTokens > 0
           ? staffTokens
-          : 300000
+          : 3000000
         : 40000,
   };
 }

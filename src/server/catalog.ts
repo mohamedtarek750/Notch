@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db } from "./db";
 import { AppError } from "./errors";
-import { type AuthContext } from "./auth";
+import { DEFAULT_COURSE, type AuthContext } from "./auth";
 
 /**
  * Academic structure: faculty -> major -> course. Faculties and majors are records of
@@ -27,6 +27,12 @@ const input = z.discriminatedUnion("action", [
     action: z.literal("assign-course"),
     courseId: z.string().min(1).max(40),
     majorId: z.string().min(1).max(80),
+  }),
+  z.object({
+    action: z.literal("reset-workspace"),
+    // Typed by the instructor, so a stray click cannot wipe the workspace.
+    confirm: z.literal("RESET"),
+    keepStructure: z.boolean().default(true),
   }),
   z.object({
     action: z.literal("select-course"),
@@ -89,6 +95,8 @@ export async function catalogAction(ctx: AuthContext, raw: unknown) {
     return { courseId: a.courseId };
   }
   if (ctx.role !== "instructor") throw new AppError(403, "FORBIDDEN");
+  if (a.action === "reset-workspace")
+    return resetWorkspace(ctx, a.keepStructure);
   return conn.transaction(async (tx) => {
     const exists = async (id: string, kind: string) =>
       (
@@ -255,4 +263,60 @@ export async function unionTree(
     edges: [...edges.values()],
     layout: layout ?? {},
   };
+}
+
+/**
+ * Testing aid: empty the workspace so a trial can start again. Removes every uploaded
+ * source, tree, question, learner record and model trace of this synthetic workspace.
+ * People, their roles and (unless asked otherwise) the academic structure stay.
+ */
+async function resetWorkspace(ctx: AuthContext, keepStructure: boolean) {
+  const conn = db.tenant(ctx.tenantId);
+  const synthetic = await conn.query(
+    "SELECT 1 FROM tenants WHERE id=$1 AND synthetic=true",
+    [ctx.tenantId],
+  );
+  // Only a synthetic test workspace can ever be emptied this way.
+  if (!synthetic.rows[0]) throw new AppError(403, "FORBIDDEN");
+  return conn.transaction(async (tx) => {
+    const count = async (sql: string, params: unknown[] = [ctx.tenantId]) =>
+      (await tx.query(sql + " RETURNING 1", params)).rows.length;
+    const removed = {
+      embeddings: await count(
+        "DELETE FROM chunk_embeddings WHERE tenant_id=$1",
+      ),
+      pages: await count("DELETE FROM evidence_chunks WHERE tenant_id=$1"),
+      sources: await count("DELETE FROM material_versions WHERE tenant_id=$1"),
+      traces: await count("DELETE FROM model_traces WHERE tenant_id=$1"),
+      exams: await count("DELETE FROM exam_sessions WHERE tenant_id=$1"),
+      records: await count(
+        keepStructure
+          ? "DELETE FROM records WHERE tenant_id=$1 AND kind NOT IN ('course','faculty','major','preferences')"
+          : "DELETE FROM records WHERE tenant_id=$1 AND kind<>'preferences' AND NOT (kind='course' AND course_id=$2)",
+        keepStructure ? [ctx.tenantId] : [ctx.tenantId, DEFAULT_COURSE],
+      ),
+    };
+    if (!keepStructure) {
+      await tx.query(
+        "DELETE FROM course_access WHERE tenant_id=$1 AND course_id<>$2",
+        [ctx.tenantId, DEFAULT_COURSE],
+      );
+      await tx.query(
+        "UPDATE records SET data=data-'majorId' WHERE tenant_id=$1 AND kind='course'",
+        [ctx.tenantId],
+      );
+    }
+    await tx.query(
+      "INSERT INTO audit_events(tenant_id,id,actor_id,action,entity_id,data) VALUES($1,$2,$3,$4,$5,$6)",
+      [
+        ctx.tenantId,
+        randomUUID(),
+        ctx.userId,
+        "workspace.reset",
+        ctx.tenantId,
+        JSON.stringify({ keepStructure, removed }),
+      ],
+    );
+    return { reset: true, removed, courseId: DEFAULT_COURSE };
+  });
 }

@@ -2089,3 +2089,25 @@ h3 {
   background: #221b3d;
   color: #fff;
 }
+
+.working-log {
+  list-style: none;
+  padding: 12px 14px;
+  margin: 0;
+  width: min(560px, 100%);
+  text-align: start;
+  background: var(--notch-mist);
+  border-radius: 10px;
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+  color: #6c6690;
+}
+.working-log li.now {
+  color: var(--notch-ink);
+  font-weight: 600;
+}
+.working-log li.now::before {
+  content: "✦ ";
+  color: var(--notch-violet);
+}
