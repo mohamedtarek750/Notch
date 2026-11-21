@@ -114,4 +114,23 @@ describe("slides that are pictures, read from the browser's rendering", () => {
       transcribePageImages(instructor, lecture.id, [image(3)], reader),
     ).rejects.toMatchObject({ code: "stale_source" });
   });
+  it("stores page text that carries characters the database refuses", async () => {
+    // Seen in a real textbook PDF: a NUL byte and half of a surrogate pair from a font map.
+    const book = await importExtractedPages(instructor, {
+      mode: "umbrella",
+      title: "Textbook with odd glyphs",
+      rightsConfirmed: true,
+      rightsReference: "Course textbook",
+      pages: [
+        {
+          page: 130,
+          text: "Gradient\u0000 descent uses the learning rate \uD835 alpha and a step \uDC00 size.\u0007",
+        },
+      ],
+    });
+    const stored = (await getMaterial(instructor, book.id)).chunks[0];
+    expect(stored.text_content).toBe(
+      "Gradient descent uses the learning rate alpha and a step size.",
+    );
+  });
 });

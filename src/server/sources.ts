@@ -110,6 +110,19 @@ export const sourceMessages: Record<string, [string, string]> = {
     "Check the selected pages and their review decisions.",
   ],
 };
+/**
+ * Text read from a PDF can carry characters the database refuses: a NUL byte, other
+ * control characters, or half of a surrogate pair from a broken font map. They carry no
+ * meaning for a reader, so they become spaces instead of failing the whole upload.
+ */
+export function storable(text: string) {
+  return text
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, " ")
+    .replace(
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+      " ",
+    );
+}
 export function sourceErrorResponse(error: unknown, language = "ar") {
   const e = error as {
     status?: number;
@@ -131,6 +144,9 @@ export function sourceErrorResponse(error: unknown, language = "ar") {
   const code =
     e.code ||
     (e.message && sourceMessages[e.message] ? e.message : "unavailable");
+  // An error with no message of its own is a fault of ours: leave a trace of it.
+  if (!sourceMessages[code])
+    console.error("unexpected source error:", e.code ?? "", e.message ?? error);
   const texts = sourceMessages[code] || [
     "الخدمة غير متاحة مؤقتًا. حاول مرة أخرى.",
     "Service temporarily unavailable. Please retry.",
@@ -406,7 +422,7 @@ export async function importExtractedPages(ctx: AuthContext, raw: unknown) {
     .map((p) => ({
       page: p.page,
       section: null,
-      text: p.text.replace(/\s+/g, " ").trim(),
+      text: storable(p.text).replace(/\s+/g, " ").trim(),
     }));
   const text = pages.map((p) => `[${p.page}]\n${p.text}`).join("\n\n");
   if (Buffer.byteLength(text) > MAX_FILE) throw new SourceError("file_size");
@@ -689,7 +705,11 @@ type NewMaterial = {
   expectedCurrentVersion?: string;
   authorization?: "write" | "publish";
 };
-async function persistMaterial(ctx: AuthContext, input: NewMaterial) {
+async function persistMaterial(ctx: AuthContext, raw: NewMaterial) {
+  const input = {
+    ...raw,
+    pages: raw.pages.map((p) => ({ ...p, text: storable(p.text) })),
+  };
   let id: string = randomUUID();
   let changed = 0;
   let deduplicated = false;
