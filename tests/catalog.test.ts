@@ -21,7 +21,11 @@ import {
   publishKnowledge,
   stableConceptId,
 } from "../src/server/knowledge";
-import { workspace } from "../src/server/learning";
+import {
+  learnerSignals,
+  learningPath,
+  workspace,
+} from "../src/server/learning";
 
 const tenant = randomUUID();
 const instructor: AuthContext = {
@@ -443,6 +447,86 @@ describe("faculty, major and course structure", () => {
         [tenant],
       );
     expect(left.rows).toHaveLength(0);
+  });
+  it("carries a learner's standing across the major and counts repeated tutor questions", async () => {
+    const gradient = stableConceptId("Gradient Descent");
+    const derivative = stableConceptId("Derivative");
+    const inSecond = { ...student, courseId: second };
+    const scoped = db.tenant(tenant);
+    const put = (id: string, kind: string, course: string, data: unknown) =>
+      scoped.query(
+        "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT ON CONSTRAINT records_pkey DO UPDATE SET data=excluded.data,updated_at=now()",
+        [
+          tenant,
+          id,
+          kind,
+          course,
+          kind === "objective" ? null : student.userId,
+          JSON.stringify(data),
+        ],
+      );
+    // Gradient descent has questions in the second course; the derivative does not.
+    await put("objective:c:" + gradient, "objective", second, {
+      objectiveId: "c:" + gradient,
+      conceptId: gradient,
+    });
+    const node = async (id: string) =>
+      (await learningPath(scoped, inSecond, student.userId)).nodes.find(
+        (n) => n.conceptId === id,
+      )!;
+    expect((await node(derivative)).status).toBe("unassessable");
+    expect((await node(gradient)).blockedBy).toHaveLength(0);
+    // The learner is weak on the derivative in the first course: it now holds them back here.
+    const state = "state:" + student.userId + ":c:" + derivative;
+    await put(state, "state", "CET351", {
+      objectiveId: "c:" + derivative,
+      status: "developing",
+    });
+    expect(await node(derivative)).toMatchObject({
+      status: "developing",
+      knownFrom: "CET351",
+    });
+    expect((await node(gradient)).blockedBy).toMatchObject([
+      { conceptId: derivative, status: "developing" },
+    ]);
+    // Once it is secure there, it no longer blocks here.
+    await put(state, "state", "CET351", {
+      objectiveId: "c:" + derivative,
+      status: "secure",
+    });
+    expect((await node(derivative)).status).toBe("secure");
+    expect((await node(gradient)).blockedBy).toHaveLength(0);
+    // Their own answers in this course always come first.
+    await put("objective:c:" + derivative, "objective", second, {
+      objectiveId: "c:" + derivative,
+      conceptId: derivative,
+    });
+    await put(state, "state", second, {
+      objectiveId: "c:" + derivative,
+      status: "developing",
+    });
+    expect((await node(derivative)).knownFrom).toBeUndefined();
+    expect((await node(derivative)).status).toBe("developing");
+    // Three recent tutor questions about a concept mark it, and it is studied next.
+    expect((await node(gradient)).askedTutor).toBeUndefined();
+    for (const n of [1, 2, 3])
+      await put("tutor:" + n, "tutor_memory", n === 3 ? "CET351" : second, {
+        question: "what is gradient descent again?",
+        conceptIds: [gradient],
+      });
+    expect(
+      (await learnerSignals(scoped, inSecond, student.userId)).asked.get(
+        gradient,
+      ),
+    ).toBe(3);
+    const path = await learningPath(scoped, inSecond, student.userId);
+    expect(path.nodes.find((n) => n.conceptId === gradient)!.askedTutor).toBe(
+      3,
+    );
+    // Another learner's questions and standing never leak in.
+    const other = await learnerSignals(scoped, inSecond, instructor.userId);
+    expect(other.asked.size).toBe(0);
+    expect(other.elsewhere.size).toBe(0);
   });
   it("empties a synthetic test workspace on request, keeping people and structure", async () => {
     // A workspace holding real people can never be emptied this way.
