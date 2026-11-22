@@ -22,6 +22,7 @@ type Row = {
   id: string;
   kind: string;
   owner_id: string | null;
+  course_id?: string | null;
   data: Record<string, any>;
   created_at?: Date | string;
 };
@@ -537,6 +538,57 @@ function byDifficulty(items: LearningRecord[], target: string) {
 }
 /** Answers quicker than this cannot have been read; only a run of them is flagged. */
 const FAST_MS = 2500;
+/** This many tutor questions on one concept in two weeks is treated as a sign of struggle. */
+export const ASKED_OFTEN = 3;
+/**
+ * What is known about a learner beyond their answers in the open course: their standing
+ * on the same concepts in the other courses of the major, and how often they recently
+ * asked the tutor about each concept anywhere in the major.
+ */
+export async function learnerSignals(
+  tx: Queryable,
+  ctx: AuthContext,
+  userId: string,
+  now = Date.now(),
+) {
+  const siblings = await majorCourses(ctx, tx);
+  const elsewhere = new Map<string, { status: string; courseId: string }>();
+  if (siblings.length) {
+    const rows = (
+      await tx.query<Row>(
+        "SELECT * FROM records WHERE tenant_id=$1 AND course_id=ANY($2::text[]) AND owner_id=$3 AND kind='state' ORDER BY updated_at,id",
+        [ctx.tenantId, siblings, userId],
+      )
+    ).rows;
+    // The most recent standing wins when two courses disagree.
+    for (const r of rows) {
+      const objectiveId = String(r.data.objectiveId ?? "");
+      if (
+        objectiveId.startsWith("c:") &&
+        (r.data.status === "secure" || r.data.status === "developing")
+      )
+        elsewhere.set(objectiveId.slice(2), {
+          status: r.data.status,
+          courseId: r.course_id!,
+        });
+    }
+  }
+  const asked = new Map<string, number>();
+  const questions = (
+    await tx.query<{ concepts: string[] | null }>(
+      "SELECT data->'conceptIds' AS concepts FROM records WHERE tenant_id=$1 AND course_id=ANY($2::text[]) AND owner_id=$3 AND kind='tutor_memory' AND created_at >= $4",
+      [
+        ctx.tenantId,
+        [ctx.courseId, ...siblings],
+        userId,
+        new Date(now - 14 * 86400000).toISOString(),
+      ],
+    )
+  ).rows;
+  for (const q of questions)
+    for (const id of q.concepts ?? []) asked.set(id, (asked.get(id) ?? 0) + 1);
+  return { elsewhere, asked };
+}
 export type PathNode = {
   conceptId: string;
   label: Bilingual;
@@ -548,6 +600,10 @@ export type PathNode = {
   /** What becoming ready on this concept opens up. */
   unlocks: { conceptId: string; label: Bilingual }[];
   covered: { conceptId: string; label: Bilingual }[];
+  /** The course whose record gave this status, when it is not the open course. */
+  knownFrom?: string;
+  /** Recent tutor questions about this concept, when there were enough to matter. */
+  askedTutor?: number;
 };
 /**
  * The learner's route through the published prerequisite graph: prerequisites first,
@@ -600,10 +656,19 @@ export async function learningPath(
       ? states.find((r) => r.data.objectiveId === objectiveId)?.data
       : undefined;
   };
-  const direct = (conceptId: string) =>
-    !objectiveOf.has(conceptId)
-      ? "unassessable"
-      : (stateOf(conceptId)?.status ?? "unassessed");
+  const { elsewhere, asked } = await learnerSignals(tx, ctx, userId);
+  // A learner's own answers in this course come first; without them, what they showed on
+  // the same concept in another course of the major stands, so a weak prerequisite
+  // taught elsewhere is seen here too.
+  const direct = (conceptId: string) => {
+    const own = stateOf(conceptId)?.status;
+    if (own && own !== "unassessed") return own as string;
+    const other = elsewhere.get(conceptId)?.status;
+    if (other) return other;
+    return objectiveOf.has(conceptId) ? "unassessed" : "unassessable";
+  };
+  const askedOften = (conceptId: string) =>
+    (asked.get(conceptId) ?? 0) >= ASKED_OFTEN;
   // A concept answered correctly implies its prerequisites are probably known. That is an
   // inference, not evidence: later practice or a confirming check can overturn it.
   const inferred = new Set<string>();
@@ -618,7 +683,13 @@ export async function learningPath(
   for (const id of objectiveOf.keys()) if (direct(id) === "secure") mark(id, 0);
   const statusOf = (conceptId: string) => {
     const own = direct(conceptId);
-    return own === "unassessed" && inferred.has(conceptId) ? "inferred" : own;
+    // "Probably known" is only a guess from later answers; repeated questions to the
+    // tutor about the concept withdraw that guess.
+    return own === "unassessed" &&
+      inferred.has(conceptId) &&
+      !askedOften(conceptId)
+      ? "inferred"
+      : own;
   };
   const relevant = new Set<string>(objectiveOf.keys());
   for (const e of edges) if (objectiveOf.has(e.to)) relevant.add(e.from);
@@ -668,12 +739,20 @@ export async function learningPath(
         (e) => e.to === id && byId.has(e.from) && statusOf(e.from) === "secure",
       )
       .map((e) => ({ conceptId: e.from, label: byId.get(e.from).label })),
+    ...(!stateOf(id)?.status || stateOf(id)?.status === "unassessed"
+      ? elsewhere.has(id)
+        ? { knownFrom: elsewhere.get(id)!.courseId }
+        : {}
+      : {}),
+    ...(askedOften(id) ? { askedTutor: asked.get(id) } : {}),
   }));
   const open = nodes.filter((n) => n.objectiveId && n.status !== "secure");
+  const free = open.filter((n) => !n.blockedBy.length);
   return {
     releaseId: release.id,
     nodes,
-    next: open.find((n) => !n.blockedBy.length) ?? open[0] ?? null,
+    // Among what is ready to study, what the learner keeps asking about comes first.
+    next: free.find((n) => n.askedTutor) ?? free[0] ?? open[0] ?? null,
   };
 }
 /** Descriptive first-vs-latest independent performance per objective for course staff. */

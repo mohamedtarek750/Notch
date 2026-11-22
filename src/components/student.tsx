@@ -13,6 +13,8 @@ type Node = {
   mastery: number | null;
   unlocks: { conceptId: string; label: { ar: string; en: string } }[];
   covered: { conceptId: string; label: { ar: string; en: string } }[];
+  knownFrom?: string;
+  askedTutor?: number;
 };
 export type LearnOptions = {
   returnTo?: { objectiveId: string; episodeId: string };
@@ -190,6 +192,14 @@ export function StudentHome({
         <Box cls={!answered && !skipped ? "end" : ""}>
           <span className="badge lavender">{t("التالي لك", "Next up")}</span>
           <h2>{localized(next.label, lang)}</h2>
+          {next.askedTutor ? (
+            <p>
+              {t(
+                `سألت المساعد عنه ${next.askedTutor} مرات مؤخرًا، فقدّمناه لك لتثبّته بالتدريب.`,
+                `You asked the tutor about it ${next.askedTutor} times recently, so it comes first to settle it with practice.`,
+              )}
+            </p>
+          ) : null}
           <p>
             {next.blockedBy.length
               ? t(
@@ -309,7 +319,13 @@ export function StudentHome({
                   {n.blockedBy.length > 0 &&
                     ` · ${t("يعتمد على", "builds on")} ${list(n.blockedBy, lang)}`}
                   {!n.objectiveId &&
+                    !n.knownFrom &&
                     ` · ${t("معرفة مساندة، ليست من أسئلة المقرر بعد", "background knowledge, no course questions yet")}`}
+                  {n.knownFrom &&
+                    ` · ${t("من سجلّك في مقرر آخر بالتخصص", "from your record in another course of the major")}`}
+                  {n.askedTutor
+                    ? ` · ${t(`سألت عنه ${n.askedTutor} مرات مؤخرًا`, `you asked about it ${n.askedTutor} times recently`)}`
+                    : ""}
                 </small>
               </span>
               {n.objectiveId && (
