@@ -49,6 +49,7 @@ Rules:
 - Direction is prerequisite -> dependent.
 - "to" is the key of a lecture concept, or of a foundation you add (so you can state chains such as A -> B -> lecture concept when the umbrella states both steps).
 - "from" is the key of a candidate concept, of another lecture concept, or of a foundation you add to "foundations".
+- A candidate marked taughtInEarlierCourse is taught in a course the student finishes before this one. When a passage or the lecture excerpt relies on that idea, state it as the prerequisite (cite the passage or the lectureEvidenceId that relies on it) rather than adding a new foundation for the same idea.
 - Add a foundation ONLY when an umbrella passage presents that background idea as needed and no candidate or lecture concept already names it.
 - State a dependency whenever an umbrella passage shows it: the dependent "requires", "is built on", "is derived from", "is defined in terms of", "applies" or "uses" the prerequisite, the learner needs it "first" or "before", or the passage's own definition, formula or procedure for the dependent is written in terms of the prerequisite (for example an update rule that is computed from a gradient depends on the gradient). Mere co-occurrence or similarity is NOT a prerequisite.
 - Consider every lecture concept in turn, including dependencies between two lecture concepts; do not stop after the first concept that has clear evidence.
@@ -274,6 +275,8 @@ export async function extractPrerequisites(
   // Concepts already taught in the other courses of this major are known too, so the
   // same idea is recognised instead of being added twice, and a new lecture can be
   // linked to what a sibling course teaches.
+  /** Concepts taught in a course that comes before this one in the study plan. */
+  const taughtEarlier = new Map<string, string>();
   const siblings = await majorCourses(ctx);
   if (siblings.length) {
     const taught = (
@@ -284,10 +287,40 @@ export async function extractPrerequisites(
           [ctx.tenantId, siblings],
         )
     ).rows;
+    // The study plan says which courses come before this one. What those courses teach
+    // is the natural source of this lecture's prerequisites, so it is listed first.
+    const plan = (
+      await db
+        .tenant(ctx.tenantId)
+        .query<{ course_id: string; code: string; before: string[] | null }>(
+          "SELECT course_id,data->>'code' AS code,data->'prerequisites' AS before FROM records WHERE tenant_id=$1 AND kind='course'",
+          [ctx.tenantId],
+        )
+    ).rows;
+    const earlier = new Set<string>();
+    const walk = (id: string) => {
+      for (const p of plan.find((c) => c.course_id === id)?.before ?? [])
+        if (!earlier.has(p)) {
+          earlier.add(p);
+          walk(p);
+        }
+    };
+    walk(ctx.courseId);
+    taught.sort(
+      (a, b) =>
+        Number(earlier.has(b.course_id)) - Number(earlier.has(a.course_id)),
+    );
     for (const row of taught)
-      for (const c of row.graph?.concepts ?? [])
+      for (const c of row.graph?.concepts ?? []) {
+        if (earlier.has(row.course_id) && c.scope !== "foundation")
+          taughtEarlier.set(
+            c.id,
+            plan.find((p) => p.course_id === row.course_id)?.code ??
+              row.course_id,
+          );
         if (!known.some((k) => k.id === c.id))
           known.push({ id: c.id, label: c.label, aliases: c.aliases ?? [] });
+      }
   }
   const knownByName = new Map<string, Known[]>();
   for (const k of known)
@@ -623,6 +656,11 @@ export async function extractPrerequisites(
     const passageText = passages
       .map((e) => ` ${normalize(snippets.get(e.id)!)} `)
       .join(" ");
+    const groupPages = group
+      .flatMap((c) => c.evidenceIds)
+      .map((id) => lecture.find((e) => e.id === id)?.text_content ?? "")
+      .map((text) => ` ${normalize(text)} `)
+      .join(" ");
     const candidates = [
       ...all.filter((c) => !groupIds.has(c.id)),
       ...known.filter((k) => !lectureConcepts.has(k.id)),
@@ -630,7 +668,10 @@ export async function extractPrerequisites(
       .filter(
         (c) =>
           (recheck && lectureConcepts.has(c.id)) ||
-          names(c).some((n) => passageText.includes(` ${n} `)),
+          names(c).some((n) => passageText.includes(` ${n} `)) ||
+          // An idea from an earlier course that these lecture pages themselves use.
+          (taughtEarlier.has(c.id) &&
+            names(c).some((n) => groupPages.includes(` ${n} `))),
       )
       .slice(0, MAX_CANDIDATES);
     const excerpts = group.map((c) => {
@@ -655,7 +696,13 @@ export async function extractPrerequisites(
             lectureEvidenceId: page.id,
             lectureExcerpt: page.text_content.slice(0, EXCERPT_CHARS),
           })),
-          candidates: candidates.map((c) => ({ key: c.id, label: c.label })),
+          candidates: candidates.map((c) => ({
+            key: c.id,
+            label: c.label,
+            ...(taughtEarlier.has(c.id)
+              ? { taughtInEarlierCourse: taughtEarlier.get(c.id) }
+              : {}),
+          })),
           umbrellaEvidence: passages.map((e) => ({
             id: e.id,
             source: e.source_key,
@@ -787,7 +834,12 @@ export async function extractPrerequisites(
         !cited.length ||
         cited.length !== new Set(e.evidenceIds).size ||
         (lectureOnly &&
-          !(lectureConcepts.has(from.id) && lectureConcepts.has(to.id)))
+          !(
+            lectureConcepts.has(to.id) &&
+            // Between two concepts of the lecture, or onto one taught in an earlier
+            // course of the study plan that the lecture page itself relies on.
+            (lectureConcepts.has(from.id) || taughtEarlier.has(from.id))
+          ))
       ) {
         reject("no_umbrella_citation");
         continue;

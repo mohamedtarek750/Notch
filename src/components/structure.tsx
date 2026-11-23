@@ -13,6 +13,14 @@ export type Catalog = {
     code: string;
     title: { ar: string; en: string };
     majorId: string | null;
+    term?: string | null;
+    order?: number;
+    prerequisites?: string[];
+    externalPrerequisites?: string[];
+    assessable?: number;
+    percent?: number | null;
+    finished?: boolean;
+    locked?: boolean;
   }[];
 };
 /** "Faculty › Major › Course" for the open course, or just the course when unplaced. */
@@ -30,9 +38,238 @@ export function coursePath(catalog: Catalog | null, lang: Lang) {
     .join(" › ");
 }
 /** Switching reloads the page so every screen shows the newly opened course. */
-export async function openCourse(courseId: string, lang: Lang) {
+export async function openCourse(courseId: string, lang: Lang, view?: string) {
   await request("/api/catalog", { action: "select-course", courseId }, lang);
+  // Which screen to land on after the reload, for example the course's own tree.
+  try {
+    if (view) sessionStorage.setItem("notch_open_view", view);
+  } catch {}
   window.location.reload();
+}
+const CARD_W = 214,
+  CARD_H = 118,
+  GAP_X = 54,
+  GAP_Y = 14,
+  HEAD = 44;
+/**
+ * The study plan of one major: its courses term by term, each saying what must be
+ * finished first. Pressing a course opens that course's own knowledge tree.
+ */
+export function StudyMap({
+  catalog,
+  majorId,
+  lang,
+  t,
+  student,
+  onError,
+}: {
+  catalog: Catalog;
+  majorId: string;
+  lang: Lang;
+  t: Translate;
+  student: boolean;
+  onError: (message: string) => void;
+}) {
+  const courses = catalog.courses
+    .filter((c) => c.majorId === majorId && c.term)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  if (!courses.length) return null;
+  const terms = [...new Set(courses.map((c) => c.term!))];
+  const at = new Map<string, { x: number; y: number }>();
+  let rows = 1;
+  terms.forEach((term, column) => {
+    const list = courses.filter((c) => c.term === term);
+    rows = Math.max(rows, list.length);
+    list.forEach((c, row) =>
+      at.set(c.id, {
+        x: column * (CARD_W + GAP_X),
+        y: HEAD + row * (CARD_H + GAP_Y),
+      }),
+    );
+  });
+  const width = terms.length * (CARD_W + GAP_X) - GAP_X,
+    height = HEAD + rows * (CARD_H + GAP_Y);
+  const byId = new Map(courses.map((c) => [c.id, c]));
+  const label = (c: Catalog["courses"][number]) => c.title?.[lang] || c.code;
+  const tone = (c: Catalog["courses"][number]) =>
+    c.locked
+      ? { bg: "#f1f0f5", line: "#a9a4bd", text: t("مقفل", "Locked") }
+      : c.finished
+        ? { bg: "#e9f7ef", line: "#23805a", text: t("أنهيته", "Finished") }
+        : c.id === catalog.current
+          ? {
+              bg: "#ede5ff",
+              line: "#7847ea",
+              text: t("مفتوح الآن", "Open now"),
+            }
+          : { bg: "#ffffff", line: "#7847ea", text: "" };
+  return (
+    <div
+      style={{ overflow: "auto", padding: "4px 2px 10px", direction: "ltr" }}
+      role="group"
+      aria-label={t("خطة الدراسة", "Study plan")}
+    >
+      <div style={{ position: "relative", width, height }}>
+        <svg
+          width={width}
+          height={height}
+          style={{ position: "absolute", inset: 0 }}
+          aria-hidden="true"
+        >
+          <defs>
+            <marker
+              id="plan-tip"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerUnits="userSpaceOnUse"
+              markerWidth="9"
+              markerHeight="9"
+              orient="auto"
+            >
+              <path d="M0 0L10 5L0 10z" fill="#8b7fc0" />
+            </marker>
+          </defs>
+          {courses.flatMap((c) =>
+            (c.prerequisites ?? [])
+              .filter((p) => at.has(p))
+              .map((p) => {
+                const a = at.get(p)!,
+                  b = at.get(c.id)!,
+                  x1 = a.x + CARD_W,
+                  y1 = a.y + CARD_H / 2,
+                  x2 = b.x,
+                  y2 = b.y + CARD_H / 2,
+                  bend = Math.max(26, (x2 - x1) / 2);
+                return (
+                  <path
+                    key={p + ">" + c.id}
+                    d={`M${x1} ${y1}C${x1 + bend} ${y1} ${x2 - bend} ${y2} ${x2} ${y2}`}
+                    fill="none"
+                    stroke="#8b7fc0"
+                    strokeWidth={1.6}
+                    opacity={0.75}
+                    markerEnd="url(#plan-tip)"
+                  />
+                );
+              }),
+          )}
+        </svg>
+        {terms.map((term, column) => (
+          <div
+            key={term}
+            style={{
+              position: "absolute",
+              left: column * (CARD_W + GAP_X),
+              top: 0,
+              width: CARD_W,
+              textAlign: "center",
+              padding: "7px 0",
+              borderRadius: 8,
+              background: "#130f25",
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: 13,
+            }}
+          >
+            {term}
+          </div>
+        ))}
+        {courses.map((c) => {
+          const p = at.get(c.id)!,
+            look = tone(c);
+          const needs = [
+            ...(c.prerequisites ?? []).map((id) => {
+              const before = byId.get(id);
+              return before ? `${before.code} ${label(before)}` : "";
+            }),
+            ...(c.externalPrerequisites ?? []),
+          ].filter(Boolean);
+          return (
+            <button
+              key={c.id}
+              type="button"
+              dir={lang === "ar" ? "rtl" : "ltr"}
+              title={
+                c.locked
+                  ? t(
+                      "مقفل حتى تنهي ما يسبقه",
+                      "Locked until you finish what comes before it",
+                    )
+                  : t("افتح شجرة هذا المقرر", "Open this course's tree")
+              }
+              onClick={() => {
+                if (c.locked)
+                  return onError(
+                    t(
+                      `«${label(c)}» مقفل حتى تنهي: ${needs.join("، ")}.`,
+                      `“${label(c)}” is locked until you finish: ${needs.join(", ")}.`,
+                    ),
+                  );
+                void openCourse(c.id, lang, "map").catch((e) =>
+                  onError((e as Error).message),
+                );
+              }}
+              style={{
+                position: "absolute",
+                left: p.x,
+                top: p.y,
+                width: CARD_W,
+                height: CARD_H,
+                boxSizing: "border-box",
+                textAlign: "start",
+                padding: "7px 9px",
+                borderRadius: 10,
+                border: `1.6px solid ${look.line}`,
+                background: look.bg,
+                color: "#130f25",
+                overflow: "hidden",
+                cursor: "pointer",
+                font: "inherit",
+                display: "block",
+              }}
+            >
+              <span
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 11,
+                  fontWeight: 800,
+                  color: look.line,
+                }}
+              >
+                <bdi>{c.code}</bdi>
+                <span>
+                  {look.text}
+                  {student && c.percent != null && !c.locked
+                    ? ` ${c.percent}%`
+                    : ""}
+                </span>
+              </span>
+              <strong
+                style={{ display: "block", fontSize: 13, lineHeight: 1.25 }}
+              >
+                {label(c)}
+              </strong>
+              <small
+                style={{
+                  display: "block",
+                  marginTop: 4,
+                  color: "#5b5478",
+                  lineHeight: 1.3,
+                }}
+              >
+                {needs.length
+                  ? t("يسبقه: ", "After: ") +
+                    needs.join(lang === "ar" ? "، " : ", ")
+                  : t("لا يسبقه شيء", "Open from the start")}
+              </small>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function CourseSwitcher({
@@ -162,9 +399,53 @@ export function AcademicStructure({
                 <h3>
                   {t("تخصص", "Major")}: {m.name[lang]}
                 </h3>
+                <StudyMap
+                  catalog={catalog}
+                  majorId={m.id}
+                  lang={lang}
+                  t={t}
+                  student={!canEdit}
+                  onError={onError}
+                />
                 {catalog.courses
-                  .filter((c) => c.majorId === m.id)
+                  .filter((c) => c.majorId === m.id && !c.term)
                   .map(courseRow)}
+                {canEdit && (
+                  <label style={{ display: "block", margin: "8px 0" }}>
+                    <small>
+                      {t(
+                        "استيراد خطة الدراسة لهذا التخصص (ملف JSON): المقررات بفصولها وما يسبق كل مقرر.",
+                        "Import this major's study plan (JSON file): its courses by term and what comes before each.",
+                      )}
+                    </small>
+                    <br />
+                    <input
+                      type="file"
+                      accept="application/json,.json"
+                      disabled={busy}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!file) return;
+                        try {
+                          const plan = JSON.parse(await file.text());
+                          await act({
+                            action: "import-study-map",
+                            majorId: m.id,
+                            terms: plan.terms,
+                          });
+                        } catch {
+                          onError(
+                            t(
+                              "تعذّرت قراءة الملف. يجب أن يكون JSON فيه قائمة terms.",
+                              "Could not read the file. It must be JSON with a list of terms.",
+                            ),
+                          );
+                        }
+                      }}
+                    />
+                  </label>
+                )}
                 {!catalog.courses.some((c) => c.majorId === m.id) && (
                   <small>{t("لا مقررات بعد.", "No courses yet.")}</small>
                 )}

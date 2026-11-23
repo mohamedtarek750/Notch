@@ -528,6 +528,148 @@ describe("faculty, major and course structure", () => {
     expect(other.asked.size).toBe(0);
     expect(other.elsewhere.size).toBe(0);
   });
+  it("imports a study plan, and locks a course until the one before it is finished", async () => {
+    const major = (
+      (await catalogAction(instructor, {
+        action: "create-major",
+        facultyId,
+        name: "Data Science",
+      })) as any
+    ).id;
+    const plan = {
+      action: "import-study-map",
+      majorId: major,
+      terms: [
+        {
+          label: "Level 1 · Fall",
+          courses: [
+            {
+              code: "GEN111",
+              title: "Applied Mathematics I",
+              requires: ["GEN011"],
+            },
+          ],
+        },
+        {
+          label: "Level 2 · Fall",
+          courses: [
+            {
+              code: "GEN211",
+              title: "Probability & Statistics",
+              requires: ["GEN111"],
+            },
+            {
+              code: "CET251",
+              title: "Artificial Intelligence",
+              requires: ["GEN211"],
+            },
+          ],
+        },
+      ],
+    };
+    await expect(catalogAction(student, plan)).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(await catalogAction(instructor, plan)).toMatchObject({
+      courses: 3,
+      created: 3,
+    });
+    // Importing again updates the plan; it never duplicates a course.
+    expect(await catalogAction(instructor, plan)).toMatchObject({ created: 0 });
+    const of = async (ctx: AuthContext, code: string) =>
+      (await catalog(ctx)).courses.find(
+        (c) => c.majorId === major && c.code === code,
+      )!;
+    const maths = await of(student, "GEN111"),
+      statistics = await of(student, "GEN211");
+    expect(statistics).toMatchObject({
+      term: "Level 2 · Fall",
+      prerequisites: [maths.id],
+    });
+    // A code the plan names but does not list is kept as a note, not as a lock.
+    expect(maths).toMatchObject({
+      prerequisites: [],
+      externalPrerequisites: ["GEN011"],
+      locked: false,
+    });
+    // A plan where a course comes before itself is refused.
+    await expect(
+      catalogAction(instructor, {
+        action: "set-prerequisites",
+        courseId: maths.id,
+        prerequisites: [(await of(student, "CET251")).id],
+      }),
+    ).rejects.toMatchObject({ code: "STUDY_MAP_LOOP" });
+    // Nothing to finish yet in mathematics, so statistics is open.
+    expect(statistics.locked).toBe(false);
+    const scoped = db.tenant(tenant);
+    const objective = (n: number) =>
+      scoped.query(
+        "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'objective',$3,NULL,$4)",
+        [
+          tenant,
+          "objective:c:m" + n,
+          maths.id,
+          JSON.stringify({ objectiveId: "c:m" + n, conceptId: "m" + n }),
+        ],
+      );
+    for (const n of [1, 2, 3]) await objective(n);
+    // Mathematics now has questions the learner has not secured: statistics is locked.
+    expect(await of(student, "GEN211")).toMatchObject({ locked: true });
+    expect(await of(student, "GEN111")).toMatchObject({
+      assessable: 3,
+      percent: 0,
+      finished: false,
+    });
+    // The instructor is never locked out.
+    expect((await of(instructor, "GEN211")).locked).toBe(false);
+    await expect(
+      catalogAction(student, {
+        action: "select-course",
+        courseId: statistics.id,
+      }),
+    ).rejects.toMatchObject({ code: "COURSE_LOCKED" });
+    const secure = (n: number) =>
+      scoped.query(
+        "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'state',$3,$4,$5)",
+        [
+          tenant,
+          "state:" + student.userId + ":c:m" + n,
+          maths.id,
+          student.userId,
+          JSON.stringify({ objectiveId: "c:m" + n, status: "secure" }),
+        ],
+      );
+    await secure(1);
+    await secure(2);
+    // Two of three is 67%: not yet the 70% that counts as finished.
+    expect((await of(student, "GEN211")).locked).toBe(true);
+    // The instructor can open the course for this learner.
+    await catalogAction(instructor, {
+      action: "unlock-course",
+      courseId: statistics.id,
+      studentId: student.userId,
+      unlocked: true,
+    });
+    expect((await of(student, "GEN211")).locked).toBe(false);
+    await catalogAction(instructor, {
+      action: "unlock-course",
+      courseId: statistics.id,
+      studentId: student.userId,
+      unlocked: false,
+    });
+    await secure(3);
+    expect(await of(student, "GEN111")).toMatchObject({
+      percent: 100,
+      finished: true,
+    });
+    await expect(
+      catalogAction(student, {
+        action: "select-course",
+        courseId: statistics.id,
+      }),
+    ).resolves.toEqual({ courseId: statistics.id });
+  });
   it("empties a synthetic test workspace on request, keeping people and structure", async () => {
     // A workspace holding real people can never be emptied this way.
     await db.query("UPDATE tenants SET synthetic=false WHERE id=$1", [tenant]);
