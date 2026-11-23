@@ -29,6 +29,39 @@ const input = z.discriminatedUnion("action", [
     majorId: z.string().min(1).max(80),
   }),
   z.object({
+    action: z.literal("import-study-map"),
+    majorId: z.string().min(1).max(80),
+    terms: z
+      .array(
+        z.object({
+          label: z.string().trim().min(1).max(60),
+          courses: z
+            .array(
+              z.object({
+                code: z.string().trim().min(2).max(20),
+                title: name,
+                requires: z.array(z.string().trim().min(2).max(20)).max(8),
+              }),
+            )
+            .min(1)
+            .max(20),
+        }),
+      )
+      .min(1)
+      .max(16),
+  }),
+  z.object({
+    action: z.literal("set-prerequisites"),
+    courseId: z.string().min(1).max(40),
+    prerequisites: z.array(z.string().min(1).max(40)).max(8),
+  }),
+  z.object({
+    action: z.literal("unlock-course"),
+    courseId: z.string().min(1).max(40),
+    studentId: z.string().min(1).max(80),
+    unlocked: z.boolean(),
+  }),
+  z.object({
     action: z.literal("reset-workspace"),
     // Typed by the instructor, so a stray click cannot wipe the workspace.
     confirm: z.literal("RESET"),
@@ -61,6 +94,15 @@ export async function catalog(ctx: AuthContext) {
   const majors = rows
     .filter((r) => r.kind === "major")
     .map((r) => ({ id: r.id, name: r.data.name, facultyId: r.data.facultyId }));
+  const standing = await courseStanding(ctx.tenantId, ctx.userId);
+  const locked =
+    ctx.role === "student"
+      ? lockedCourses(
+          rows.filter((r) => r.kind === "course"),
+          standing,
+          await unlockedFor(ctx.tenantId, ctx.userId),
+        )
+      : new Set<string>();
   return {
     current: ctx.courseId,
     faculties: rows
@@ -78,10 +120,105 @@ export async function catalog(ctx: AuthContext) {
         majorId: majors.some((m) => m.id === r.data.majorId)
           ? r.data.majorId
           : null,
+        // Study plan: where the course sits and which courses must be finished first.
+        term: (r.data.term as string | undefined) ?? null,
+        order: (r.data.order as number | undefined) ?? 0,
+        prerequisites: (r.data.prerequisites as string[] | undefined) ?? [],
+        externalPrerequisites:
+          (r.data.externalPrerequisites as string[] | undefined) ?? [],
+        ...(standing.get(r.course_id!) ?? {
+          assessable: 0,
+          percent: null,
+          finished: false,
+        }),
+        locked: locked.has(r.course_id!),
       })),
   };
 }
 
+/** A course counts as finished when this share of its assessable concepts is secure. */
+export const FINISHED_SHARE = 0.7;
+type Standing = {
+  assessable: number;
+  percent: number | null;
+  finished: boolean;
+};
+/** For one learner: how much of each course's assessable concepts they have secured. */
+async function courseStanding(tenantId: string, userId: string) {
+  const rows = (
+    await db
+      .tenant(tenantId)
+      .query<{ course_id: string; assessable: string; secure: string }>(
+        `SELECT o.course_id,count(*) AS assessable,
+              count(*) FILTER (WHERE s.data->>'status'='secure') AS secure
+       FROM records o LEFT JOIN records s ON s.tenant_id=o.tenant_id AND s.course_id=o.course_id AND s.kind='state'
+            AND s.owner_id=$2 AND s.data->>'objectiveId'=o.data->>'objectiveId'
+       WHERE o.tenant_id=$1 AND o.kind='objective' AND o.data->>'objectiveId' LIKE 'c:%' GROUP BY o.course_id`,
+        [tenantId, userId],
+      )
+  ).rows;
+  const standing = new Map<string, Standing>();
+  for (const r of rows) {
+    const assessable = Number(r.assessable),
+      secure = Number(r.secure);
+    standing.set(r.course_id, {
+      assessable,
+      percent: assessable ? Math.round((100 * secure) / assessable) : null,
+      finished: assessable > 0 && secure / assessable >= FINISHED_SHARE,
+    });
+  }
+  return standing;
+}
+async function unlockedFor(tenantId: string, userId: string) {
+  return new Set(
+    (
+      await db
+        .tenant(tenantId)
+        .query<{ course_id: string }>(
+          "SELECT course_id FROM records WHERE tenant_id=$1 AND kind='course_unlock' AND owner_id=$2 AND data->>'unlocked'='true'",
+          [tenantId, userId],
+        )
+    ).rows.map((r) => r.course_id),
+  );
+}
+/**
+ * A course is locked while a course before it in the study plan is not finished. A
+ * prerequisite that has no questions yet cannot be finished, so it does not hold anyone
+ * back; an instructor can also open a course for one learner.
+ */
+function lockedCourses(
+  courses: Row[],
+  standing: Map<string, Standing>,
+  unlocked: Set<string>,
+) {
+  const locked = new Set<string>();
+  for (const c of courses) {
+    if (!c.course_id || unlocked.has(c.course_id)) continue;
+    const waiting = ((c.data.prerequisites as string[] | undefined) ?? []).some(
+      (id) => {
+        const s = standing.get(id);
+        return s && s.assessable > 0 && !s.finished;
+      },
+    );
+    if (waiting) locked.add(c.course_id);
+  }
+  return locked;
+}
+/** Would these prerequisite links make a course come before itself? */
+function hasLoop(links: Map<string, string[]>) {
+  const done = new Set<string>(),
+    open = new Set<string>();
+  const visit = (id: string): boolean => {
+    if (open.has(id)) return true;
+    if (done.has(id)) return false;
+    open.add(id);
+    const looped = (links.get(id) ?? []).some(visit);
+    open.delete(id);
+    done.add(id);
+    return looped;
+  };
+  return [...links.keys()].some(visit);
+}
 /** Returns the course to switch the session to, when the action selects or creates one. */
 export async function catalogAction(ctx: AuthContext, raw: unknown) {
   const a = input.parse(raw);
@@ -92,6 +229,12 @@ export async function catalogAction(ctx: AuthContext, raw: unknown) {
       [ctx.tenantId, ctx.userId, a.courseId],
     );
     if (!access.rows[0]) throw new AppError(403, "FORBIDDEN");
+    if (ctx.role === "student") {
+      const listed = (await catalog(ctx)).courses.find(
+        (c) => c.id === a.courseId,
+      );
+      if (listed?.locked) throw new AppError(403, "COURSE_LOCKED");
+    }
     return { courseId: a.courseId };
   }
   if (ctx.role !== "instructor") throw new AppError(403, "FORBIDDEN");
@@ -137,8 +280,122 @@ export async function catalogAction(ctx: AuthContext, raw: unknown) {
       await audit("catalog.major_created", id);
       return { id };
     }
+    const createCourse = async (
+      code: string,
+      title: string,
+      majorId: string,
+    ) => {
+      const courseId = "C" + randomBytes(4).toString("hex").toUpperCase();
+      await add("course:" + courseId, "course", courseId, {
+        code,
+        title: both(title),
+        majorId,
+        openEnrollment: true,
+      });
+      // Testing phase: everyone in the workspace can open every course in their own role.
+      await tx.query(
+        `INSERT INTO course_access(tenant_id,user_id,course_id,access_role,can_review,can_publish)
+         SELECT tenant_id,user_id,$2,role,role='instructor',role='instructor' FROM memberships WHERE tenant_id=$1 AND active`,
+        [ctx.tenantId, courseId],
+      );
+      return courseId;
+    };
+    const coursesOf = async (majorId?: string) =>
+      (
+        await tx.query<Row>(
+          "SELECT id,kind,course_id,data FROM records WHERE tenant_id=$1 AND kind='course' AND ($2::text IS NULL OR data->>'majorId'=$2)",
+          [ctx.tenantId, majorId ?? null],
+        )
+      ).rows;
+    const patch = (courseId: string, data: unknown) =>
+      tx.query(
+        "UPDATE records SET data=data||$4::jsonb,updated_at=now() WHERE tenant_id=$1 AND course_id=$2 AND id=$3 AND kind='course'",
+        [ctx.tenantId, courseId, "course:" + courseId, JSON.stringify(data)],
+      );
+    if (a.action === "unlock-course") {
+      await tx.query(
+        "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'course_unlock',$3,$4,$5) ON CONFLICT ON CONSTRAINT records_pkey DO UPDATE SET data=excluded.data,updated_at=now()",
+        [
+          ctx.tenantId,
+          "course_unlock:" + a.studentId,
+          a.courseId,
+          a.studentId,
+          JSON.stringify({ unlocked: a.unlocked, by: ctx.userId }),
+        ],
+      );
+      await audit("catalog.course_unlock", a.courseId);
+      return { id: a.courseId };
+    }
+    if (a.action === "set-prerequisites") {
+      const all = await coursesOf();
+      const ids = new Set(all.map((c) => c.course_id!));
+      if (!ids.has(a.courseId) || a.prerequisites.some((p) => !ids.has(p)))
+        throw new AppError(404, "NOT_FOUND");
+      const links = new Map(
+        all.map((c) => [
+          c.course_id!,
+          c.course_id === a.courseId
+            ? a.prerequisites
+            : ((c.data.prerequisites as string[] | undefined) ?? []),
+        ]),
+      );
+      if (hasLoop(links)) throw new AppError(409, "STUDY_MAP_LOOP");
+      await patch(a.courseId, { prerequisites: [...new Set(a.prerequisites)] });
+      await audit("catalog.prerequisites_set", a.courseId);
+      return { id: a.courseId };
+    }
     if (!(await exists(a.majorId, "major")))
       throw new AppError(404, "NOT_FOUND");
+    if (a.action === "import-study-map") {
+      // Courses are matched by code inside the major, so importing again updates the
+      // plan instead of duplicating it and never touches a course's content.
+      const byCode = new Map(
+        (await coursesOf(a.majorId)).map((c) => [
+          String(c.data.code ?? "").toUpperCase(),
+          c.course_id!,
+        ]),
+      );
+      const listed = a.terms.flatMap((t) => t.courses);
+      if (
+        new Set(listed.map((c) => c.code.toUpperCase())).size !== listed.length
+      )
+        throw new AppError(400, "INVALID_INPUT");
+      let created = 0;
+      for (const c of listed)
+        if (!byCode.has(c.code.toUpperCase())) {
+          byCode.set(
+            c.code.toUpperCase(),
+            await createCourse(c.code, c.title, a.majorId),
+          );
+          created++;
+        }
+      const links = new Map<string, string[]>();
+      let order = 0;
+      for (const term of a.terms)
+        for (const c of term.courses) {
+          const id = byCode.get(c.code.toUpperCase())!;
+          links.set(
+            id,
+            c.requires
+              .filter((code) => byCode.has(code.toUpperCase()))
+              .map((code) => byCode.get(code.toUpperCase())!),
+          );
+          await patch(id, {
+            code: c.code,
+            title: both(c.title),
+            term: term.label,
+            order: order++,
+            prerequisites: links.get(id),
+            // A code the plan names but does not list (a preparatory course, say).
+            externalPrerequisites: c.requires.filter(
+              (code) => !byCode.has(code.toUpperCase()),
+            ),
+          });
+        }
+      if (hasLoop(links)) throw new AppError(409, "STUDY_MAP_LOOP");
+      await audit("catalog.study_map_imported", a.majorId);
+      return { id: a.majorId, courses: listed.length, created };
+    }
     if (a.action === "assign-course") {
       const moved = await tx.query(
         "UPDATE records SET data=data||$4::jsonb,updated_at=now() WHERE tenant_id=$1 AND course_id=$2 AND id=$3 AND kind='course' RETURNING id",
@@ -153,19 +410,7 @@ export async function catalogAction(ctx: AuthContext, raw: unknown) {
       await audit("catalog.course_assigned", a.courseId);
       return { id: a.courseId };
     }
-    const courseId = "C" + randomBytes(4).toString("hex").toUpperCase();
-    await add("course:" + courseId, "course", courseId, {
-      code: a.code,
-      title: both(a.title),
-      majorId: a.majorId,
-      openEnrollment: true,
-    });
-    // Testing phase: everyone in the workspace can open every course in their own role.
-    await tx.query(
-      `INSERT INTO course_access(tenant_id,user_id,course_id,access_role,can_review,can_publish)
-       SELECT tenant_id,user_id,$2,role,role='instructor',role='instructor' FROM memberships WHERE tenant_id=$1 AND active`,
-      [ctx.tenantId, courseId],
-    );
+    const courseId = await createCourse(a.code, a.title, a.majorId);
     await audit("catalog.course_created", courseId);
     // Creating a course does not open it; the instructor opens it when ready.
     return { id: courseId };

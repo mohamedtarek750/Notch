@@ -5,6 +5,14 @@ const messages: Record<string, { ar: string; en: string }> = {
     ar: "ليس لديك صلاحية لهذا الإجراء.",
     en: "You do not have permission for this action.",
   },
+  COURSE_LOCKED: {
+    ar: "هذا المقرر مقفل حتى تنهي المقررات التي تسبقه في خطة الدراسة.",
+    en: "This course is locked until you finish the courses that come before it in the study plan.",
+  },
+  STUDY_MAP_LOOP: {
+    ar: "خطة الدراسة فيها حلقة: مقرر يسبق نفسه عبر مقررات أخرى.",
+    en: "The study plan has a loop: a course ends up coming before itself.",
+  },
   COURSE_FORBIDDEN: {
     ar: "هذا المقرر غير متاح لحسابك.",
     en: "This course is not available to your account.",

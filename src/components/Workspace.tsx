@@ -139,6 +139,7 @@ const STUDENT_NAV = [
   ["map", "الخريطة", "Map", Network],
   ["review", "المراجعة", "Review", NotebookPen],
   ["exam", "جاهزية الامتحان", "Exam readiness", GraduationCap],
+  ["structure", "خطة الدراسة", "Study plan", Landmark],
 ] as const;
 const INSTRUCTOR_NAV = [
   ["build", "ابنِ الشجرة", "Build the tree", Sparkles],
@@ -200,12 +201,19 @@ export function Workspace({
         if (cancelled) return;
         U(r.user);
         // Each role opens on its own starting screen, also after a page reload.
+        // A course opened from the study plan lands on the screen that was asked for.
+        let asked = "";
+        try {
+          asked = sessionStorage.getItem("notch_open_view") ?? "";
+          sessionStorage.removeItem("notch_open_view");
+        } catch {}
         V(
-          r.user?.role === "instructor"
-            ? "build"
-            : r.user?.role === "advisor"
-              ? "advising"
-              : "home",
+          asked ||
+            (r.user?.role === "instructor"
+              ? "build"
+              : r.user?.role === "advisor"
+                ? "advising"
+                : "home"),
         );
         await refresh();
       })
