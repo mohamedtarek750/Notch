@@ -21,6 +21,8 @@ import {
 } from "@/server/prerequisites";
 import {
   bankCoverage,
+  bankStep,
+  reviewBank,
   generateBank,
   getBankSettings,
   saveBankSettings,
@@ -42,6 +44,8 @@ const input = z.object({
     "review-edges",
     "bank-settings",
     "generate-bank",
+    "bank-step",
+    "bank-review",
     "tree-edit",
     "tree-layout",
   ]),
@@ -129,6 +133,10 @@ export async function POST(req: Request) {
       return Response.json(
         await generateBank(ctx, undefined, { conceptIds: body.conceptIds }),
       );
+    if (body.action === "bank-step")
+      return Response.json(await bankStep(ctx, undefined, body.data));
+    if (body.action === "bank-review")
+      return Response.json(await reviewBank(ctx, body.data));
     if (body.action === "review-edges")
       return Response.json(
         await reviewPrerequisiteEdges(ctx, {
