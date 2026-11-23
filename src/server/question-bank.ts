@@ -2,14 +2,20 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db } from "./db";
 import { authorizeCourse, type AuthContext } from "./auth";
-import { COURSE, SourceError, staff, type Evidence } from "./sources";
+import {
+  COURSE,
+  SourceError,
+  majorCourses,
+  staff,
+  type Evidence,
+} from "./sources";
 import {
   GeminiGateway,
   prepareStaffGeneration,
   saveTrace,
   type ModelGateway,
 } from "./ai";
-import { type Graph } from "./knowledge";
+import { reviewProposal, type Graph } from "./knowledge";
 import { EXTRACTION_POLICY } from "./prerequisites";
 
 /**
@@ -239,6 +245,8 @@ export async function generateBank(
   ).rows;
   const budget =
     prepared.maxContextCharacters - 2500 - settings.styleNotes.length;
+  // The major's reference may have been uploaded under a sibling course.
+  const siblings = await majorCourses(ctx);
   const created: {
     id: string;
     conceptId: string;
@@ -251,10 +259,10 @@ export async function generateBank(
       await db.tenant(ctx.tenantId).query<Evidence>(
         `SELECT c.id,c.version_id,c.page,c.section,c.text_content,c.language,c.status,c.review_note,v.source_key,v.title,v.role,v.hash
          FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id
-         WHERE c.tenant_id=$1 AND c.course_id=$2 AND c.id=ANY($3::text[]) AND c.status='approved' AND v.current_version=true
+         WHERE c.tenant_id=$1 AND (c.course_id=$2 OR (v.role='umbrella' AND c.course_id=ANY($4::text[]))) AND c.id=ANY($3::text[]) AND c.status='approved' AND v.current_version=true
            AND v.rights->>'sendToModel'='true' AND v.rights->>'displayExcerpt'='true'
          ORDER BY (v.role='instructor') DESC,c.page NULLS LAST LIMIT 4`,
-        [ctx.tenantId, ctx.courseId, concept.evidenceIds],
+        [ctx.tenantId, ctx.courseId, concept.evidenceIds, siblings],
       )
     ).rows;
     if (!evidence.length) {
@@ -424,4 +432,124 @@ export async function bankCoverage(ctx: AuthContext) {
     byConcept.set(r.concept, entry);
   }
   return Object.fromEntries(byConcept);
+}
+
+/** Provider trouble that passes by itself: the caller waits and asks again. */
+const PASSING = new Set([
+  "rate_limited",
+  "provider_busy",
+  "provider_quota",
+  "provider_slow",
+  "provider_unavailable",
+]);
+export const bankStepInput = z.object({
+  skip: z.array(z.string().min(1).max(120)).max(600).default([]),
+});
+/**
+ * One step of "draft questions for the whole course": picks the next published concept
+ * of this course that has no question yet (published or awaiting review), drafts its
+ * questions with one model call, and says how many concepts are left. The caller repeats
+ * until done, so a run of any length never depends on a single long request.
+ */
+export async function bankStep(
+  ctx: AuthContext,
+  gateway: ModelGateway = new GeminiGateway(),
+  rawInput: unknown = {},
+) {
+  await staff(ctx, "generate");
+  const { skip } = bankStepInput.parse(rawInput ?? {});
+  const sql = db.tenant(ctx.tenantId);
+  const release = (
+    await sql.query<{ data: { graph: Graph } }>(
+      "SELECT data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release' ORDER BY created_at DESC,id DESC LIMIT 1",
+      [ctx.tenantId, ctx.courseId],
+    )
+  ).rows[0];
+  // A concept brought in from another course is assessed there, not twice.
+  const concepts = (release?.data.graph.concepts ?? []).filter(
+    (c) => !c.importedFrom,
+  );
+  const covered = new Set(
+    (
+      await sql.query<{ concept: string }>(
+        `SELECT data->>'conceptId' AS concept FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='item' AND data->>'conceptId' IS NOT NULL
+         UNION SELECT data->'item'->>'conceptId' FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='knowledge_proposal' AND data->>'status' IN ('pending','approved') AND data->'item'->>'conceptId' IS NOT NULL`,
+        [ctx.tenantId, ctx.courseId],
+      )
+    ).rows.map((r) => r.concept),
+  );
+  const waiting = concepts.filter(
+    (c) => !covered.has(c.id) && !skip.includes(c.id),
+  );
+  const total = concepts.length;
+  const next = waiting[0];
+  if (!next) return { done: true as const, total, remaining: 0 };
+  const base = {
+    done: false as const,
+    total,
+    concept: { id: next.id, label: next.label },
+  };
+  try {
+    const result = await generateBank(ctx, gateway, { conceptIds: [next.id] });
+    return {
+      ...base,
+      remaining: waiting.length - 1,
+      created: result.created.length,
+    };
+  } catch (error) {
+    if (!(error instanceof SourceError)) throw error;
+    if (PASSING.has(error.code))
+      return {
+        ...base,
+        remaining: waiting.length,
+        created: 0,
+        wait: error.code,
+      };
+    if (["insufficient_evidence", "invalid_output"].includes(error.code))
+      return {
+        ...base,
+        remaining: waiting.length - 1,
+        created: 0,
+        skipped: error.code,
+      };
+    throw error;
+  }
+}
+
+export const bankReviewInput = z.object({
+  approve: z.array(z.string().min(1).max(80)).max(600).default([]),
+  reject: z.array(z.string().min(1).max(80)).max(600).default([]),
+});
+/** Record the instructor's decision on many drafted questions at once. */
+export async function reviewBank(ctx: AuthContext, rawInput: unknown) {
+  await staff(ctx, "publish");
+  const { approve, reject } = bankReviewInput.parse(rawInput);
+  const drafts = new Set(
+    (
+      await db
+        .tenant(ctx.tenantId)
+        .query<{ id: string }>(
+          "SELECT id FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='knowledge_proposal' AND data->>'kind'=$3 AND data->>'status' IN ('pending','approved','rejected') AND id=ANY($4::text[])",
+          [
+            ctx.tenantId,
+            ctx.courseId,
+            QUESTION_BANK_KIND,
+            [...approve, ...reject],
+          ],
+        )
+    ).rows.map((r) => r.id),
+  );
+  let approved = 0,
+    rejected = 0;
+  for (const id of approve)
+    if (drafts.has(id)) {
+      await reviewProposal(ctx, id, "approved");
+      approved++;
+    }
+  for (const id of reject)
+    if (drafts.has(id) && !approve.includes(id)) {
+      await reviewProposal(ctx, id, "rejected");
+      rejected++;
+    }
+  return { approved, rejected };
 }

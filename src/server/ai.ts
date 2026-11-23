@@ -55,7 +55,7 @@ export function providerError(error: unknown) {
         : "provider_rejected",
       502,
     );
-  if (/timeout|timed out|aborted/i.test(message))
+  if (status === 504 || /timeout|timed out|aborted|deadline/i.test(message))
     return new SourceError("provider_slow", 504);
   return new SourceError("provider_unavailable", 503);
 }
@@ -181,11 +181,21 @@ export class GeminiGateway implements ModelGateway {
     initializeNetwork();
     const client = new GoogleGenAI({
       apiKey: process.env.GEMINI_API_KEY,
-      httpOptions: { timeout: input.thorough ? 150000 : 45000 },
+      // Writing a concept's bilingual questions was measured at over 45 seconds on the
+      // stronger model, so drafting gets the longer limit too.
+      // The fallback below may add a second call, and both must fit in one request.
+      httpOptions: {
+        timeout: input.thorough
+          ? 150000
+          : input.operation === "generate"
+            ? 110000
+            : 45000,
+      },
     });
     const authoring = input.operation !== "tutor";
-    const model =
+    const primary =
       input.operation === "generate" ? this.questionModelId : this.modelId;
+    const model = primary;
     // Staff authoring runs once per lecture or concept: measured on a real lecture, medium
     // thinking found about twice the concepts and relationships of low thinking.
     const thinking =
@@ -193,7 +203,7 @@ export class GeminiGateway implements ModelGateway {
       process.env.GEMINI_AUTHORING_THINKING !== "low"
         ? ThinkingLevel.MEDIUM
         : ThinkingLevel.LOW;
-    const request = (level: ThinkingLevel) =>
+    const request = (level: ThinkingLevel, model = primary) =>
       client.models.generateContent({
         model,
         contents: JSON.stringify(input.payload),
@@ -236,6 +246,13 @@ export class GeminiGateway implements ModelGateway {
           { level: ThinkingLevel.LOW, wait: 8000 },
         ];
     let result: Awaited<ReturnType<typeof request>> | undefined;
+    // Demand spikes hit one model at a time: measured on the same minute, one model was
+    // refusing every call while the other answered. Drafting questions therefore falls
+    // back to the course's other configured model instead of giving up.
+    const other =
+      input.operation === "generate" && this.modelId !== primary
+        ? this.modelId
+        : undefined;
     for (const [attempt, step] of plan.entries()) {
       if (step.wait) await new Promise((r) => setTimeout(r, step.wait));
       try {
@@ -243,6 +260,15 @@ export class GeminiGateway implements ModelGateway {
         break;
       } catch (error) {
         const status = (error as { status?: number }).status;
+        const passing = status === 503 || status === 429 || status === 504;
+        if (other && passing && (attempt >= 1 || status === 504)) {
+          try {
+            result = await request(ThinkingLevel.LOW, other);
+            break;
+          } catch (second) {
+            throw providerError(second);
+          }
+        }
         if (attempt === plan.length - 1 || (status !== 503 && status !== 429))
           throw providerError(error);
       }

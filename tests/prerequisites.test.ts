@@ -38,6 +38,8 @@ import {
   allocate,
   bankCoverage,
   generateBank,
+  bankStep,
+  reviewBank,
   planItems,
   saveBankSettings,
   defaultSettings,
@@ -629,6 +631,31 @@ describe("question bank settings and generation", () => {
       total: 2,
       difficulty: { easy: 1, medium: 1 },
     });
+  });
+  it("drafts the whole course step by step and reviews drafts in bulk", async () => {
+    // Both concepts already have published questions, so there is nothing left to draft.
+    expect(await bankStep(instructor, bankModel, {})).toMatchObject({
+      done: true,
+      total: 2,
+    });
+    await expect(bankStep(student, bankModel, {})).rejects.toMatchObject({
+      status: 403,
+    });
+    const more = await generateBank(instructor, bankModel, {
+      conceptIds: [bayes],
+    });
+    const ids = more.created.map((c) => c.id);
+    expect(ids.length).toBeGreaterThan(0);
+    // An id that is not a question draft of this course is ignored, not an error.
+    expect(
+      await reviewBank(instructor, { approve: ["nope"], reject: ids }),
+    ).toEqual({ approved: 0, rejected: ids.length });
+    const after = await getKnowledge(instructor);
+    expect(
+      after.proposals
+        .filter((p) => ids.includes(p.id))
+        .every((p) => (p.data as any).status === "rejected"),
+    ).toBe(true);
   });
   it("orders the learner path by prerequisites and adapts difficulty", async () => {
     expect(targetDifficulty(undefined)).toBe("easy");

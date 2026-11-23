@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Box, Button, request, type Translate } from "./Workspace";
 import { uploadLargePdf } from "./sources";
 import { KnowledgeTree, TreePreview } from "./KnowledgeTree";
@@ -73,8 +73,27 @@ export function BuildStudio({
       Record<string, { keep: boolean; type: string }>
     >({}),
     [published, setPublished] = useState<Edge[]>([]),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [treeVersion, setTreeVersion] = useState(0),
+    [questionsBusy, setQuestionsBusy] = useState(false);
   const running = useRef(false);
+  // The question run keeps one fixed place among the children so its progress survives
+  // every change of the screen around it.
+  const frame = (before: ReactNode, after: ReactNode, show: boolean) => (
+    <>
+      {questionsBusy ? null : before}
+      <QuestionRun
+        lang={lang}
+        t={t}
+        onError={onError}
+        go={go}
+        hidden={!show}
+        version={treeVersion}
+        onBusy={setQuestionsBusy}
+      />
+      {questionsBusy ? null : after}
+    </>
+  );
   useEffect(() => {
     request("/api/materials", undefined, lang)
       .then((m) =>
@@ -356,6 +375,7 @@ export function BuildStudio({
           lang,
         );
       await request("/api/knowledge", { action: "publish" }, lang);
+      setTreeVersion((n) => n + 1);
       setPhase("done");
     } catch (e) {
       onError((e as Error).message);
@@ -368,7 +388,8 @@ export function BuildStudio({
     const percent = steps.length
       ? Math.round((100 * current) / steps.length)
       : 0;
-    return (
+    return frame(
+      null,
       <Box>
         <div className="working" role="status" aria-live="polite">
           <div className="working-mark" aria-hidden="true">
@@ -430,21 +451,24 @@ export function BuildStudio({
             ))}
           </ul>
         </div>
-      </Box>
+      </Box>,
+      false,
     );
   }
   if (phase === "done")
-    return (
+    return frame(
+      <div className="notice">
+        {t(
+          "نُشرت الشجرة. الخطوة التالية أسفل هذا السطر: توليد أسئلة لكل مفهوم.",
+          "The tree is published. The next step is right below: drafting questions for every concept.",
+        )}
+      </div>,
       <>
         <div className="notice">
           {t(
             "نُشرت الشجرة. تراها الآن مع بقية مقررات التخصص؛ حرّك المفاهيم وارسم خطوطًا إضافية كما تشاء، وبدّل «اعرض» لرؤية هذا المقرر وحده أو الجامعة كلها.",
             "The tree is published. You now see it with the other courses of the major; move concepts and draw more lines as you like, and switch “Show” to see this course alone or the whole university.",
           )}{" "}
-          <button className="textbtn" onClick={() => go("bank")}>
-            {t("التالي: بنك الأسئلة", "Next: question bank")}
-          </button>
-          {" · "}
           <button
             className="textbtn"
             onClick={() => {
@@ -463,10 +487,12 @@ export function BuildStudio({
           go={go}
           initialScope="major"
         />
-      </>
+      </>,
+      true,
     );
   if (phase === "review")
-    return (
+    return frame(
+      null,
       <>
         <h1>{t("راجع الشجرة الناتجة", "Review the tree that was produced")}</h1>
         <p>
@@ -581,7 +607,8 @@ export function BuildStudio({
             {t("ارجع دون نشر", "Go back without publishing")}
           </Button>
         </div>
-      </>
+      </>,
+      false,
     );
   const needsReference = !hasReference && !references.length;
   const blocked =
@@ -614,15 +641,17 @@ export function BuildStudio({
       )}
     </label>
   );
-  return (
+  return frame(
     <>
       <h1>{t("ابنِ شجرة المعرفة", "Build the knowledge tree")}</h1>
       <p>
         {t(
-          "خطوة واحدة: اختر كل محاضراتك ومرجع المقرر معًا، ونحن نقرؤها ونستخرج المفاهيم وما يسبق كل مفهوم، ثم نعرض عليك الشجرة لتراجعها وتعتمدها.",
-          "One step: choose all your lectures and the course reference together. We read them, find the concepts and what precedes each one, then show you the tree to review and approve.",
+          "خطوة واحدة: اختر كل محاضراتك ومرجع المقرر معًا، ونحن نقرؤها ونستخرج المفاهيم وما يسبق كل مفهوم، ثم نعرض عليك الشجرة لتراجعها وتعتمدها. بعدها نولّد أسئلة لكل مفهوم.",
+          "One step: choose all your lectures and the course reference together. We read them, find the concepts and what precedes each one, then show you the tree to review and approve. After that we draft questions for every concept.",
         )}
       </p>
+    </>,
+    <>
       <Box>
         {picker(
           t("المحاضرات (PDF)", "Lectures (PDF)"),
@@ -700,6 +729,468 @@ export function BuildStudio({
         </small>
       </p>
       <ResetBox lang={lang} t={t} onError={onError} />
-    </>
+    </>,
+    true,
+  );
+}
+
+type Draft = {
+  id: string;
+  conceptId: string;
+  concept: { ar: string; en: string };
+  kind: string;
+  difficulty: string;
+  stem: { ar: string; en: string };
+  steps?: { ar: string; en: string }[];
+  options: { id: string; label: { ar: string; en: string } }[];
+  answer: string;
+  feedback: { ar: string; en: string };
+  rubric: { ar: string; en: string };
+  source: string;
+};
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Second half of the one-step page: draft questions for every published concept that has
+ * none, show each draft with its answer, and publish the ones the instructor keeps.
+ */
+function QuestionRun({
+  lang,
+  t,
+  onError,
+  go,
+  hidden,
+  version,
+  onBusy,
+}: {
+  lang: Lang;
+  t: Translate;
+  onError: (message: string) => void;
+  go: (view: string) => void;
+  hidden: boolean;
+  version: number;
+  onBusy: (busy: boolean) => void;
+}) {
+  const [phase, setPhase] = useState<"idle" | "working" | "review" | "done">(
+      "idle",
+    ),
+    [missing, setMissing] = useState(0),
+    [total, setTotal] = useState(0),
+    [drafts, setDrafts] = useState<Draft[]>([]),
+    [dropped, setDropped] = useState<Record<string, boolean>>({}),
+    [progress, setProgress] = useState({ done: 0, of: 0, written: 0 }),
+    [now, setNow] = useState(""),
+    [log, setLog] = useState<string[]>([]),
+    [left, setLeft] = useState<string[]>([]),
+    [publishedCount, setPublishedCount] = useState(0),
+    [busy, setBusy] = useState(false);
+  const running = useRef(false),
+    stop = useRef(false);
+  const show = (next: typeof phase) => {
+    setPhase(next);
+    onBusy(next === "working" || next === "review");
+  };
+  const load = async () => {
+    const k = await request("/api/knowledge", undefined, lang);
+    const pending: Draft[] = (k.proposals ?? [])
+      .map((p: any) => ({ id: p.id, d: p.data ?? p }))
+      .filter(
+        ({ d }: any) =>
+          d.kind === "question-bank" && d.status === "pending" && d.item,
+      )
+      .map(({ id, d }: any) => ({
+        id,
+        conceptId: d.item.conceptId,
+        concept: d.item.conceptLabel,
+        kind: d.item.kind,
+        difficulty: d.item.difficulty,
+        stem: d.item.stem,
+        steps: d.item.steps,
+        options: d.item.options ?? [],
+        answer: d.item.key,
+        feedback: d.item.feedback,
+        rubric: d.item.rubric,
+        source: [d.item.sourceKey, d.item.locator].filter(Boolean).join(" · "),
+      }));
+    const own = (k.releases?.[0]?.data?.graph?.concepts ?? []).filter(
+      (c: any) => !c.importedFrom,
+    );
+    const has = new Set([
+      ...Object.keys(k.bank?.coverage ?? {}),
+      ...pending.map((d) => d.conceptId),
+    ]);
+    setTotal(own.length);
+    setMissing(own.filter((c: any) => !has.has(c.id)).length);
+    setDrafts(pending);
+    return pending;
+  };
+  useEffect(() => {
+    if (running.current) return;
+    load().catch(() => {});
+  }, [lang, version]);
+
+  const run = async () => {
+    if (running.current) return;
+    running.current = true;
+    stop.current = false;
+    onError("");
+    setLog([]);
+    setLeft([]);
+    setNow("");
+    setProgress({ done: 0, of: missing, written: 0 });
+    show("working");
+    const skip: string[] = [],
+      retried = new Set<string>(),
+      unanswered: string[] = [];
+    let waits = 0,
+      written = 0,
+      of = missing;
+    const say = (line: string) => setLog((all) => [...all.slice(-5), line]);
+    try {
+      while (!stop.current) {
+        const r = await request(
+          "/api/knowledge",
+          { action: "bank-step", data: { skip } },
+          lang,
+        );
+        if (r.done) break;
+        const label = r.concept.label[lang] ?? r.concept.label.en;
+        if (r.wait) {
+          if (++waits > 14)
+            throw new Error(
+              t(
+                "النموذج مزدحم منذ مدة. ما كُتب حتى الآن محفوظ؛ أكمل لاحقًا من الزر نفسه.",
+                "The model has been busy for a while. What was written is saved; carry on later with the same button.",
+              ),
+            );
+          setNow(
+            t(
+              "النموذج مزدحم الآن؛ ننتظر ثم نكمل من حيث توقفنا…",
+              "The model is busy right now; waiting, then carrying on from where we stopped…",
+            ),
+          );
+          await pause(25000);
+          continue;
+        }
+        waits = 0;
+        if (r.skipped) {
+          // A malformed answer gets one more try; a concept with no approved page is left.
+          if (r.skipped === "invalid_output" && !retried.has(r.concept.id)) {
+            retried.add(r.concept.id);
+            continue;
+          }
+          skip.push(r.concept.id);
+          unanswered.push(label);
+          say(
+            r.skipped === "insufficient_evidence"
+              ? t(
+                  `«${label}»: لا صفحات معتمدة كافية لكتابة سؤال.`,
+                  `“${label}”: not enough approved pages to write a question.`,
+                )
+              : t(
+                  `«${label}»: لم تصلح صياغة النموذج فتُرك.`,
+                  `“${label}”: the model's draft was not usable, so it was left.`,
+                ),
+          );
+        } else {
+          written += r.created;
+          say(
+            t(
+              `«${label}»: ${r.created} أسئلة.`,
+              `“${label}”: ${r.created} questions.`,
+            ),
+          );
+        }
+        if (of < r.remaining + 1) of = r.remaining + 1;
+        setProgress({
+          done: Math.max(0, of - r.remaining),
+          of,
+          written,
+        });
+        setNow(
+          t(
+            `يكتب أسئلة المفهوم التالي… بقي ${r.remaining}`,
+            `Writing questions for the next concept… ${r.remaining} left`,
+          ),
+        );
+      }
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      running.current = false;
+      setLeft(unanswered);
+      const pending = await load().catch(() => [] as Draft[]);
+      setDropped({});
+      show(pending.length ? "review" : "idle");
+    }
+  };
+
+  const publish = async () => {
+    setBusy(true);
+    onError("");
+    try {
+      const approve = drafts.filter((d) => !dropped[d.id]).map((d) => d.id),
+        reject = drafts.filter((d) => dropped[d.id]).map((d) => d.id);
+      // In portions, so a large bank never rides on one long request.
+      for (let i = 0; i < approve.length || i < reject.length; i += 60)
+        await request(
+          "/api/knowledge",
+          {
+            action: "bank-review",
+            data: {
+              approve: approve.slice(i, i + 60),
+              reject: reject.slice(i, i + 60),
+            },
+          },
+          lang,
+        );
+      if (approve.length)
+        await request("/api/knowledge", { action: "publish" }, lang);
+      setPublishedCount(approve.length);
+      await load().catch(() => {});
+      show("done");
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (hidden && phase !== "working" && phase !== "review") return null;
+  if (phase === "working") {
+    const percent = progress.of
+      ? Math.round((100 * progress.done) / progress.of)
+      : 0;
+    return (
+      <Box>
+        <div className="working" role="status" aria-live="polite">
+          <div className="working-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M12 0c1 6.5 5.5 11 12 12-6.5 1-11 5.5-12 12-1-6.5-5.5-11-12-12 6.5-1 11-5.5 12-12z"
+                fill="#8b5cf6"
+              />
+            </svg>
+          </div>
+          <h2>
+            {t("نكتب أسئلة لكل مفهوم", "Writing questions for every concept")}
+          </h2>
+          <p>
+            {t(
+              "كل سؤال يُكتب من صفحات معتمدة في موادك، ومعه إجابته وتلميحان. لن يرى الطلاب شيئًا قبل أن تراجع وتعتمد.",
+              "Each question is written from approved pages of your material, with its answer and two hints. Students see nothing before you review and approve.",
+            )}
+          </p>
+          <div
+            className="working-bar"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={percent}
+          >
+            <i style={{ width: `${Math.max(4, percent)}%` }} />
+          </div>
+          <strong>
+            {t(
+              `${progress.done} من ${progress.of} مفهومًا · ${progress.written} سؤالًا مكتوبًا`,
+              `${progress.done} of ${progress.of} concepts · ${progress.written} questions written`,
+            )}
+          </strong>
+          <small>{now}</small>
+          {log.length > 0 && (
+            <ul
+              className="working-log"
+              aria-label={t("ما تمّ للتو", "Just done")}
+            >
+              {log.map((line, i) => (
+                <li key={i} className={i === log.length - 1 ? "now" : ""}>
+                  {line}
+                </li>
+              ))}
+            </ul>
+          )}
+          <Button
+            onClick={() => {
+              stop.current = true;
+              setNow(
+                t(
+                  "سنتوقف بعد المفهوم الحالي ونعرض ما كُتب…",
+                  "Stopping after the current concept and showing what was written…",
+                ),
+              );
+            }}
+          >
+            {t("توقف واعرض ما كُتب", "Stop and show what was written")}
+          </Button>
+        </div>
+      </Box>
+    );
+  }
+  if (phase === "review") {
+    const kindName: Record<string, string> = {
+      choice: t("اختيار من متعدد", "Multiple choice"),
+      critique: t("اكتشف الخطأ", "Find the error"),
+      open: t("إجابة مفتوحة", "Open answer"),
+      transfer: t("تطبيق في موقف جديد", "Applied to a new situation"),
+    };
+    const levelName: Record<string, string> = {
+      easy: t("سهل", "Easy"),
+      medium: t("متوسط", "Medium"),
+      hard: t("صعب", "Hard"),
+    };
+    const groups = new Map<string, Draft[]>();
+    for (const d of drafts)
+      groups.set(d.conceptId, [...(groups.get(d.conceptId) ?? []), d]);
+    const kept = drafts.filter((d) => !dropped[d.id]).length;
+    return (
+      <>
+        <h1>{t("راجع الأسئلة المكتوبة", "Review the drafted questions")}</h1>
+        <p>
+          {t(
+            `${drafts.length} سؤالًا لـ ${groups.size} مفهومًا. الإجابة الصحيحة معلَّمة تحت كل سؤال. أزل علامة أي سؤال لا تريده ثم اعتمد.`,
+            `${drafts.length} questions for ${groups.size} concepts. The correct answer is marked under each question. Untick any question you do not want, then approve.`,
+          )}
+        </p>
+        {left.length > 0 && (
+          <div className="notice">
+            {t(
+              `مفاهيم بقيت بلا أسئلة (${left.length}): ${left.join("، ")}. اعتمد صفحات تشرحها ثم أعد التوليد.`,
+              `Concepts left without questions (${left.length}): ${left.join(", ")}. Approve pages that explain them, then draft again.`,
+            )}
+          </div>
+        )}
+        {[...groups.entries()].map(([conceptId, list]) => (
+          <Box key={conceptId}>
+            <h2>{list[0].concept?.[lang] ?? conceptId}</h2>
+            {list.map((d) => (
+              <div key={d.id} style={{ marginBottom: 18 }}>
+                <label className="checklabel">
+                  <input
+                    type="checkbox"
+                    checked={!dropped[d.id]}
+                    onChange={(x) =>
+                      setDropped({ ...dropped, [d.id]: !x.target.checked })
+                    }
+                  />{" "}
+                  <span>
+                    <small>
+                      {kindName[d.kind] ?? d.kind} ·{" "}
+                      {levelName[d.difficulty] ?? d.difficulty}
+                      {d.source ? ` · ${d.source}` : ""}
+                    </small>
+                    <br />
+                    <strong dir="auto">{d.stem[lang]}</strong>
+                  </span>
+                </label>
+                {d.kind === "critique" && d.steps && (
+                  <ol dir="auto">
+                    {d.steps.map((step, i) => (
+                      <li key={i}>
+                        {step[lang]}
+                        {d.answer === `s${i + 1}` ||
+                        d.options[i]?.id === d.answer
+                          ? " ← " + t("الخطأ هنا", "the error is here")
+                          : ""}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {d.kind !== "critique" && d.options.length > 0 && (
+                  <ul
+                    dir="auto"
+                    style={{ listStyle: "none", paddingInline: 26 }}
+                  >
+                    {d.options.map((o) => (
+                      <li key={o.id}>
+                        {o.id === d.answer ? "✓ " : "○ "}
+                        {o.id === d.answer ? (
+                          <strong>{o.label[lang]}</strong>
+                        ) : (
+                          o.label[lang]
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <small
+                  dir="auto"
+                  style={{ display: "block", paddingInline: 26 }}
+                >
+                  {d.kind === "open"
+                    ? t("الإجابة الكاملة تتضمن: ", "A full answer contains: ") +
+                      d.rubric[lang]
+                    : t("الشرح: ", "Explanation: ") + d.feedback[lang]}
+                </small>
+              </div>
+            ))}
+          </Box>
+        ))}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Button primary disabled={busy} onClick={() => void publish()}>
+            {busy
+              ? t("جارٍ النشر…", "Publishing…")
+              : t(
+                  `اعتمد وانشر ${kept} سؤالًا`,
+                  `Approve and publish ${kept} questions`,
+                )}
+          </Button>
+          <Button disabled={busy} onClick={() => show("idle")}>
+            {t("أراجعها لاحقًا", "Review later")}
+          </Button>
+          <Button disabled={busy} onClick={() => go("bank")}>
+            {t(
+              "تعديل صياغة سؤال أو أسلوب الأسئلة",
+              "Edit a question's wording or the question style",
+            )}
+          </Button>
+        </div>
+      </>
+    );
+  }
+  if (!total) return null;
+  return (
+    <Box>
+      <h2>{t("أسئلة المفاهيم", "Concept questions")}</h2>
+      {phase === "done" && (
+        <p className="notice">
+          {t(
+            `نُشر ${publishedCount} سؤالًا. صار الطلاب يُختبرون في هذه المفاهيم وتُحسب نتائجهم في مسارهم.`,
+            `${publishedCount} questions were published. Students are now assessed on these concepts and the results count in their path.`,
+          )}
+        </p>
+      )}
+      <p>
+        {missing > 0
+          ? t(
+              `${missing} من ${total} مفهومًا في هذا المقرر بلا أسئلة بعد. نكتب لكل مفهوم أسئلته من صفحاتك المعتمدة ثم نعرضها عليك قبل النشر.`,
+              `${missing} of ${total} concepts in this course have no questions yet. We write each concept's questions from your approved pages and show them to you before publishing.`,
+            )
+          : t(
+              `لكل مفاهيم المقرر (${total}) أسئلة.`,
+              `Every concept of the course (${total}) has questions.`,
+            )}
+      </p>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {missing > 0 && (
+          <Button primary onClick={() => void run()}>
+            {t("ولّد أسئلة لكل المفاهيم", "Draft questions for every concept")}
+          </Button>
+        )}
+        {drafts.length > 0 && (
+          <Button
+            primary={missing === 0}
+            onClick={() => {
+              setDropped({});
+              show("review");
+            }}
+          >
+            {t(
+              `راجع ${drafts.length} سؤالًا ينتظر اعتمادك`,
+              `Review ${drafts.length} questions awaiting your approval`,
+            )}
+          </Button>
+        )}
+      </div>
+    </Box>
   );
 }
