@@ -75,13 +75,13 @@ export function localized(v: any, l: Lang): string {
   if (typeof v === "string" || typeof v === "number") return String(v);
   return v[l] || v.en || v.ar || "";
 }
-export async function request(url: string, body?: any, lang: Lang = "ar") {
+export async function request(url: string, body?: any, lang: Lang = "ar", courseId?: string) {
   const response = await fetch(url, {
     method: body === undefined ? "GET" : "POST",
     headers:
       body instanceof FormData
-        ? { "Accept-Language": lang }
-        : { "Content-Type": "application/json", "Accept-Language": lang },
+        ? { "Accept-Language": lang, ...(courseId ? { "X-Notch-Course": courseId } : {}) }
+        : { "Content-Type": "application/json", "Accept-Language": lang, ...(courseId ? { "X-Notch-Course": courseId } : {}) },
     ...(body === undefined
       ? {}
       : { body: body instanceof FormData ? body : JSON.stringify(body) }),
@@ -184,6 +184,13 @@ export function Workspace({
   const t: Translate = (a, b) => (lang === "ar" ? a : b);
   const tr = (v: any) => localized(v, lang);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [buildActive, setBuildActive] = useState(false);
+  useEffect(() => {
+    if (!buildActive) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [buildActive]);
   const refresh = async () => {
     request("/api/catalog", undefined, lang)
       .then(setCatalog)
@@ -580,7 +587,7 @@ export function Workspace({
             </strong>
           </div>
           <div className="toolbar">
-            <CourseSwitcher catalog={catalog} lang={lang} t={t} />
+            <CourseSwitcher catalog={catalog} lang={lang} t={t} disabled={buildActive} />
             <button onClick={switchLanguage}>
               <Languages size={17} />
               {lang === "ar" ? "English" : "العربية"}
@@ -650,8 +657,13 @@ export function Workspace({
               {view === "report" && (
                 <CourseReport lang={lang} t={t} onError={E} />
               )}
-              {view === "build" && user?.role === "instructor" && (
-                <BuildStudio lang={lang} t={t} onError={E} go={go} />
+              {user?.role === "instructor" && (
+                <div hidden={view !== "build"} style={view !== "build" ? { display: "none" } : undefined}>
+                  <BuildStudio lang={lang} t={t} onError={E} go={go} catalog={catalog} onActive={setBuildActive} />
+                </div>
+              )}
+              {buildActive && view !== "build" && user?.role === "instructor" && (
+                <div className="notice" role="status">{t("بناء الشجرة مستمر في هذه الصفحة.", "Your knowledge-tree job is still active in this tab.")}{" "}<button className="textbtn" onClick={() => go("build")}>{t("عرض التقدم والمراجعة", "View progress / review")}</button></div>
               )}
               {view === "structure" && (
                 <AcademicStructure

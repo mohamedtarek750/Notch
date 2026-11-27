@@ -391,6 +391,9 @@ const extractedPages = z.object({
   mode: z.enum(["umbrella", "lecture"]),
   title: z.string().trim().min(1).max(200),
   filename: z.string().max(300).default("document.pdf"),
+  documentHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  documentPages: z.number().int().positive().max(100000).optional(),
+  rejectDuplicate: z.boolean().optional(),
   rightsConfirmed: z.boolean().optional(),
   rightsReference: z.string().max(500).optional(),
   pages: z
@@ -429,6 +432,14 @@ export async function importExtractedPages(ctx: AuthContext, raw: unknown) {
   const sourceKey =
     (input.mode === "umbrella" ? UMBRELLA_PREFIX : LECTURE_PREFIX) +
     hashBytes(keyText(ctx, input.title)).slice(0, 12).toUpperCase();
+  if (input.mode === "lecture" && input.rejectDuplicate) {
+    // Compare the original PDF fingerprint (including after OCR), or readable legacy text.
+    const twin = (await db.tenant(ctx.tenantId).query<{ id: string; source_key: string }>(
+      "SELECT id,source_key FROM material_versions WHERE tenant_id=$1 AND course_id=$2 AND role='instructor' AND current_version=true AND ((metadata->>'documentHash'=$3 AND metadata->>'firstPage'=$4 AND metadata->>'lastPage'=$5) OR ($6::boolean AND (hash=$7 OR metadata->>'originalFileHash'=$7))) LIMIT 1",
+      [ctx.tenantId, ctx.courseId, input.documentHash ?? null, String(pages[0].page), String(pages.at(-1)!.page), pages.some((p) => p.text.length >= 60), hashBytes(text)],
+    )).rows[0];
+    if (twin) return { id: twin.id, sourceKey: twin.source_key, duplicate: true as const, pages: pages.length };
+  }
   if (input.mode === "umbrella") {
     // The same reference already uploaded in another course of this major serves this
     // course too: recognise it instead of storing a second copy.
@@ -460,6 +471,7 @@ export async function importExtractedPages(ctx: AuthContext, raw: unknown) {
     pages,
     metadata: {
       extractedInBrowser: true,
+      ...(input.documentHash ? { documentHash: input.documentHash, documentPages: input.documentPages, originalFilename: input.filename } : {}),
       originalStored: false,
       firstPage: pages[0].page,
       lastPage: pages.at(-1)!.page,

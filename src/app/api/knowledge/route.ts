@@ -63,7 +63,7 @@ const input = z.object({
 });
 export async function GET(req: Request) {
   try {
-    const ctx = await requireAuth(req);
+    const ctx = await requireAuth(req, undefined, true);
     const knowledge = await getKnowledge(ctx);
     return Response.json(
       ctx.role === "instructor"
@@ -89,7 +89,7 @@ export async function GET(req: Request) {
 }
 export async function POST(req: Request) {
   try {
-    const ctx = await requireAuth(req, ["instructor"]);
+    const ctx = await requireAuth(req, ["instructor"], true);
     const raw = await req.text();
     if (Buffer.byteLength(raw, "utf8") > 2_000_000)
       return Response.json(

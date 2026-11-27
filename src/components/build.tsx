@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Box, Button, request, type Translate } from "./Workspace";
 import { uploadLargePdf } from "./sources";
 import { KnowledgeTree, TreePreview } from "./KnowledgeTree";
-import { ResetBox } from "./structure";
+import { ResetBox, type Catalog } from "./structure";
 
 type Lang = "ar" | "en";
 type Edge = {
@@ -48,11 +48,15 @@ export function BuildStudio({
   t,
   onError,
   go,
+  catalog,
+  onActive,
 }: {
   lang: Lang;
   t: Translate;
   onError: (message: string) => void;
   go: (view: string) => void;
+  catalog: Catalog | null;
+  onActive: (active: boolean) => void;
 }) {
   const [phase, setPhase] = useState<"pick" | "working" | "review" | "done">(
       "pick",
@@ -77,12 +81,18 @@ export function BuildStudio({
     [treeVersion, setTreeVersion] = useState(0),
     [questionsBusy, setQuestionsBusy] = useState(false);
   const running = useRef(false);
+  const [targetCourse, setTargetCourse] = useState("");
+  const courseId = targetCourse || catalog?.current || "";
+  const scopedRequest = (url: string, body?: any, locale: Lang = lang) => request(url, body, locale, courseId);
+  useEffect(() => { onActive(phase === "working" || phase === "review" || questionsBusy); }, [phase, questionsBusy, onActive]);
   // The question run keeps one fixed place among the children so its progress survives
   // every change of the screen around it.
   const frame = (before: ReactNode, after: ReactNode, show: boolean) => (
     <>
       {questionsBusy ? null : before}
       <QuestionRun
+        key={courseId}
+        courseId={courseId}
         lang={lang}
         t={t}
         onError={onError}
@@ -95,15 +105,19 @@ export function BuildStudio({
     </>
   );
   useEffect(() => {
-    request("/api/materials", undefined, lang)
-      .then((m) =>
+    setHasReference(false);
+    if (!courseId) return;
+    let cancelled = false;
+    scopedRequest("/api/materials", undefined, lang)
+      .then((m) => !cancelled &&
         setHasReference(
           (m.umbrellas ?? []).some((u: any) => u.sections?.approved > 0) ||
             (m.sharedUmbrellas ?? []).some((u: any) => u.approved > 0),
         ),
       )
       .catch(() => {});
-  }, [lang]);
+    return () => { cancelled = true; };
+  }, [lang, courseId]);
   // A calm line that changes while the model works, so a long wait never looks stuck.
   const tips = [
     t(
@@ -130,7 +144,7 @@ export function BuildStudio({
   }, [phase]);
 
   const run = async () => {
-    if (running.current) return;
+    if (running.current || !courseId) return;
     running.current = true;
     onError("");
     const plan: Step[] = [
@@ -194,6 +208,8 @@ export function BuildStudio({
     const upload = async (file: File, mode: "umbrella" | "lecture") => {
       const result = await uploadLargePdf(file, {
         mode,
+        courseId,
+        rejectDuplicate: true,
         title: titleOf(file),
         rights: rights || "Course reference provided by the instructor",
         confirmed: true,
@@ -208,10 +224,11 @@ export function BuildStudio({
             ),
           ),
       });
+      if (result.duplicates) problems.push(`${titleOf(file)}: ${t("تم تخطي الأجزاء المكررة", "Duplicate parts skipped")}`);
       // Readable pages are approved here so the whole flow is one step; the instructor
       // still reviews every relationship before anything reaches a student.
       for (const id of result.versionIds)
-        await request(
+        await scopedRequest(
           `/api/materials/${id}`,
           { action: "approve-pending" },
           lang,
@@ -221,7 +238,7 @@ export function BuildStudio({
     try {
       for (const file of references) {
         setDetail("");
-        await upload(file, "umbrella");
+        try { await upload(file, "umbrella"); } catch (e) { problems.push(`${titleOf(file)}: ${(e as Error).message}`); }
         next();
       }
       const keys: { file: File; keys: string[] }[] = [];
@@ -248,7 +265,7 @@ export function BuildStudio({
           let waits = 0;
           for (;;) {
             try {
-              const r = await request(
+              const r = await scopedRequest(
                 "/api/knowledge",
                 { action: "extract-step", lectureSourceKey },
                 lang,
@@ -286,7 +303,7 @@ export function BuildStudio({
         }
         next();
       }
-      const knowledge = await request("/api/knowledge", undefined, lang).catch(
+      const knowledge = await scopedRequest("/api/knowledge", undefined, lang).catch(
         () => null,
       );
       setPublished(knowledge?.releases?.[0]?.data?.graph?.edges ?? []);
@@ -360,7 +377,7 @@ export function BuildStudio({
     onError("");
     try {
       for (const p of proposals)
-        await request(
+        await scopedRequest(
           "/api/knowledge",
           {
             action: "review-edges",
@@ -374,7 +391,7 @@ export function BuildStudio({
           },
           lang,
         );
-      await request("/api/knowledge", { action: "publish" }, lang);
+      await scopedRequest("/api/knowledge", { action: "publish" }, lang);
       setTreeVersion((n) => n + 1);
       setPhase("done");
     } catch (e) {
@@ -486,6 +503,7 @@ export function BuildStudio({
           onError={onError}
           go={go}
           initialScope="major"
+          courseId={courseId}
         />
       </>,
       true,
@@ -612,7 +630,7 @@ export function BuildStudio({
     );
   const needsReference = !hasReference && !references.length;
   const blocked =
-    !lectures.length ||
+    !courseId || !lectures.length ||
     needsReference ||
     (references.length > 0 && (!confirmed || rights.trim().length < 5));
   const picker = (
@@ -631,12 +649,12 @@ export function BuildStudio({
         multiple
         accept="application/pdf,.pdf"
         onChange={(e) =>
-          set([...(e.target.files ?? [])].filter((f) => /\.pdf$/i.test(f.name)))
+          set([...files, ...[...(e.target.files ?? [])].filter((f) => /\.pdf$/i.test(f.name) && !files.some((old) => old.name === f.name && old.size === f.size && old.lastModified === f.lastModified))])
         }
       />
       {files.length > 0 && (
         <small style={{ display: "block", marginTop: 4 }}>
-          {files.map(titleOf).join(" · ")}
+          {files.map((file, i) => <span key={`${file.name}-${i}`} style={{ display: "block" }}>{titleOf(file)}{" "}<button type="button" className="textbtn" onClick={() => set(files.filter((_, n) => n !== i))}>{t("إزالة", "Remove")}</button></span>)}
         </small>
       )}
     </label>
@@ -653,6 +671,13 @@ export function BuildStudio({
     </>,
     <>
       <Box>
+        <label style={{ display: "block", marginBottom: 16 }}>
+          <strong>{t("المقرر المستهدف", "Target course")}</strong><br />
+          <select aria-label={t("المقرر المستهدف", "Target course")} value={courseId} onChange={(e) => { setTargetCourse(e.target.value); setHasReference(false); }}>
+            <option value="" disabled>{t("اختر مقررًا", "Select course")}</option>
+            {(catalog?.courses ?? []).map((c) => <option key={c.id} value={c.id}>{c.code} · {c.title?.[lang]}</option>)}
+          </select><br /><small>{t("كل الملفات في هذه الدفعة تخص هذا المقرر.", "All files in this batch are assigned to this course.")}</small>
+        </label>
         {picker(
           t("المحاضرات (PDF)", "Lectures (PDF)"),
           t(
@@ -755,6 +780,7 @@ const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * none, show each draft with its answer, and publish the ones the instructor keeps.
  */
 function QuestionRun({
+  courseId,
   lang,
   t,
   onError,
@@ -763,6 +789,7 @@ function QuestionRun({
   version,
   onBusy,
 }: {
+  courseId: string;
   lang: Lang;
   t: Translate;
   onError: (message: string) => void;
@@ -790,8 +817,9 @@ function QuestionRun({
     setPhase(next);
     onBusy(next === "working" || next === "review");
   };
+  const scopedRequest = (url: string, body?: any, locale: Lang = lang) => request(url, body, locale, courseId);
   const load = async () => {
-    const k = await request("/api/knowledge", undefined, lang);
+    const k = await scopedRequest("/api/knowledge", undefined, lang);
     const pending: Draft[] = (k.proposals ?? [])
       .map((p: any) => ({ id: p.id, d: p.data ?? p }))
       .filter(
@@ -825,9 +853,9 @@ function QuestionRun({
     return pending;
   };
   useEffect(() => {
-    if (running.current) return;
+    if (running.current || !courseId) return;
     load().catch(() => {});
-  }, [lang, version]);
+  }, [lang, version, courseId]);
 
   const run = async () => {
     if (running.current) return;
@@ -848,7 +876,7 @@ function QuestionRun({
     const say = (line: string) => setLog((all) => [...all.slice(-5), line]);
     try {
       while (!stop.current) {
-        const r = await request(
+        const r = await scopedRequest(
           "/api/knowledge",
           { action: "bank-step", data: { skip } },
           lang,
@@ -933,7 +961,7 @@ function QuestionRun({
         reject = drafts.filter((d) => dropped[d.id]).map((d) => d.id);
       // In portions, so a large bank never rides on one long request.
       for (let i = 0; i < approve.length || i < reject.length; i += 60)
-        await request(
+        await scopedRequest(
           "/api/knowledge",
           {
             action: "bank-review",
@@ -945,7 +973,7 @@ function QuestionRun({
           lang,
         );
       if (approve.length)
-        await request("/api/knowledge", { action: "publish" }, lang);
+        await scopedRequest("/api/knowledge", { action: "publish" }, lang);
       setPublishedCount(approve.length);
       await load().catch(() => {});
       show("done");

@@ -20,7 +20,7 @@ export async function GET(
 ) {
   try {
     return Response.json(
-      await getMaterial(await requireAuth(req), (await params).id),
+      await getMaterial(await requireAuth(req, undefined, true), (await params).id),
     );
   } catch (e) {
     return sourceErrorResponse(e, req.headers.get("accept-language") || "ar");
@@ -31,7 +31,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const ctx = await requireAuth(req, ["instructor"]);
+    const ctx = await requireAuth(req, ["instructor"], true);
     const material = await getMaterial(ctx, (await params).id);
     const raw = await req.json();
     if (raw?.action === "transcribe")

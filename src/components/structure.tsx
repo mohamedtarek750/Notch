@@ -276,10 +276,12 @@ export function CourseSwitcher({
   catalog,
   lang,
   t,
+  disabled = false,
 }: {
   catalog: Catalog | null;
   lang: Lang;
   t: Translate;
+  disabled?: boolean;
 }) {
   if (!catalog || catalog.courses.length < 2) return null;
   const label = (c: Catalog["courses"][number]) => {
@@ -290,6 +292,7 @@ export function CourseSwitcher({
     <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <select
         aria-label={t("المقرر المفتوح", "Open course")}
+        disabled={disabled}
         value={catalog.current}
         onChange={(e) => void openCourse(e.target.value, lang)}
       >

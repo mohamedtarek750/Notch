@@ -15,14 +15,14 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 export async function GET(req: Request) {
   try {
-    return Response.json(await listMaterials(await requireAuth(req)));
+    return Response.json(await listMaterials(await requireAuth(req, undefined, true)));
   } catch (e) {
     return sourceErrorResponse(e, req.headers.get("accept-language") || "ar");
   }
 }
 export async function POST(req: Request) {
   try {
-    const ctx = await requireAuth(req, ["instructor"]);
+    const ctx = await requireAuth(req, ["instructor"], true);
     if (Number(req.headers.get("content-length") || 0) > MAX_FILE + 10000)
       return Response.json({ error: "file_size" }, { status: 413 });
     if (req.headers.get("content-type")?.includes("multipart/form-data")) {

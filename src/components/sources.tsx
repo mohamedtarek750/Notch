@@ -615,6 +615,7 @@ async function readSlidePictures(
   pages: number[],
   lang: Lang,
   progress: (done: number, total: number) => void,
+  courseId?: string,
 ) {
   let read = 0,
     unreadable = 0,
@@ -656,6 +657,7 @@ async function readSlidePictures(
           `/api/materials/${current}`,
           { action: "transcribe-images", images },
           lang,
+          courseId,
         );
         current = r.versionId ?? current;
         read += r.transcribed ?? 0;
@@ -704,6 +706,8 @@ export async function uploadLargePdf(
   file: File,
   options: {
     mode: "umbrella" | "lecture";
+    courseId?: string;
+    rejectDuplicate?: boolean;
     title: string;
     rights: string;
     confirmed: boolean;
@@ -714,7 +718,9 @@ export async function uploadLargePdf(
 ) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-  const task = pdfjs.getDocument({ data: await file.arrayBuffer() });
+  const bytes = await file.arrayBuffer();
+  const documentHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
+  const task = pdfjs.getDocument({ data: bytes });
   const pdf = await task.promise;
   const total = pdf.numPages;
   let parts = 0,
@@ -752,15 +758,19 @@ export async function uploadLargePdf(
             ? `${options.title} (${start}–${end})`
             : options.title,
         filename: file.name,
+        documentHash,
+        documentPages: total,
+        rejectDuplicate: options.rejectDuplicate === true,
         rightsConfirmed: options.confirmed,
         rightsReference: options.rights,
         pages,
       },
       options.lang,
+      options.courseId,
     );
     parts++;
     // A reference this major already has is recognised, not stored again.
-    if (part?.duplicate) {
+    if (part?.duplicate || (options.rejectDuplicate && part?.deduplicated)) {
       duplicates++;
       continue;
     }
@@ -775,6 +785,7 @@ export async function uploadLargePdf(
         pictures,
         options.lang,
         options.slides ?? (() => {}),
+        options.courseId,
       );
       read += result.read;
       stopped = result.stopped;

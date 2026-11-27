@@ -321,12 +321,14 @@ export function KnowledgeTree({
   onError,
   go,
   initialScope = "course",
+  courseId,
 }: {
   lang: Lang;
   t: Translate;
   onError: (message: string) => void;
   go: (view: string) => void;
   initialScope?: Scope;
+  courseId?: string;
 }) {
   const [graph, setGraph] = useState<{
       concepts: Concept[];
@@ -356,7 +358,7 @@ export function KnowledgeTree({
   const load = useCallback(async () => {
     try {
       if (scope !== "course") {
-        const u = await request("/api/catalog?tree=" + scope, undefined, lang);
+        const u = await request("/api/catalog?tree=" + scope, undefined, lang, courseId);
         saved.current = u.layout ?? {};
         setShared({
           current: u.current,
@@ -368,7 +370,7 @@ export function KnowledgeTree({
         return;
       }
       setShared(null);
-      const k = await request("/api/knowledge", undefined, lang);
+      const k = await request("/api/knowledge", undefined, lang, courseId);
       saved.current = k.layout ?? {};
       setGraph(k.releases?.[0]?.data?.graph ?? null);
       setPending(
@@ -383,7 +385,7 @@ export function KnowledgeTree({
     } finally {
       setLoaded(true);
     }
-  }, [lang, onError, scope]);
+  }, [lang, onError, scope, courseId]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -416,6 +418,7 @@ export function KnowledgeTree({
         data: { positions, ...(shared ? { key: shared.layoutKey } : {}) },
       },
       lang,
+      courseId,
     ).catch((e) => onError((e as Error).message));
   };
   const edit = async (
@@ -459,6 +462,7 @@ export function KnowledgeTree({
           },
         },
         lang,
+        courseId,
       );
       if (shared) await load();
       else setGraph(result.graph);
