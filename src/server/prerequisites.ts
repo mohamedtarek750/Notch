@@ -39,7 +39,7 @@ export const EXTRACTION_POLICY = `You are the Tilwa course-knowledge extractor. 
 Labels are bilingual and concise. The Arabic label must be the term used in Arabic university textbooks (classifier = مصنِّف, theorem = نظرية, lazy learning = التعلّم الكسول, prior probability = الاحتمال القبلي). Never invent a literal word-by-word translation; when no established Arabic term exists, keep the English technical term inside the Arabic label (for example: خوارزمية KNN, طريقة Elbow).`;
 const CONCEPT_INSTRUCTIONS = `${EXTRACTION_POLICY}
 Task: list the distinct concepts this lecture passage actually TEACHES (defines, explains or works through).
-- One concept per distinct idea. Do not fold several methods, assumptions, problems or remedies into one broad concept: a named method, a named assumption, a named failure case and its named fix are each their own concept.
+- One concept per distinct, assessable idea. Avoid generic section headings. Use canonical textbook names and true synonyms only; never merge a broader or narrower concept as an alias. Do not fold several methods, assumptions, problems or remedies into one broad concept: a named method, a named assumption, a named failure case and its named fix are each their own concept.
 - Cover every teaching page: a page that explains something must be cited by at least one concept.
 - Skip course logistics, titles, bare code or figure placeholders, generic lists of advantages, and terms that are only mentioned.
 - For each concept give a key local to this response, a bilingual label, common aliases (abbreviations, alternative names, and the name a standard textbook uses when it differs, e.g. "steepest descent" for gradient descent), and the evidence IDs of the pages that teach it. At most 20 concepts. Do not leave out a concept because it looks minor: every idea a page defines or works through must appear.`;
@@ -55,7 +55,7 @@ Rules:
 - Consider every lecture concept in turn, including dependencies between two lecture concepts; do not stop after the first concept that has clear evidence.
 - Every edge MUST cite at least one supplied evidence ID whose text shows that dependency: an umbrella evidence ID, or a lectureEvidenceId when the lecture excerpt itself presents one lecture concept as a kind of, a part of, or built from another lecture concept.
 - The umbrella reference is the main source. For EVERY lecture concept, first look in the umbrella passages for what it is defined from, derived from or computed with, and state that dependency citing the umbrella passage; add a foundation when the passage relies on background the lecture does not teach. Cite a lectureEvidenceId only when no umbrella passage shows the dependency.
-- type "prerequisite": the dependent cannot be understood without it. type "optional_bridge": helpful background that is not required.
+- type "prerequisite": the dependent cannot be understood without it. type "optional_bridge": helpful background that is not required. Taxonomy, membership and co-occurrence alone are not prerequisites. Do not reverse direction to match document order or connect unrelated subjects based only on a shared word.
 - A tool or programming language used in an example is never a prerequisite of the mathematical idea.
 - At most 3 direct prerequisites per concept; prefer the most immediate one over a distant ancestor. If the passages show no dependency for a concept, return no edge for it.
 - "reason" is one short bilingual sentence stating the dependency.`;
@@ -321,6 +321,16 @@ export async function extractPrerequisites(
         if (!known.some((k) => k.id === c.id))
           known.push({ id: c.id, label: c.label, aliases: c.aliases ?? [] });
       }
+  }
+  // Include current, staged lectures in the same batch for alias reuse.
+  const staged = (await db.tenant(ctx.tenantId).query<{ graph: Graph }>(
+    "SELECT data->'graph' AS graph FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='knowledge_proposal' AND data->>'kind'='prerequisite-extraction' AND data->>'status' IN ('pending','approved')",
+    [ctx.tenantId, ctx.courseId],
+  )).rows;
+  const currentEvidence = new Set(evidence.map((e) => e.id));
+  for (const row of staged) for (const c of row.graph?.concepts ?? []) {
+    if (c.scope === "foundation" || !c.evidenceIds.some((id) => currentEvidence.has(id)) || known.some((k) => k.id === c.id)) continue;
+    known.push({ id: c.id, label: c.label, aliases: c.aliases ?? [] });
   }
   const knownByName = new Map<string, Known[]>();
   for (const k of known)

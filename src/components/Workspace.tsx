@@ -39,7 +39,7 @@ import { FieldArt } from "./FieldArt";
 import { ClassDashboard, CourseReport } from "./instructor";
 import { AdvisorDashboard } from "./advisor";
 import { CourseConceptMap } from "./CourseConceptMap";
-import { KnowledgeTree } from "./KnowledgeTree";
+import { HierarchicalKnowledgeMap } from "./HierarchicalKnowledgeMap";
 import { BuildStudio } from "./build";
 import {
   AcademicStructure,
@@ -857,7 +857,7 @@ export function Workspace({
                 <Roadmap data={data} lang={lang} t={t} learn={learn} />
               )}
               {view === "map" && user?.role === "instructor" && (
-                <KnowledgeTree lang={lang} t={t} onError={E} go={go} />
+                <HierarchicalKnowledgeMap lang={lang} t={t} onError={E} go={go} />
               )}
               {view === "map" && user?.role === "advisor" && (
                 <LearningMap data={data} lang={lang} t={t} go={go} />

@@ -923,7 +923,7 @@ export async function publishKnowledge(ctx: AuthContext) {
               ...old,
               ...c,
               label: old.label,
-              scope: old.scope ?? c.scope,
+              scope: old.scope === "course" || c.scope === "course" ? "course" : old.scope ?? c.scope,
               aliases: [...new Set([...(old.aliases ?? []), ...c.aliases])],
               evidenceIds: [...new Set([...old.evidenceIds, ...c.evidenceIds])],
             };

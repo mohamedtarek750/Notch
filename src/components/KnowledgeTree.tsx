@@ -56,6 +56,7 @@ export function arrange(concepts: Concept[], edges: Edge[], lang: Lang) {
   for (let round = 0; round < concepts.length; round++) {
     let moved = false;
     for (const e of edges) {
+      if (e.type !== "prerequisite") continue;
       const next = (depth.get(e.from) ?? 0) + 1;
       if (
         depth.has(e.to) &&
@@ -135,6 +136,8 @@ const Line = memo(function Line({
         strokeDasharray={edge.type === "prerequisite" ? undefined : "5 5"}
         markerEnd={`url(#tip${colour.slice(1)})`}
       />
+      <title>{label} · {edge.type.replaceAll("_", " ")}</title>
+      {chosen && <text x={(a.x + b.x + W) / 2} y={(a.y + b.y + H) / 2 - 6} textAnchor="middle" fill={colour} fontSize="11" paintOrder="stroke" stroke="white" strokeWidth="3">{edge.type.replaceAll("_", " ")}</text>}
       <path
         d={d}
         fill="none"

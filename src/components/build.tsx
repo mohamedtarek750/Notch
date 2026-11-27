@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Box, Button, request, type Translate } from "./Workspace";
 import { uploadLargePdf } from "./sources";
-import { KnowledgeTree, TreePreview } from "./KnowledgeTree";
+import { TreePreview } from "./KnowledgeTree";
+import { HierarchicalKnowledgeMap } from "./HierarchicalKnowledgeMap";
 import { ResetBox, type Catalog } from "./structure";
 
 type Lang = "ar" | "en";
@@ -497,14 +498,7 @@ export function BuildStudio({
             {t("ارفع محاضرات أخرى", "Upload more lectures")}
           </button>
         </div>
-        <KnowledgeTree
-          lang={lang}
-          t={t}
-          onError={onError}
-          go={go}
-          initialScope="major"
-          courseId={courseId}
-        />
+        <HierarchicalKnowledgeMap key={treeVersion} lang={lang} t={t} onError={onError} go={go} courseId={courseId} />
       </>,
       true,
     );

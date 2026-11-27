@@ -421,6 +421,7 @@ type GraphConcept = {
   id: string;
   label: { ar: string; en: string };
   scope?: string;
+  evidenceIds?: string[];
 };
 type GraphEdge = {
   from: string;
@@ -490,6 +491,25 @@ export async function unionTree(
       edges.set(id, edge);
     }
   }
+  const sourceRows = (await conn.query<{ id: string; course_id: string; source_key: string; title: string; role: string; document_hash: string | null; original_filename: string | null; evidence_id: string | null }>(
+    "SELECT v.id,v.course_id,v.source_key,v.title,v.role,v.metadata->>'documentHash' AS document_hash,v.metadata->>'originalFilename' AS original_filename,c.id AS evidence_id FROM material_versions v LEFT JOIN evidence_chunks c ON c.tenant_id=v.tenant_id AND c.version_id=v.id AND c.status='approved' WHERE v.tenant_id=$1 AND v.course_id=ANY($2::text[]) AND v.current_version=true AND v.role IN ('instructor','umbrella') ORDER BY v.course_id,v.title,c.page",
+    [ctx.tenantId, courses.map((c) => c.id)],
+  )).rows;
+  const materials = new Map<string, { id: string; courseId: string; title: string; role: string; versionIds: string[]; conceptIds: string[] }>();
+  const byEvidence = new Map<string, string>();
+  for (const s of sourceRows) {
+    const id = s.course_id + ":" + s.role + ":" + (s.document_hash || s.source_key);
+    const material = materials.get(id) ?? { id, courseId: s.course_id, title: s.original_filename?.replace(/\.pdf$/i, "") || s.title, role: s.role, versionIds: [], conceptIds: [] };
+    if (!material.versionIds.includes(s.id)) material.versionIds.push(s.id);
+    if (s.evidence_id) byEvidence.set(s.evidence_id, id);
+    materials.set(id, material);
+  }
+  for (const r of releases) for (const c of r.graph?.concepts ?? []) {
+    for (const evidenceId of c.evidenceIds ?? []) {
+      const material = materials.get(byEvidence.get(evidenceId) ?? "");
+      if (material && !material.conceptIds.includes(c.id)) material.conceptIds.push(c.id);
+    }
+  }
   const layout = (
     await conn.query<{ data: { positions?: Record<string, unknown> } }>(
       "SELECT data FROM records WHERE tenant_id=$1 AND id=$2 AND kind='tree_layout' AND course_id IS NULL",
@@ -506,6 +526,8 @@ export async function unionTree(
     })),
     concepts: [...concepts.values()],
     edges: [...edges.values()],
+    majors: all.majors.filter((m) => courses.some((c) => c.majorId === m.id)),
+    materials: [...materials.values()],
     layout: layout ?? {},
   };
 }
