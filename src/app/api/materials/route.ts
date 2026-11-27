@@ -2,6 +2,7 @@ import { z } from "zod";
 import { requireAuth } from "@/server/auth";
 import {
   importAuthorizedPassage,
+  checkFingerprint,
   importLecture,
   importUmbrella,
   importExtractedPages,
@@ -36,6 +37,7 @@ export async function POST(req: Request) {
             title: String(form.get("title") || ""),
             filename: file.name,
             bytes: new Uint8Array(await file.arrayBuffer()),
+            revisionOf: form.get("revisionOf") ? String(form.get("revisionOf")) : undefined,
             rightsConfirmed: form.get("rightsConfirmed") === "true",
             rightsReference: String(form.get("rightsReference") || ""),
             sourceKey: form.get("sourceKey")
@@ -49,6 +51,7 @@ export async function POST(req: Request) {
             title: String(form.get("title") || ""),
             filename: file.name,
             bytes: new Uint8Array(await file.arrayBuffer()),
+            revisionOf: form.get("revisionOf") ? String(form.get("revisionOf")) : undefined,
             sourceKey: form.get("sourceKey")
               ? String(form.get("sourceKey"))
               : undefined,
@@ -64,6 +67,8 @@ export async function POST(req: Request) {
       );
     }
     const body = await req.json();
+    if (body.action === "check-fingerprint")
+      return Response.json(await checkFingerprint(ctx, body));
     if (body.action === "extracted-pages")
       return Response.json(await importExtractedPages(ctx, body));
     if (body.action === "authorized-passage") {

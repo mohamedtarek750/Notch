@@ -1,3 +1,4 @@
+import { semanticTypes } from "../lib/knowledge-graph";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db } from "./db";
@@ -55,7 +56,7 @@ Rules:
 - Consider every lecture concept in turn, including dependencies between two lecture concepts; do not stop after the first concept that has clear evidence.
 - Every edge MUST cite at least one supplied evidence ID whose text shows that dependency: an umbrella evidence ID, or a lectureEvidenceId when the lecture excerpt itself presents one lecture concept as a kind of, a part of, or built from another lecture concept.
 - The umbrella reference is the main source. For EVERY lecture concept, first look in the umbrella passages for what it is defined from, derived from or computed with, and state that dependency citing the umbrella passage; add a foundation when the passage relies on background the lecture does not teach. Cite a lectureEvidenceId only when no umbrella passage shows the dependency.
-- type "prerequisite": the dependent cannot be understood without it. type "optional_bridge": helpful background that is not required. Taxonomy, membership and co-occurrence alone are not prerequisites. Do not reverse direction to match document order or connect unrelated subjects based only on a shared word.
+- type "prerequisite": the dependent cannot be understood without it. type "optional_bridge": helpful background that is not required. Use related, is_a, part_of, used_in, or solves for supported semantic relationships. Taxonomy, membership and co-occurrence alone are not prerequisites. Do not reverse direction to match document order or connect unrelated subjects based only on a shared word.
 - A tool or programming language used in an example is never a prerequisite of the mathematical idea.
 - At most 3 direct prerequisites per concept; prefer the most immediate one over a distant ancestor. If the passages show no dependency for a concept, return no edge for it.
 - "reason" is one short bilingual sentence stating the dependency.`;
@@ -78,7 +79,7 @@ const linkOutput = z.object({
       z.object({
         from: z.string().min(1).max(120),
         to: z.string().min(1).max(120),
-        type: z.enum(["prerequisite", "optional_bridge"]),
+        type: z.enum(semanticTypes),
         evidenceIds: z.array(z.string()).max(8),
         reason: bilingual,
       }),
@@ -116,7 +117,7 @@ const linkJsonSchema = {
         properties: {
           from: { type: "string" },
           to: { type: "string" },
-          type: { type: "string", enum: ["prerequisite", "optional_bridge"] },
+          type: { type: "string", enum: semanticTypes },
           evidenceIds: { type: "array", items: { type: "string" } },
           reason: labelSchema,
         },
@@ -987,7 +988,7 @@ export const edgeReviewInput = z.object({
       z.object({
         from: z.string().min(1).max(120),
         to: z.string().min(1).max(120),
-        type: z.enum(["prerequisite", "optional_bridge"]).optional(),
+        type: z.enum(semanticTypes).optional(),
       }),
     )
     .max(400),
@@ -1089,3 +1090,4 @@ export async function extractStep(
     throw error;
   }
 }
+

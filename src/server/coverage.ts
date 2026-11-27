@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { semanticTypes } from "../lib/knowledge-graph";
 import { db, type Queryable } from "./db";
 import { authorizeCourseInTransaction, type AuthContext } from "./auth";
 import {
@@ -74,7 +75,7 @@ export const comprehensiveInput = z.object({
       z.object({
         from: z.string().min(1).max(120),
         to: z.string().min(1).max(120),
-        type: z.enum(["prerequisite", "related", "optional_bridge"]),
+        type: z.enum(semanticTypes),
         evidenceIds: z.array(z.string().min(1).max(200)).min(1).max(160),
         reason: bilingualText,
       }),
@@ -238,6 +239,8 @@ const validationMessages: Record<string, [string, string]> = {
   ],
 };
 export function knowledgeErrorResponse(error: unknown, language = "ar") {
+  if (error && typeof error === "object" && "constraint" in error && error.constraint === "km_prerequisite_acyclic")
+    error = new SourceError("cycle", 409);
   const english = language.startsWith("en");
   if (error instanceof AppError)
     return errorResponse(error, english ? "en" : "ar");
