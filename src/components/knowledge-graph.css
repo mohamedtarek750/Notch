@@ -1,1 +1,232 @@
-.kg{color:#182d49;--line:#dce4ee}.kg-main{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,27%);gap:14px}.kg-map,.kg-inspector{background:white;border:1px solid var(--line);border-radius:16px;overflow:hidden}.kg-heading,.kg-tools,.kg-crumbs,.kg-levels,.kg-heading>div,.kg-canvas-bar,.kg-legend>div,.kg-inspector-head,.kg-zoom,.kg-legend span{display:flex;align-items:center;gap:10px}.kg-heading,.kg-canvas-bar{justify-content:space-between}.kg-tools,.kg-levels,.kg-legend>div,.kg-crumbs{flex-wrap:wrap}.kg-tools,.kg-levels,.kg-legend,.kg-canvas-bar,.kg-inspector-head,.kg-detail-body,.kg-inspector-empty{padding:14px}.kg-crumbs{padding-block:12px}.kg button,.kg select{font:inherit;cursor:pointer}.kg-action,.kg-levels button,.kg-back,.kg-zoom button,.kg-crumbs button{border:1px solid var(--line);border-radius:8px;background:white;padding:6px 10px;color:inherit}.kg-levels button[aria-current],.kg-action:hover{background:#eaf1fe}.kg-search,.kg-filter{display:flex;align-items:center;gap:5px}.kg-surface{position:relative;background-color:#f5f8fd;background-image:radial-gradient(#d6e1ee 1px,transparent 1px);background-size:18px 18px}.kg-svg{display:block;width:100%;height:clamp(340px,55vh,580px);touch-action:none;cursor:grab}.kg-dragging{cursor:grabbing}.kg-zoom{position:absolute;bottom:12px;right:12px}.kg-state{position:absolute;inset:40% 10% auto;display:grid;justify-items:center;pointer-events:none}.kg-node{width:100%;height:100%;display:flex;align-items:center;gap:9px;background:white;border:1px solid var(--tone);border-inline-start:5px solid var(--tone);color:var(--tone);border-radius:12px;padding:9px;text-align:start;box-shadow:0 2px 6px #15294217}.kg-major{--tone:#193555}.kg-course{--tone:#2867a9}.kg-lecture{--tone:#7946a4}.kg-concept{--tone:#237b53}.kg-external{--tone:#b15818}.kg-node-name{display:grid;min-width:0}.kg-node-name strong{font-size:14px;line-height:1.15}.kg-node-name small{font-size:11px}.kg-chosen{outline:2px solid var(--tone)}.kg-legend span,.kg-detail-group{font-size:13px}.kg-legend svg{width:26px;height:10px}.kg-legend h3{font-size:14px}.kg-inspector ul,.build-files{list-style:none;padding:0}.kg-inspector-head{background:#f4f7fc;color:var(--tone)}.kg-inspect-link,.kg-relation-link{border:0;background:transparent;color:#26568a;text-align:start}.build-files li,.build-job{padding:10px;border-block-end:1px solid #dce4ee}.build-files li{display:flex;align-items:center;justify-content:space-between}.build-files small{display:block}.build-job progress{width:100%}@media(max-width:850px){.kg-main{grid-template-columns:1fr}}
+.kg {
+  color: #182d49;
+  --line: #dce4ee;
+}
+.kg-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 27%);
+  gap: 14px;
+}
+.kg-map,
+.kg-inspector {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.kg-heading,
+.kg-tools,
+.kg-crumbs,
+.kg-levels,
+.kg-heading > div,
+.kg-canvas-bar,
+.kg-legend > div,
+.kg-inspector-head,
+.kg-zoom,
+.kg-legend span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.kg-heading,
+.kg-canvas-bar {
+  justify-content: space-between;
+}
+.kg-tools,
+.kg-levels,
+.kg-legend > div,
+.kg-crumbs {
+  flex-wrap: wrap;
+}
+.kg-tools,
+.kg-levels,
+.kg-legend,
+.kg-canvas-bar,
+.kg-inspector-head,
+.kg-detail-body,
+.kg-inspector-empty {
+  padding: 14px;
+}
+.kg-crumbs {
+  padding-block: 12px;
+}
+.kg button,
+.kg select {
+  font: inherit;
+  cursor: pointer;
+}
+.kg-action,
+.kg-levels button,
+.kg-back,
+.kg-zoom button,
+.kg-crumbs button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 6px 10px;
+  color: inherit;
+}
+.kg-levels button[aria-current],
+.kg-action:hover {
+  background: #eaf1fe;
+}
+.kg-search,
+.kg-filter {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.kg-surface {
+  position: relative;
+  background-color: #f5f8fd;
+  background-image: radial-gradient(#d6e1ee 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+.kg-svg {
+  display: block;
+  width: 100%;
+  height: clamp(340px, 55vh, 580px);
+  touch-action: none;
+  cursor: grab;
+}
+.kg-dragging {
+  cursor: grabbing;
+}
+.kg-zoom {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+}
+.kg-state {
+  position: absolute;
+  inset: 40% 10% auto;
+  display: grid;
+  justify-items: center;
+  pointer-events: none;
+}
+.kg-node {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: white;
+  border: 1px solid var(--tone);
+  border-inline-start: 5px solid var(--tone);
+  color: var(--tone);
+  border-radius: 12px;
+  padding: 9px;
+  text-align: start;
+  box-shadow: 0 2px 6px #15294217;
+}
+.kg-major {
+  --tone: #193555;
+}
+.kg-course {
+  --tone: #2867a9;
+}
+.kg-lecture {
+  --tone: #7946a4;
+}
+.kg-concept {
+  --tone: #237b53;
+}
+.kg-external {
+  --tone: #b15818;
+}
+.kg-node-name {
+  display: grid;
+  min-width: 0;
+}
+.kg-node-name strong {
+  font-size: 14px;
+  line-height: 1.15;
+}
+.kg-node-name small {
+  font-size: 11px;
+}
+.kg-chosen {
+  outline: 2px solid var(--tone);
+}
+.kg-legend span,
+.kg-detail-group {
+  font-size: 13px;
+}
+.kg-legend svg {
+  width: 26px;
+  height: 10px;
+}
+.kg-legend h3 {
+  font-size: 14px;
+}
+.kg-inspector ul,
+.build-files {
+  list-style: none;
+  padding: 0;
+}
+.kg-inspector-head {
+  background: #f4f7fc;
+  color: var(--tone);
+}
+.kg-inspect-link,
+.kg-relation-link {
+  border: 0;
+  background: transparent;
+  color: #26568a;
+  text-align: start;
+}
+.build-files li,
+.build-job {
+  padding: 10px;
+  border-block-end: 1px solid #dce4ee;
+}
+.build-files li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.build-files small {
+  display: block;
+}
+.build-job progress {
+  width: 100%;
+}
+@media (max-width: 850px) {
+  .kg-main {
+    grid-template-columns: 1fr;
+  }
+}
+.kg-aliases {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.kg-aliases span {
+  border-radius: 5px;
+  background: #edf2f9;
+  padding: 2px 7px;
+}
+.kg-detail-group {
+  padding-block: 8px;
+}
+.kg-detail-group h3 {
+  margin-block: 0 5px;
+}
+.kg-tools input {
+  min-width: 0;
+}
+.kg button:focus-visible {
+  outline: 3px solid #4184cc;
+}
+.kg-inspector p {
+  overflow-wrap: anywhere;
+}
+.kg-edge-label {
+  font-size: 11px;
+  paint-order: stroke;
+  stroke: #f5f8fd;
+  stroke-width: 3px;
+}
+.kg-chosen {
+  box-shadow: 0 3px 10px #142c4b25;
+}

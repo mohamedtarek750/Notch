@@ -53,6 +53,7 @@ const input = z.object({
   conceptIds: z.unknown().optional(),
   lectureSourceKey: z.string().optional(),
   accept: z.unknown().optional(),
+  resolutions: z.unknown().optional(),
   rejectConcepts: z.unknown().optional(),
   id: z.string().optional(),
   status: z.enum(["approved", "rejected"]).optional(),
@@ -142,6 +143,7 @@ export async function POST(req: Request) {
         await reviewPrerequisiteEdges(ctx, {
           id: body.id,
           accept: body.accept,
+          resolutions: body.resolutions,
           rejectConcepts: body.rejectConcepts ?? [],
         }),
       );

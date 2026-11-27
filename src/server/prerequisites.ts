@@ -1,5 +1,5 @@
 import { semanticTypes } from "../lib/knowledge-graph";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db } from "./db";
 import { type AuthContext } from "./auth";
@@ -129,6 +129,7 @@ const linkJsonSchema = {
 };
 
 export const extractionInput = z.object({
+  lectureOnlyAllowed: z.boolean().default(false),
   lectureSourceKey: z
     .string()
     .refine(
@@ -250,7 +251,7 @@ export async function extractPrerequisites(
   );
   const umbrella = evidence.filter((e) => e.role === "umbrella");
   if (!lecture.length) throw new SourceError("insufficient_evidence", 422);
-  if (!umbrella.length) throw new SourceError("umbrella_required", 422);
+  if (!umbrella.length && !input.lectureOnlyAllowed) throw new SourceError("umbrella_required", 422);
 
   const release = (
     await db
@@ -337,14 +338,14 @@ export async function extractPrerequisites(
   for (const k of known)
     for (const n of names(k))
       knownByName.set(n, [...(knownByName.get(n) ?? []), k]);
-  /** Reuse an existing identity only on an unambiguous name match. */
-  const resolveKnown = (c: z.infer<typeof modelConcept>) => {
-    const matches = new Map<string, Known>();
-    for (const n of names(c))
-      for (const k of knownByName.get(n) ?? []) matches.set(k.id, k);
-    return matches.size === 1 ? [...matches.values()][0] : null;
-  };
-
+  function resolveKnown(c: z.infer<typeof modelConcept>) {
+    const candidates = new Map(names(c).flatMap(n => (knownByName.get(n) ?? []).map(k => [k.id,k] as const)));
+    const labels = new Set([normalize(c.label.en),normalize(c.label.ar)]);
+    const strong = [...candidates.values()].filter(k => labels.size >= 2 && [...labels].every(n => names(k).includes(n)));
+    const match = strong.length === 1 ? strong[0] : undefined;
+    return { match, candidates: match ? [] : [...candidates.values()].slice(0,8).map(({id,label})=>({id,label})) };
+  }
+  const bilingualKey = (c: z.infer<typeof modelConcept>) => JSON.stringify([normalize(c.label.en),normalize(c.label.ar)]);
   const stats = {
     calls: 0,
     tokens: 0,
@@ -364,7 +365,7 @@ export async function extractPrerequisites(
   const supplied = new Set<string>();
   const generatedAt = new Date().toISOString();
   /** One traced provider call. Budget is reserved before the call is made. */
-  let sequence = 0;
+
   const call = async (
     operation: string,
     system: string,
@@ -373,7 +374,7 @@ export async function extractPrerequisites(
     evidenceIds: string[],
     step: ExtractionStep,
   ) => {
-    const key = `${operation}:${sequence++}`;
+    const key = createHash("sha256").update(JSON.stringify([operation, step.kind, step.part, gateway.modelId, system, schema, payload])).digest("hex");
     if (job) {
       const answered = job.answers[key];
       if (answered) {
@@ -476,13 +477,9 @@ export async function extractPrerequisites(
         dropped.push({ label: c.label.en, reason: "uncited_concept" });
         continue;
       }
-      const match = resolveKnown(c);
+      const { match, candidates } = resolveKnown(c);
       const id =
-        names(c)
-          .map((n) => nameToId.get(n))
-          .find(Boolean) ||
-        match?.id ||
-        stableConceptId(c.label.en);
+        nameToId.get(bilingualKey(c)) || match?.id || stableConceptId(candidates.length ? bilingualKey(c) : c.label.en);
       const existing = lectureConcepts.get(id);
       if (!existing && lectureConcepts.size >= MAX_LECTURE_CONCEPTS) {
         dropped.push({ label: c.label.en, reason: "concept_limit" });
@@ -504,9 +501,10 @@ export async function extractPrerequisites(
         evidenceIds: [
           ...new Set([...(existing?.evidenceIds ?? []), ...cited]),
         ].slice(0, 12),
+        ...(candidates.length ? {identityCandidates:candidates} : {}),
         scope: "course",
       });
-      for (const n of names({ label: c.label, aliases })) nameToId.set(n, id);
+      nameToId.set(bilingualKey(c), id);
     }
   }
   if (!lectureConcepts.size) throw new SourceError("invalid_output", 422);
@@ -564,11 +562,11 @@ export async function extractPrerequisites(
   // Work list: every concept in small groups, then a second look at each concept that
   // came out with no prerequisite, using other passages and every lecture concept.
   const queue: { group: Concept[]; recheck: boolean }[] = [];
-  for (let i = 0; i < all.length; i += LINK_GROUP)
+  for (let i = 0; umbrella.length && i < all.length; i += LINK_GROUP)
     queue.push({ group: all.slice(i, i + LINK_GROUP), recheck: false });
   const firstPass = queue.length;
   for (let q = 0; ; q++) {
-    if (q === firstPass && job) {
+    if (umbrella.length && q === firstPass && job) {
       // The thorough, step-by-step run looks again at whatever is still unlinked.
       const linkedNow = new Set(
         edges.filter((e) => e.type === "prerequisite").map((e) => e.to),
@@ -776,17 +774,14 @@ export async function extractPrerequisites(
         dropped.push({ label: f.label.en, reason: "uncited_foundation" });
         continue;
       }
-      const match = resolveKnown(f);
+      const { match, candidates } = resolveKnown(f);
       const id =
-        names(f)
-          .map((n) => nameToId.get(n))
-          .find(Boolean) ||
-        match?.id ||
-        stableConceptId(f.label.en);
+        nameToId.get(bilingualKey(f)) || match?.id || stableConceptId(candidates.length ? bilingualKey(f) : f.label.en);
       const node = lectureConcepts.get(id) ??
         endpoints.get(id) ?? {
           id,
           label: match?.label ?? f.label,
+          ...(candidates.length ? {identityCandidates:candidates} : {}),
           aliases: [
             ...new Set([
               ...(match?.aliases ?? []),
@@ -804,7 +799,7 @@ export async function extractPrerequisites(
         newFoundations.add(f.key);
         newFoundations.add(id);
       }
-      for (const n of names({ label: f.label, aliases: f.aliases }))
+      for (const n of [bilingualKey(f)])
         if (!nameToId.has(n)) nameToId.set(n, id);
     }
     for (const e of parsed.data.edges) {
@@ -869,6 +864,7 @@ export async function extractPrerequisites(
           reject("cycle");
           continue;
         }
+        if (closesCycle(adjacency, to.id, from.id)) { reject("transitive"); continue; }
         link(from.id, to.id);
       }
       for (const end of [from, to]) {
@@ -992,6 +988,7 @@ export const edgeReviewInput = z.object({
       }),
     )
     .max(400),
+  resolutions: z.record(z.string(),z.string()).default({}),
   rejectConcepts: z.array(z.string().min(1).max(120)).max(200).default([]),
 });
 
@@ -1033,7 +1030,18 @@ export async function reviewPrerequisiteEdges(ctx: AuthContext, raw: unknown) {
     (c) => !rejected.has(c.id) && (lectureIds.has(c.id) || used.has(c.id)),
   );
   if (!concepts.length) throw new SourceError("invalid_review", 400);
-  return reviewProposal(ctx, input.id, "approved", { concepts, edges });
+  const grouped=new Map<string,Concept>();
+  for(const concept of concepts){
+    const id=input.resolutions[concept.id] ?? concept.id;
+    if(id!==concept.id && !concept.identityCandidates?.some(k=>k.id===id)) throw new SourceError("invalid_review",400);
+    const existing=grouped.get(id);
+    const {identityCandidates,...clean}=concept;
+    grouped.set(id,{...clean,id,label:identityCandidates?.find(k=>k.id===id)?.label ?? clean.label,
+      evidenceIds:[...new Set([...(existing?.evidenceIds??[]),...clean.evidenceIds])],
+      aliases:[...new Set([...(existing?.aliases??[]),...clean.aliases])]});
+  }
+  const mapped=edges.map(e=>({...e,from:input.resolutions[e.from]??e.from,to:input.resolutions[e.to]??e.to}));
+  return reviewProposal(ctx,input.id,"approved",{concepts:[...grouped.values()],edges:mapped});
 }
 
 /**
@@ -1090,4 +1098,3 @@ export async function extractStep(
     throw error;
   }
 }
-

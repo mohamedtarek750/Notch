@@ -559,8 +559,8 @@ export async function getKnowledge(ctx: AuthContext) {
         await db
           .tenant(ctx.tenantId)
           .query<Evidence>(
-            `SELECT c.*,v.source_key,v.title,v.role,v.hash FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.id=ANY($2::text[])`,
-            [ctx.tenantId, evidenceIds],
+            `SELECT c.*,v.source_key,v.title,v.role,v.hash FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.id=ANY($2::text[]) AND EXISTS(SELECT 1 FROM course_access a WHERE a.tenant_id=v.tenant_id AND a.course_id=v.course_id AND a.user_id=$3 AND a.active)`,
+            [ctx.tenantId, evidenceIds, ctx.userId],
           )
       ).rows
     : [];
@@ -571,7 +571,7 @@ export async function getKnowledge(ctx: AuthContext) {
     proposals: proposals.map((p) => ({
       ...p,
       passages: passages.filter((e) =>
-        (p.data.evidenceIds as string[]).includes(e.id),
+        ((p.data.evidenceIds ?? []) as string[]).includes(e.id),
       ),
     })),
     // Every tree edit is a release: send the current one in full and only the

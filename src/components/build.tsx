@@ -5,7 +5,7 @@ import { KnowledgeBuildBatch } from "./KnowledgeBuildBatch";
 import type { BuildJob } from "@/server/build-job-types";
 import { TreePreview } from "./KnowledgeTree";
 import { HierarchicalKnowledgeMap } from "./HierarchicalKnowledgeMap";
-import { ResetBox, type Catalog } from "./structure";
+import { type Catalog } from "./structure";
 
 type Lang = "ar" | "en";
 type Edge = {
@@ -17,6 +17,7 @@ type Edge = {
 type Concept = {
   id: string;
   label: { ar: string; en: string };
+  identityCandidates?: {id:string;label:{ar:string;en:string}}[];
   scope?: string;
 };
 type Proposal = {
@@ -24,9 +25,6 @@ type Proposal = {
   title: string;
   graph: { concepts: Concept[]; edges: Edge[] };
 };
-type Step = { key: string; label: string };
-const titleOf = (file: File) =>
-  file.name.replace(/\.pdf$/i, "").trim() || file.name;
 const edgeKey = (proposal: string, e: Edge) => `${proposal}|${e.from}|${e.to}`;
 
 /** Would adding from -> to close a loop in the routing lines collected so far? */
@@ -72,6 +70,7 @@ export function BuildStudio({
     [busy, setBusy] = useState(false),
     [treeVersion, setTreeVersion] = useState(0),
     [questionsBusy, setQuestionsBusy] = useState(false);
+  const [resolutions, resolve] = useState<Record<string,string>>({});
   const [target, select] = useState("");
   const [uploading, setUploading] = useState(false);
   useEffect(() => { select(localStorage.getItem(storageKey) || ""); }, [storageKey]);
@@ -102,6 +101,7 @@ export function BuildStudio({
     const found: Proposal[] = knowledge.proposals.filter((p: {id:string; data:{status:string}}) => docs.has(p.id) && p.data.status === "pending")
       .map((p: {id:string; data:{graph:Proposal["graph"]}}) => ({ id:p.id, title:docs.get(p.id)!, graph:p.data.graph }));
     if (!found.length) throw new Error(t("تمت مراجعة النتائج بالفعل.", "These results have already been reviewed."));
+    resolve({});
     setProposals(found);
     setFailed([]);
     setPublished(knowledge.releases?.[0]?.data?.graph?.edges ?? []);
@@ -161,6 +161,7 @@ export function BuildStudio({
               to: e.to,
               type: e.type,
             })),
+            resolutions: Object.fromEntries(p.graph.concepts.flatMap(c => resolutions[p.id+c.id] ? [[c.id,resolutions[p.id+c.id]]] : [])),
             rejectConcepts: [],
           },
           lang,
@@ -243,6 +244,11 @@ export function BuildStudio({
                 `${p.graph.concepts.length} concepts, ${p.graph.edges.length} proposed relationships`,
               )}
             </p>
+            {p.graph.concepts.filter(c=>c.identityCandidates?.length).map(c=><label key={c.id}>{c.label[lang]} · {t("تحقق من هوية المفهوم","Review concept identity")}
+              <select value={resolutions[p.id+c.id] || ""} onChange={e=>resolve({...resolutions,[p.id+c.id]:e.target.value})}>
+                <option value="">{t("مفهوم مستقل","Keep distinct")}</option>
+                {c.identityCandidates?.map(k=><option key={k.id} value={k.id}>{k.label[lang]} · {k.label[lang==="ar"?"en":"ar"]}</option>)}
+              </select></label>)}
             {p.graph.edges.map((e) => {
               const key = edgeKey(p.id, e);
               const d = decisions[key] ?? { keep: true, type: e.type };
@@ -797,5 +803,3 @@ function QuestionRun({
     </Box>
   );
 }
-
-
