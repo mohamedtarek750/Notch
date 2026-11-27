@@ -88,7 +88,7 @@ export async function request(url: string, body?: any, lang: Lang = "ar", course
   });
   const result = await response.json();
   if (!response.ok)
-    throw new Error(
+    throw Object.assign(new Error(
       localized(
         result.error?.message || result.message || result.error,
         lang,
@@ -96,7 +96,7 @@ export async function request(url: string, body?: any, lang: Lang = "ar", course
         (lang === "ar"
           ? "تعذّر إتمام الطلب. حاول مرة أخرى."
           : "Unable to complete the request. Please retry."),
-    );
+    ), { code: result.error?.code ?? result.error, currentVersionId: result.currentVersionId });
   return result;
 }
 export function Box({
@@ -185,6 +185,7 @@ export function Workspace({
   const tr = (v: any) => localized(v, lang);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [buildActive, setBuildActive] = useState(false);
+  const [buildNotice, setBuildNotice] = useState("");
   useEffect(() => {
     if (!buildActive) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
@@ -659,11 +660,11 @@ export function Workspace({
               )}
               {user?.role === "instructor" && (
                 <div hidden={view !== "build"} style={view !== "build" ? { display: "none" } : undefined}>
-                  <BuildStudio lang={lang} t={t} onError={E} go={go} catalog={catalog} onActive={setBuildActive} />
+                  <BuildStudio key={user.tenantId + ":" + user.userId} lang={lang} t={t} onError={E} go={go} catalog={catalog} storageKey={`notch.build.course.${user.tenantId}.${user.userId}`} onActive={setBuildActive} onNotice={setBuildNotice} />
                 </div>
               )}
-              {buildActive && view !== "build" && user?.role === "instructor" && (
-                <div className="notice" role="status">{t("بناء الشجرة مستمر في هذه الصفحة.", "Your knowledge-tree job is still active in this tab.")}{" "}<button className="textbtn" onClick={() => go("build")}>{t("عرض التقدم والمراجعة", "View progress / review")}</button></div>
+              {buildNotice && view !== "build" && user?.role === "instructor" && (
+                <div className="notice" role="status">{buildNotice}{" "}<button className="textbtn" onClick={() => go("build")}>{t("عرض التقدم والمراجعة", "View progress / review")}</button></div>
               )}
               {view === "structure" && (
                 <AcademicStructure
@@ -857,7 +858,7 @@ export function Workspace({
                 <Roadmap data={data} lang={lang} t={t} learn={learn} />
               )}
               {view === "map" && user?.role === "instructor" && (
-                <HierarchicalKnowledgeMap lang={lang} t={t} onError={E} go={go} />
+                <HierarchicalKnowledgeMap contextKey={user.tenantId + "/" + user.userId} lang={lang} t={t} onError={E} go={go} />
               )}
               {view === "map" && user?.role === "advisor" && (
                 <LearningMap data={data} lang={lang} t={t} go={go} />
@@ -3043,3 +3044,4 @@ function LessonContent({
     </div>
   );
 }
+
