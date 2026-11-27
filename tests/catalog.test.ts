@@ -1,3 +1,4 @@
+import { changeJob, drainCourse, listJobs } from "../src/server/build-jobs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { db } from "../src/server/db";
@@ -359,6 +360,67 @@ describe("faculty, major and course structure", () => {
         fromCourse: outsider.id,
       }),
     ).rejects.toMatchObject({ code: "phantom_endpoint" });
+  });
+  it("recovers a completed extraction when the worker stops before updating job progress", async () => {
+    const entry = await catalogAction(instructor, {
+      action: "create-course",
+      majorId,
+      code: "RC401",
+      title: "Recovery test",
+    });
+    if (!("id" in entry)) throw new Error("Expected a course");
+    const ctx = { ...instructor, courseId: entry.id };
+    const lecture = await importExtractedPages(ctx, {
+      mode: "lecture",
+      title: "Recovery lecture",
+      pages: [
+        {
+          page: 1,
+          text: "Gradient descent lowers the error by stepping against the gradient of the loss.",
+        },
+      ],
+    });
+    await approvePendingUmbrella(ctx, lecture.id);
+    const job = await changeJob(ctx, {
+      action: "create",
+      documentIds: [lecture.id],
+    });
+    const lease = randomUUID();
+    const sql = db.tenant(ctx.tenantId);
+    await sql.query(
+      "UPDATE km_build_jobs SET status='processing',lease_token=$3,lease_until=now()+interval '1 minute' WHERE tenant_id=$1 AND id=$2",
+      [ctx.tenantId, job.id, lease],
+    );
+    const completion = {
+      jobId: job.id,
+      lease,
+      versionId: lecture.id,
+      cacheKey: job.documents[0].cacheKey!,
+    };
+    let done;
+    for (let i = 0; i < 8; i++) {
+      const step = await extractStep(
+        ctx,
+        { lectureSourceKey: lecture.sourceKey, lectureOnlyAllowed: true },
+        model,
+        completion,
+      );
+      if (step.done) {
+        done = step.proposal;
+        break;
+      }
+    }
+    expect(done).toBeDefined();
+    expect((await listJobs(ctx))[0].status).toBe("processing");
+    await sql.query(
+      "UPDATE km_build_jobs SET lease_until=now()-interval '1 second' WHERE tenant_id=$1 AND id=$2",
+      [ctx.tenantId, job.id],
+    );
+    await drainCourse(ctx.tenantId, ctx.courseId);
+    const resumed = (await listJobs(ctx))[0];
+    expect(resumed.status).toBe("completed");
+    expect(resumed.documents[0].proposalId).toBe(done!.id);
+    expect((await getKnowledge(ctx)).proposals).toHaveLength(1);
   });
   it("extracts step by step: one model call per request, resumable, with a second look", async () => {
     const create = async (code: string) =>

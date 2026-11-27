@@ -1,7 +1,7 @@
 import { semanticTypes } from "../lib/knowledge-graph";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { db } from "./db";
+import { db, type Queryable } from "./db";
 import { type AuthContext } from "./auth";
 import { majorCourses, SourceError, staff, type Evidence } from "./sources";
 import {
@@ -231,6 +231,11 @@ export class ExtractionPause extends Error {
  * extraction take as long as it needs without one long request.
  */
 export type ExtractionJob = {
+  checkpoint?: () => Promise<unknown>;
+  persist?: (
+    write: (tx: Queryable) => Promise<unknown>,
+    proposalId: string,
+  ) => Promise<void>;
   answers: Record<string, { value: unknown; tokens: number }>;
   called?: boolean;
   /** The answer added by this request, forgotten again if it turns out unusable. */
@@ -409,7 +414,10 @@ export async function extractPrerequisites(
         thorough: Boolean(job),
       });
       stats.tokens += response.tokens;
-      if (job) job.answers[key] = response;
+      if (job) {
+        job.answers[key] = response;
+        await job.checkpoint?.();
+      }
       return {
         value: response.value,
         finish: (outcome: string) =>
@@ -928,12 +936,13 @@ export async function extractPrerequisites(
     },
     dropped: dropped.slice(0, 100),
   };
-  await db
-    .tenant(ctx.tenantId)
-    .query(
+  const write = (sql: Queryable) =>
+    sql.query(
       "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'knowledge_proposal',$3,$4,$5)",
       [ctx.tenantId, id, ctx.courseId, ctx.userId, JSON.stringify(data)],
     );
+  if (job?.persist) await job.persist(write, id);
+  else await write(db.tenant(ctx.tenantId));
   return { id, ...data };
 }
 
@@ -1052,10 +1061,22 @@ export async function extractStep(
   ctx: AuthContext,
   rawInput: unknown,
   gateway: ModelGateway = new GeminiGateway(),
+  completion?: {
+    versionId: string;
+    cacheKey: string;
+    jobId: string;
+    lease: string;
+  },
 ) {
   await staff(ctx, "generate");
   const input = extractionInput.parse(rawInput);
-  const id = "extraction_job:" + input.lectureSourceKey;
+  const id =
+    "extraction_job:" +
+    (completion
+      ? createHash("sha256")
+          .update(JSON.stringify([completion.versionId, completion.cacheKey]))
+          .digest("hex")
+      : input.lectureSourceKey);
   const scoped = db.tenant(ctx.tenantId);
   const stored = (
     await scoped.query<{ data: { answers: ExtractionJob["answers"] } }>(
@@ -1064,8 +1085,8 @@ export async function extractStep(
     )
   ).rows[0];
   const job: ExtractionJob = { answers: stored?.data.answers ?? {} };
-  const save = () =>
-    scoped.query(
+  const writeCheckpoint = (sql: Queryable) =>
+    sql.query(
       "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'extraction_job',$3,NULL,$4) ON CONFLICT ON CONSTRAINT records_pkey DO UPDATE SET data=excluded.data,updated_at=now()",
       [
         ctx.tenantId,
@@ -1074,12 +1095,48 @@ export async function extractStep(
         JSON.stringify({ answers: job.answers }),
       ],
     );
-  try {
-    const proposal = await extractPrerequisites(ctx, gateway, input, job);
-    await scoped.query(
+  const requireLease = async (tx: Queryable) => {
+    if (!completion) return;
+    const lease = await tx.query(
+      "SELECT 1 FROM km_build_jobs WHERE tenant_id=$1 AND course_id=$2 AND id=$3 AND status='processing' AND lease_token=$4 AND lease_until>now() FOR UPDATE",
+      [ctx.tenantId, ctx.courseId, completion.jobId, completion.lease],
+    );
+    if (!lease.rows.length) throw new Error("build_lease_lost");
+  };
+  const save = () =>
+    completion
+      ? scoped.transaction(async (tx) => {
+          await requireLease(tx);
+          await writeCheckpoint(tx);
+        })
+      : writeCheckpoint(scoped);
+  const clear = (sql: Queryable) =>
+    sql.query(
       "DELETE FROM records WHERE tenant_id=$1 AND course_id=$2 AND id=$3 AND kind='extraction_job'",
       [ctx.tenantId, ctx.courseId, id],
     );
+  if (completion) {
+    job.checkpoint = save;
+    job.persist = (write, proposalId) =>
+      scoped.transaction(async (tx) => {
+        await requireLease(tx);
+        await write(tx);
+        await tx.query(
+          "INSERT INTO km_build_results(tenant_id,course_id,version_id,cache_key,proposal_id) VALUES($1,$2,$3,$4,$5)",
+          [
+            ctx.tenantId,
+            ctx.courseId,
+            completion.versionId,
+            completion.cacheKey,
+            proposalId,
+          ],
+        );
+        await clear(tx);
+      });
+  }
+  try {
+    const proposal = await extractPrerequisites(ctx, gateway, input, job);
+    if (!completion) await clear(scoped);
     return { done: true as const, proposal };
   } catch (error) {
     if (

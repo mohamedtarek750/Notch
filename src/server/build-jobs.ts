@@ -191,17 +191,19 @@ export async function drainCourse(tenantId: string, courseId: string) {
           d.proposalId = cached.proposal_id;
           d.status = "completed";
         } else {
-          const result = await extractStep(ctx, {
-            lectureSourceKey: d.sourceKey, lectureOnlyAllowed: true,
-          });
+          const result = await extractStep(
+            ctx,
+            {
+              lectureSourceKey: d.sourceKey,
+              lectureOnlyAllowed: true,
+            },
+            undefined,
+            { versionId: d.versionId, cacheKey, jobId: job.id, lease: token },
+          );
           d.completedSteps++;
           if (result.done) {
             d.proposalId = result.proposal.id;
             d.status = "completed";
-            await sql.query(
-              "INSERT INTO km_build_results(tenant_id,course_id,version_id,cache_key,proposal_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING",
-              [...scope, d.versionId, cacheKey, d.proposalId],
-            );
           } else d.status = "processing";
         }
       } else {

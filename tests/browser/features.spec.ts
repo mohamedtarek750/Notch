@@ -5,6 +5,10 @@ async function login(
   page: Page,
   role: "student" | "instructor" | "advisor" = "student",
 ) {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("tilwa_lang"))
+      localStorage.setItem("tilwa_lang", "ar");
+  });
   await page.goto("/");
   const label =
     role === "student"
@@ -13,6 +17,12 @@ async function login(
         ? /مدرّس.*دخول تجريبي/
         : /مرشد أكاديمي.*دخول تجريبي/;
   await page.getByRole("button", { name: label }).click();
+  if (role === "student") {
+    await page
+      .getByRole("checkbox", { name: /أوافق على استخدام المنصة/ })
+      .check();
+    await page.getByRole("button", { name: "متابعة", exact: true }).click();
+  }
   await expect(
     page.getByRole("button", { name: "تسجيل الخروج", exact: true }),
   ).toBeVisible();
@@ -29,6 +39,12 @@ async function changeRole(
         ? /مدرّس.*دخول تجريبي/
         : /مرشد أكاديمي.*دخول تجريبي/;
   await page.getByRole("button", { name: label }).click();
+  if (role === "student") {
+    await page
+      .getByRole("checkbox", { name: /أوافق على استخدام المنصة/ })
+      .check();
+    await page.getByRole("button", { name: "متابعة", exact: true }).click();
+  }
   await expect(
     page.getByRole("button", { name: "تسجيل الخروج", exact: true }),
   ).toBeVisible();
@@ -85,11 +101,9 @@ test("UI: independent calculation and choice evidence, Arabic/English persistenc
   await expect(
     page.getByRole("heading", { name: "Practice workspace" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Concept map", exact: true }).click();
-  await expect(page.getByText("Secure evidence", { exact: true })).toHaveCount(
-    1,
-  );
-  await expect(page.getByText("Developing", { exact: true })).toHaveCount(1);
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Roadmap" })).toBeVisible();
+
   expect(jsErrors).toEqual([]);
 });
 test("UI: critique captures wrong step and explanation; optional transfer tracks a distinct gap", async ({

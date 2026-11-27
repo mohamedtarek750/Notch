@@ -549,6 +549,7 @@ async function resetWorkspace(ctx: AuthContext, keepStructure: boolean) {
     const count = async (sql: string, params: unknown[] = [ctx.tenantId]) =>
       (await tx.query(sql + " RETURNING 1", params)).rows.length;
     const removed = {
+      buildJobs: await count("DELETE FROM km_build_jobs WHERE tenant_id=$1"),
       embeddings: await count(
         "DELETE FROM chunk_embeddings WHERE tenant_id=$1",
       ),

@@ -97,8 +97,8 @@ for (const lang of ["ar", "en"] as const)
             : "Review the tree that was produced",
       }),
     ).toBeVisible();
-    await mkdir("docs/evidence/km", { recursive: true });
-    await page.screenshot({ path: "docs/evidence/km/review-" + lang + ".png" });
+    await mkdir("test-results/km", { recursive: true });
+    await page.screenshot({ path: "test-results/km/review-" + lang + ".png" });
     await page
       .getByRole("button", {
         name:
@@ -114,7 +114,7 @@ for (const lang of ["ar", "en"] as const)
     await expect(page.locator(".kg-detail-body")).toContainText("Chain rule");
     await page
       .locator(".kg")
-      .screenshot({ path: "docs/evidence/km/graph-" + lang + ".png" });
+      .screenshot({ path: "test-results/km/graph-" + lang + ".png" });
     // Re-upload the lecture with a different filename. The stored original stays canonical.
     const original = pdf(
       "Renamed.pdf",

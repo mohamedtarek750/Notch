@@ -140,6 +140,9 @@ const STUDENT_NAV = [
   ["review", "المراجعة", "Review", NotebookPen],
   ["exam", "جاهزية الامتحان", "Exam readiness", GraduationCap],
   ["structure", "خطة الدراسة", "Study plan", Landmark],
+  ["practice", "الاختبارات والتدريب", "Practice", Target],
+  ["assignments", "التكليفات", "Assignments", ClipboardList],
+  ["career", "الخطة المهنية", "Career plan", Compass],
 ] as const;
 const INSTRUCTOR_NAV = [
   ["build", "ابنِ الشجرة", "Build the tree", Sparkles],
@@ -153,11 +156,14 @@ const INSTRUCTOR_NAV = [
   ["bank", "٣ · بنك الأسئلة", "3 · Question bank", NotebookPen],
   ["launch", "٤ · الإطلاق", "4 · Launch", ShieldCheck],
   ["teaching", "متابعة الفصل", "Class dashboard", Users],
+  ["interventions", "المحاضرة القادمة", "Teaching interventions", Lightbulb],
   ["report", "تقرير المقرر", "Course report", ClipboardList],
+  ["assignments", "التكليفات", "Assignments", FileText],
+  ["qms", "الجودة التعليمية", "Educational quality", Activity],
   ["map", "شجرة المعرفة", "Knowledge tree", Network],
   ["structure", "الهيكل الأكاديمي", "Academic structure", Landmark],
 ] as const;
-const ADVISOR_NAV = [["advising", "طلابي", "My students", Users]] as const;
+const ADVISOR_NAV = [["advising", "طلابي", "My students", Users], ["career", "الخطة المهنية", "Career plan", Compass]] as const;
 export function Workspace({
   inviteOnlyPilot = false,
   openPilot = false,
@@ -321,7 +327,6 @@ export function Workspace({
         },
         lang,
       );
-      U(r.user);
       WC(r.workspaceCode || "");
       await refresh();
       go(
@@ -331,6 +336,7 @@ export function Workspace({
             ? "advising"
             : "home",
       );
+      U(r.user);
     } catch (e) {
       E((e as Error).message);
     } finally {
@@ -992,6 +998,7 @@ export function Workspace({
               {view === "teaching" && (
                 <ClassDashboard lang={lang} t={t} onError={E} go={go} />
               )}
+              {view === "interventions" && user.role === "instructor" && <Teaching data={data} lang={lang} t={t} perform={perform} busy={busy} />}
               {view === "qms" && <Quality data={data} t={t} lang={lang} />}
               {view === "advising" && (
                 <AdvisorDashboard lang={lang} t={t} onError={E} />
