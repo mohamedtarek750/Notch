@@ -3,16 +3,23 @@ test("Arabic student journey, server progress, second browser context and Englis
   page,
   browser,
 }) => {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("tilwa_lang"))
+      localStorage.setItem("tilwa_lang", "ar");
+  });
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "اعرف طريقك." }),
+    page.getByRole("heading", { name: "نرتقي بالتعليم درجة." }),
   ).toBeVisible();
   await page.getByRole("button", { name: /طالب.*دخول تجريبي/ }).click();
-  await expect(
-    page.getByRole("heading", { name: "أهلًا بعودتك، سلمى" }),
-  ).toBeVisible();
+  await page
+    .getByRole("checkbox", { name: /أوافق على استخدام المنصة/ })
+    .check();
+  await page.getByRole("button", { name: "متابعة", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "أهلًا بك" })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
-  await page.getByRole("button", { name: "متابعة الجلسة" }).click();
+  await page.getByRole("button", { name: "المحاضرات", exact: true }).click();
+  await page.getByRole("button", { name: "فتح الجلسة" }).first().click();
   await expect(
     page.getByRole("heading", { name: /مصفوفة الالتباس/ }).first(),
   ).toBeVisible();
@@ -48,6 +55,10 @@ test("Arabic student journey, server progress, second browser context and Englis
   await page.request.post("/api/auth/logout", { data: {} });
   const newContext = await browser.newContext();
   const next = await newContext.newPage();
+  await next.addInitScript(() => {
+    if (!localStorage.getItem("tilwa_lang"))
+      localStorage.setItem("tilwa_lang", "ar");
+  });
   await next.goto("/");
   await newContext.request.post("/api/auth/demo", {
     data: { role: "student", workspaceCode: decodeURIComponent(workspaceCode) },
@@ -58,10 +69,9 @@ test("Arabic student journey, server progress, second browser context and Englis
   expect(result.attempts).toHaveLength(1);
   await next.reload();
   await next.getByRole("button", { name: "English", exact: true }).click();
+
   await expect(next.locator("html")).toHaveAttribute("dir", "ltr");
-  await expect(
-    next.getByRole("heading", { name: "Welcome back, Salma" }),
-  ).toBeVisible();
+  await expect(next.getByRole("heading", { name: "Welcome" })).toBeVisible();
   await newContext.close();
 });
 test("Instructor and assigned advisor APIs enforce roles; protected exam applies across contexts", async ({
@@ -119,17 +129,23 @@ test("Desktop and mobile dashboard evidence with no horizontal overflow", async 
 }) => {
   await page.request.post("/api/auth/demo", { data: { role: "student" } });
   await page.setViewportSize({ width: 1305, height: 936 });
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("tilwa_lang"))
+      localStorage.setItem("tilwa_lang", "ar");
+  });
   await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "أهلًا بعودتك، سلمى" }),
-  ).toBeVisible();
+  await page
+    .getByRole("checkbox", { name: /أوافق على استخدام المنصة/ })
+    .check();
+  await page.getByRole("button", { name: "متابعة", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "أهلًا بك" })).toBeVisible();
   await page.screenshot({
-    path: "docs/evidence/dashboard-desktop.png",
+    path: "test-results/dashboard-desktop.png",
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 1508 });
   await page.screenshot({
-    path: "docs/evidence/dashboard-mobile.png",
+    path: "test-results/dashboard-mobile.png",
     fullPage: true,
   });
   expect(

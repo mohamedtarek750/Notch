@@ -13,6 +13,26 @@ const messages: Record<string, { ar: string; en: string }> = {
     ar: "خطة الدراسة فيها حلقة: مقرر يسبق نفسه عبر مقررات أخرى.",
     en: "The study plan has a loop: a course ends up coming before itself.",
   },
+  COURSE_ALREADY_EXISTS: {
+    ar: "يوجد مقرر بهذا الاسم أو الرمز في التخصص.",
+    en: "This major already has a course with that name or code.",
+  },
+  STRUCTURE_HAS_CHILDREN: {
+    ar: "أزل العناصر الموجودة داخل هذا القسم أولًا.",
+    en: "Remove the items inside this section first.",
+  },
+  STRUCTURE_PARENT_REMOVED: {
+    ar: "استرجع التخصص أو الكلية الأم أولًا.",
+    en: "Restore the parent major or faculty first.",
+  },
+  STRUCTURE_LAST_COURSE: {
+    ar: "اترك مقررًا واحدًا على الأقل في مساحة العمل.",
+    en: "Keep at least one accessible course in the workspace.",
+  },
+  STRUCTURE_COURSE_IN_USE: {
+    ar: "أنه المعالجة أو الاختبار، وأزل المقرر من متطلبات المقررات الأخرى قبل إزالته.",
+    en: "Finish active builds and exams, and remove prerequisite references from other courses before removing this course.",
+  },
   COURSE_FORBIDDEN: {
     ar: "هذا المقرر غير متاح لحسابك.",
     en: "This course is not available to your account.",

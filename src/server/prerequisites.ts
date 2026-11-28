@@ -1,6 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { semanticTypes } from "../lib/knowledge-graph";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { db } from "./db";
+import { db, type Queryable } from "./db";
 import { type AuthContext } from "./auth";
 import { majorCourses, SourceError, staff, type Evidence } from "./sources";
 import {
@@ -39,7 +40,7 @@ export const EXTRACTION_POLICY = `You are the Tilwa course-knowledge extractor. 
 Labels are bilingual and concise. The Arabic label must be the term used in Arabic university textbooks (classifier = مصنِّف, theorem = نظرية, lazy learning = التعلّم الكسول, prior probability = الاحتمال القبلي). Never invent a literal word-by-word translation; when no established Arabic term exists, keep the English technical term inside the Arabic label (for example: خوارزمية KNN, طريقة Elbow).`;
 const CONCEPT_INSTRUCTIONS = `${EXTRACTION_POLICY}
 Task: list the distinct concepts this lecture passage actually TEACHES (defines, explains or works through).
-- One concept per distinct idea. Do not fold several methods, assumptions, problems or remedies into one broad concept: a named method, a named assumption, a named failure case and its named fix are each their own concept.
+- One concept per distinct, assessable idea. Avoid generic section headings. Use canonical textbook names and true synonyms only; never merge a broader or narrower concept as an alias. Do not fold several methods, assumptions, problems or remedies into one broad concept: a named method, a named assumption, a named failure case and its named fix are each their own concept.
 - Cover every teaching page: a page that explains something must be cited by at least one concept.
 - Skip course logistics, titles, bare code or figure placeholders, generic lists of advantages, and terms that are only mentioned.
 - For each concept give a key local to this response, a bilingual label, common aliases (abbreviations, alternative names, and the name a standard textbook uses when it differs, e.g. "steepest descent" for gradient descent), and the evidence IDs of the pages that teach it. At most 20 concepts. Do not leave out a concept because it looks minor: every idea a page defines or works through must appear.`;
@@ -50,12 +51,13 @@ Rules:
 - "to" is the key of a lecture concept, or of a foundation you add (so you can state chains such as A -> B -> lecture concept when the umbrella states both steps).
 - "from" is the key of a candidate concept, of another lecture concept, or of a foundation you add to "foundations".
 - A candidate marked taughtInEarlierCourse is taught in a course the student finishes before this one. When a passage or the lecture excerpt relies on that idea, state it as the prerequisite (cite the passage or the lectureEvidenceId that relies on it) rather than adding a new foundation for the same idea.
+- A candidate marked taughtInCourse is already taught in another course. Use it only when this lecture or its reference actually depends on it. Use the candidate key and cite the passage or lectureEvidenceId that demonstrates the dependency. Its course membership alone is not evidence.
 - Add a foundation ONLY when an umbrella passage presents that background idea as needed and no candidate or lecture concept already names it.
 - State a dependency whenever an umbrella passage shows it: the dependent "requires", "is built on", "is derived from", "is defined in terms of", "applies" or "uses" the prerequisite, the learner needs it "first" or "before", or the passage's own definition, formula or procedure for the dependent is written in terms of the prerequisite (for example an update rule that is computed from a gradient depends on the gradient). Mere co-occurrence or similarity is NOT a prerequisite.
 - Consider every lecture concept in turn, including dependencies between two lecture concepts; do not stop after the first concept that has clear evidence.
 - Every edge MUST cite at least one supplied evidence ID whose text shows that dependency: an umbrella evidence ID, or a lectureEvidenceId when the lecture excerpt itself presents one lecture concept as a kind of, a part of, or built from another lecture concept.
 - The umbrella reference is the main source. For EVERY lecture concept, first look in the umbrella passages for what it is defined from, derived from or computed with, and state that dependency citing the umbrella passage; add a foundation when the passage relies on background the lecture does not teach. Cite a lectureEvidenceId only when no umbrella passage shows the dependency.
-- type "prerequisite": the dependent cannot be understood without it. type "optional_bridge": helpful background that is not required.
+- type "prerequisite": the dependent cannot be understood without it. type "optional_bridge": helpful background that is not required. Use related, is_a, part_of, used_in, or solves for supported semantic relationships. Taxonomy, membership and co-occurrence alone are not prerequisites. Do not reverse direction to match document order or connect unrelated subjects based only on a shared word.
 - A tool or programming language used in an example is never a prerequisite of the mathematical idea.
 - At most 3 direct prerequisites per concept; prefer the most immediate one over a distant ancestor. If the passages show no dependency for a concept, return no edge for it.
 - "reason" is one short bilingual sentence stating the dependency.`;
@@ -78,7 +80,7 @@ const linkOutput = z.object({
       z.object({
         from: z.string().min(1).max(120),
         to: z.string().min(1).max(120),
-        type: z.enum(["prerequisite", "optional_bridge"]),
+        type: z.enum(semanticTypes),
         evidenceIds: z.array(z.string()).max(8),
         reason: bilingual,
       }),
@@ -116,7 +118,7 @@ const linkJsonSchema = {
         properties: {
           from: { type: "string" },
           to: { type: "string" },
-          type: { type: "string", enum: ["prerequisite", "optional_bridge"] },
+          type: { type: "string", enum: semanticTypes },
           evidenceIds: { type: "array", items: { type: "string" } },
           reason: labelSchema,
         },
@@ -128,6 +130,8 @@ const linkJsonSchema = {
 };
 
 export const extractionInput = z.object({
+  lectureOnlyAllowed: z.boolean().default(false),
+  recheckPublished: z.boolean().default(false),
   lectureSourceKey: z
     .string()
     .refine(
@@ -229,6 +233,11 @@ export class ExtractionPause extends Error {
  * extraction take as long as it needs without one long request.
  */
 export type ExtractionJob = {
+  checkpoint?: () => Promise<unknown>;
+  persist?: (
+    write: (tx: Queryable) => Promise<unknown>,
+    proposalId: string,
+  ) => Promise<void>;
   answers: Record<string, { value: unknown; tokens: number }>;
   called?: boolean;
   /** The answer added by this request, forgotten again if it turns out unusable. */
@@ -249,7 +258,7 @@ export async function extractPrerequisites(
   );
   const umbrella = evidence.filter((e) => e.role === "umbrella");
   if (!lecture.length) throw new SourceError("insufficient_evidence", 422);
-  if (!umbrella.length) throw new SourceError("umbrella_required", 422);
+  if (!umbrella.length && !input.lectureOnlyAllowed) throw new SourceError("umbrella_required", 422);
 
   const release = (
     await db
@@ -277,6 +286,7 @@ export async function extractPrerequisites(
   // linked to what a sibling course teaches.
   /** Concepts taught in a course that comes before this one in the study plan. */
   const taughtEarlier = new Map<string, string>();
+  const taughtOutside = new Map<string, { id: string; code: string }>();
   const siblings = await majorCourses(ctx);
   if (siblings.length) {
     const taught = (
@@ -312,28 +322,37 @@ export async function extractPrerequisites(
     );
     for (const row of taught)
       for (const c of row.graph?.concepts ?? []) {
-        if (earlier.has(row.course_id) && c.scope !== "foundation")
-          taughtEarlier.set(
-            c.id,
-            plan.find((p) => p.course_id === row.course_id)?.code ??
-              row.course_id,
-          );
+        const code = plan.find((p) => p.course_id === row.course_id)?.code ?? row.course_id;
+        if (c.scope !== "foundation" && !c.importedFrom) {
+          if (!taughtOutside.has(c.id)) taughtOutside.set(c.id, { id: row.course_id, code });
+          if (earlier.has(row.course_id)) taughtEarlier.set(c.id, code);
+        }
         if (!known.some((k) => k.id === c.id))
           known.push({ id: c.id, label: c.label, aliases: c.aliases ?? [] });
       }
+  }
+  // Include current, staged lectures in the same batch for alias reuse.
+  const staged = (await db.tenant(ctx.tenantId).query<{ graph: Graph }>(
+    "SELECT data->'graph' AS graph FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='knowledge_proposal' AND data->>'kind'='prerequisite-extraction' AND data->>'status' IN ('pending','approved')",
+    [ctx.tenantId, ctx.courseId],
+  )).rows;
+  const currentEvidence = new Set(evidence.map((e) => e.id));
+  for (const row of staged) for (const c of row.graph?.concepts ?? []) {
+    if (c.scope === "foundation" || !c.evidenceIds.some((id) => currentEvidence.has(id)) || known.some((k) => k.id === c.id)) continue;
+    known.push({ id: c.id, label: c.label, aliases: c.aliases ?? [] });
   }
   const knownByName = new Map<string, Known[]>();
   for (const k of known)
     for (const n of names(k))
       knownByName.set(n, [...(knownByName.get(n) ?? []), k]);
-  /** Reuse an existing identity only on an unambiguous name match. */
-  const resolveKnown = (c: z.infer<typeof modelConcept>) => {
-    const matches = new Map<string, Known>();
-    for (const n of names(c))
-      for (const k of knownByName.get(n) ?? []) matches.set(k.id, k);
-    return matches.size === 1 ? [...matches.values()][0] : null;
-  };
-
+  function resolveKnown(c: z.infer<typeof modelConcept>) {
+    const candidates = new Map(names(c).flatMap(n => (knownByName.get(n) ?? []).map(k => [k.id,k] as const)));
+    const labels = new Set([normalize(c.label.en),normalize(c.label.ar)]);
+    const strong = [...candidates.values()].filter(k => labels.size >= 2 && [...labels].every(n => names(k).includes(n)));
+    const match = strong.length === 1 ? strong[0] : undefined;
+    return { match, candidates: match ? [] : [...candidates.values()].slice(0,8).map(({id,label})=>({id,label})) };
+  }
+  const bilingualKey = (c: z.infer<typeof modelConcept>) => JSON.stringify([normalize(c.label.en),normalize(c.label.ar)]);
   const stats = {
     calls: 0,
     tokens: 0,
@@ -353,7 +372,7 @@ export async function extractPrerequisites(
   const supplied = new Set<string>();
   const generatedAt = new Date().toISOString();
   /** One traced provider call. Budget is reserved before the call is made. */
-  let sequence = 0;
+
   const call = async (
     operation: string,
     system: string,
@@ -362,7 +381,7 @@ export async function extractPrerequisites(
     evidenceIds: string[],
     step: ExtractionStep,
   ) => {
-    const key = `${operation}:${sequence++}`;
+    const key = createHash("sha256").update(JSON.stringify([operation, step.kind, step.part, gateway.modelId, system, schema, payload])).digest("hex");
     if (job) {
       const answered = job.answers[key];
       if (answered) {
@@ -397,7 +416,10 @@ export async function extractPrerequisites(
         thorough: Boolean(job),
       });
       stats.tokens += response.tokens;
-      if (job) job.answers[key] = response;
+      if (job) {
+        job.answers[key] = response;
+        await job.checkpoint?.();
+      }
       return {
         value: response.value,
         finish: (outcome: string) =>
@@ -422,11 +444,22 @@ export async function extractPrerequisites(
   // Pass 1 — what does the lecture teach? Every approved page is read in order.
   const lectureConcepts = new Map<string, Concept>();
   const nameToId = new Map<string, string>();
+  if (input.recheckPublished) {
+    const pageIds = new Set(lecture.map(page => page.id));
+    for (const concept of release?.data.graph.concepts ?? []) {
+      const evidenceIds = concept.evidenceIds.filter(id => pageIds.has(id));
+      if (evidenceIds.length && concept.scope !== "foundation" && !concept.importedFrom) {
+        evidenceIds.forEach(id => supplied.add(id));
+        lectureConcepts.set(concept.id, { ...concept, evidenceIds });
+      }
+    }
+    if (!lectureConcepts.size) throw new SourceError("insufficient_evidence", 422);
+  }
   const budget = Math.min(
     prepared.maxContextCharacters - 1500,
     CONCEPT_CALL_CHARS,
   );
-  const batches = batchPages(lecture, budget, MAX_CONCEPT_CALLS);
+  const batches = input.recheckPublished ? [] : batchPages(lecture, budget, MAX_CONCEPT_CALLS);
   for (const [batchIndex, batch] of batches.entries()) {
     const ids = batch.map((e) => e.id);
     ids.forEach((id) => supplied.add(id));
@@ -465,13 +498,9 @@ export async function extractPrerequisites(
         dropped.push({ label: c.label.en, reason: "uncited_concept" });
         continue;
       }
-      const match = resolveKnown(c);
+      const { match, candidates } = resolveKnown(c);
       const id =
-        names(c)
-          .map((n) => nameToId.get(n))
-          .find(Boolean) ||
-        match?.id ||
-        stableConceptId(c.label.en);
+        nameToId.get(bilingualKey(c)) || match?.id || stableConceptId(candidates.length ? bilingualKey(c) : c.label.en);
       const existing = lectureConcepts.get(id);
       if (!existing && lectureConcepts.size >= MAX_LECTURE_CONCEPTS) {
         dropped.push({ label: c.label.en, reason: "concept_limit" });
@@ -493,9 +522,10 @@ export async function extractPrerequisites(
         evidenceIds: [
           ...new Set([...(existing?.evidenceIds ?? []), ...cited]),
         ].slice(0, 12),
+        ...(candidates.length ? {identityCandidates:candidates} : {}),
         scope: "course",
       });
-      for (const n of names({ label: c.label, aliases })) nameToId.set(n, id);
+      nameToId.set(bilingualKey(c), id);
     }
   }
   if (!lectureConcepts.size) throw new SourceError("invalid_output", 422);
@@ -553,11 +583,12 @@ export async function extractPrerequisites(
   // Work list: every concept in small groups, then a second look at each concept that
   // came out with no prerequisite, using other passages and every lecture concept.
   const queue: { group: Concept[]; recheck: boolean }[] = [];
-  for (let i = 0; i < all.length; i += LINK_GROUP)
+  const canLink = umbrella.length > 0 || taughtOutside.size > 0;
+  for (let i = 0; canLink && i < all.length; i += LINK_GROUP)
     queue.push({ group: all.slice(i, i + LINK_GROUP), recheck: false });
   const firstPass = queue.length;
   for (let q = 0; ; q++) {
-    if (q === firstPass && job) {
+    if (umbrella.length && q === firstPass && job && !input.recheckPublished) {
       // The thorough, step-by-step run looks again at whatever is still unlinked.
       const linkedNow = new Set(
         edges.filter((e) => e.type === "prerequisite").map((e) => e.to),
@@ -649,7 +680,7 @@ export async function extractPrerequisites(
     const snippets = new Map(
       passages.map((e) => [e.id, window(e.text_content, hints.get(e.id) ?? 0)]),
     );
-    if (!passages.length) {
+    if (!passages.length && !taughtOutside.size) {
       unsupported.push(...group.map((c) => c.id));
       continue;
     }
@@ -665,15 +696,17 @@ export async function extractPrerequisites(
       ...all.filter((c) => !groupIds.has(c.id)),
       ...known.filter((k) => !lectureConcepts.has(k.id)),
     ]
+      .filter(c => !input.recheckPublished || taughtOutside.has(c.id))
       .filter(
         (c) =>
           (recheck && lectureConcepts.has(c.id)) ||
           names(c).some((n) => passageText.includes(` ${n} `)) ||
           // An idea from an earlier course that these lecture pages themselves use.
-          (taughtEarlier.has(c.id) &&
+          (taughtOutside.has(c.id) &&
             names(c).some((n) => groupPages.includes(` ${n} `))),
       )
       .slice(0, MAX_CANDIDATES);
+    if (input.recheckPublished && !candidates.length) continue;
     const excerpts = group.map((c) => {
       const page = lecture.find((e) => e.id === c.evidenceIds[0])!;
       return { c, page };
@@ -694,11 +727,12 @@ export async function extractPrerequisites(
             key: c.id,
             label: c.label,
             lectureEvidenceId: page.id,
-            lectureExcerpt: page.text_content.slice(0, EXCERPT_CHARS),
+            lectureExcerpt: page.text_content.slice(0, input.recheckPublished ? 1600 : EXCERPT_CHARS),
           })),
           candidates: candidates.map((c) => ({
             key: c.id,
             label: c.label,
+            ...(taughtOutside.has(c.id) ? { taughtInCourse: taughtOutside.get(c.id)!.code } : {}),
             ...(taughtEarlier.has(c.id)
               ? { taughtInEarlierCourse: taughtEarlier.get(c.id) }
               : {}),
@@ -746,6 +780,7 @@ export async function extractPrerequisites(
     const local = new Map<string, Concept>();
     for (const c of candidates) {
       const full = lectureConcepts.get(c.id);
+      const origin = taughtOutside.get(c.id);
       local.set(
         c.id,
         full ?? {
@@ -753,11 +788,12 @@ export async function extractPrerequisites(
           label: c.label,
           aliases: c.aliases,
           evidenceIds: [],
+          ...(origin ? { scope: "foundation", importedFrom: origin.id } : {}),
         },
       );
     }
     const newFoundations = new Set<string>();
-    for (const f of parsed.data.foundations) {
+    for (const f of input.recheckPublished ? [] : parsed.data.foundations) {
       const cited = [
         ...new Set(f.evidenceIds.filter((id) => passageIds.has(id))),
       ];
@@ -765,17 +801,14 @@ export async function extractPrerequisites(
         dropped.push({ label: f.label.en, reason: "uncited_foundation" });
         continue;
       }
-      const match = resolveKnown(f);
+      const { match, candidates } = resolveKnown(f);
       const id =
-        names(f)
-          .map((n) => nameToId.get(n))
-          .find(Boolean) ||
-        match?.id ||
-        stableConceptId(f.label.en);
+        nameToId.get(bilingualKey(f)) || match?.id || stableConceptId(candidates.length ? bilingualKey(f) : f.label.en);
       const node = lectureConcepts.get(id) ??
         endpoints.get(id) ?? {
           id,
           label: match?.label ?? f.label,
+          ...(candidates.length ? {identityCandidates:candidates} : {}),
           aliases: [
             ...new Set([
               ...(match?.aliases ?? []),
@@ -785,7 +818,8 @@ export async function extractPrerequisites(
             ]),
           ].slice(0, 40),
           evidenceIds: match ? [] : cited,
-          ...(match ? {} : { scope: "foundation" as const }),
+          ...(!match || taughtOutside.has(id) ? { scope: "foundation" as const } : {}),
+          ...(taughtOutside.has(id) ? { importedFrom: taughtOutside.get(id)!.id } : {}),
         };
       local.set(f.key, node);
       local.set(id, node);
@@ -793,7 +827,7 @@ export async function extractPrerequisites(
         newFoundations.add(f.key);
         newFoundations.add(id);
       }
-      for (const n of names({ label: f.label, aliases: f.aliases }))
+      for (const n of [bilingualKey(f)])
         if (!nameToId.has(n)) nameToId.set(n, id);
     }
     for (const e of parsed.data.edges) {
@@ -815,7 +849,7 @@ export async function extractPrerequisites(
         reject("dependent_not_in_lecture");
         continue;
       }
-      if (!from) {
+      if (!from || (input.recheckPublished && (e.type !== "prerequisite" || !from.importedFrom))) {
         reject("unknown_prerequisite");
         continue;
       }
@@ -838,7 +872,7 @@ export async function extractPrerequisites(
             lectureConcepts.has(to.id) &&
             // Between two concepts of the lecture, or onto one taught in an earlier
             // course of the study plan that the lecture page itself relies on.
-            (lectureConcepts.has(from.id) || taughtEarlier.has(from.id))
+            (lectureConcepts.has(from.id) || taughtOutside.has(from.id))
           ))
       ) {
         reject("no_umbrella_citation");
@@ -858,6 +892,7 @@ export async function extractPrerequisites(
           reject("cycle");
           continue;
         }
+        if (closesCycle(adjacency, to.id, from.id)) { reject("transitive"); continue; }
         link(from.id, to.id);
       }
       for (const end of [from, to]) {
@@ -866,7 +901,7 @@ export async function extractPrerequisites(
         node.evidenceIds = [
           ...new Set([
             ...node.evidenceIds,
-            ...cited.filter((id) => umbrellaIds.has(id)),
+            ...cited.filter((id) => umbrellaIds.has(id) || node.importedFrom),
           ]),
         ].slice(0, 12);
         endpoints.set(end.id, node);
@@ -921,12 +956,13 @@ export async function extractPrerequisites(
     },
     dropped: dropped.slice(0, 100),
   };
-  await db
-    .tenant(ctx.tenantId)
-    .query(
+  const write = (sql: Queryable) =>
+    sql.query(
       "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'knowledge_proposal',$3,$4,$5)",
       [ctx.tenantId, id, ctx.courseId, ctx.userId, JSON.stringify(data)],
     );
+  if (job?.persist) await job.persist(write, id);
+  else await write(db.tenant(ctx.tenantId));
   return { id, ...data };
 }
 
@@ -977,10 +1013,11 @@ export const edgeReviewInput = z.object({
       z.object({
         from: z.string().min(1).max(120),
         to: z.string().min(1).max(120),
-        type: z.enum(["prerequisite", "optional_bridge"]).optional(),
+        type: z.enum(semanticTypes).optional(),
       }),
     )
     .max(400),
+  resolutions: z.record(z.string(),z.string()).default({}),
   rejectConcepts: z.array(z.string().min(1).max(120)).max(200).default([]),
 });
 
@@ -1022,7 +1059,18 @@ export async function reviewPrerequisiteEdges(ctx: AuthContext, raw: unknown) {
     (c) => !rejected.has(c.id) && (lectureIds.has(c.id) || used.has(c.id)),
   );
   if (!concepts.length) throw new SourceError("invalid_review", 400);
-  return reviewProposal(ctx, input.id, "approved", { concepts, edges });
+  const grouped=new Map<string,Concept>();
+  for(const concept of concepts){
+    const id=input.resolutions[concept.id] ?? concept.id;
+    if(id!==concept.id && !concept.identityCandidates?.some(k=>k.id===id)) throw new SourceError("invalid_review",400);
+    const existing=grouped.get(id);
+    const {identityCandidates,...clean}=concept;
+    grouped.set(id,{...clean,id,label:identityCandidates?.find(k=>k.id===id)?.label ?? clean.label,
+      evidenceIds:[...new Set([...(existing?.evidenceIds??[]),...clean.evidenceIds])],
+      aliases:[...new Set([...(existing?.aliases??[]),...clean.aliases])]});
+  }
+  const mapped=edges.map(e=>({...e,from:input.resolutions[e.from]??e.from,to:input.resolutions[e.to]??e.to}));
+  return reviewProposal(ctx,input.id,"approved",{concepts:[...grouped.values()],edges:mapped});
 }
 
 /**
@@ -1033,10 +1081,22 @@ export async function extractStep(
   ctx: AuthContext,
   rawInput: unknown,
   gateway: ModelGateway = new GeminiGateway(),
+  completion?: {
+    versionId: string;
+    cacheKey: string;
+    jobId: string;
+    lease: string;
+  },
 ) {
   await staff(ctx, "generate");
   const input = extractionInput.parse(rawInput);
-  const id = "extraction_job:" + input.lectureSourceKey;
+  const id =
+    "extraction_job:" +
+    (completion
+      ? createHash("sha256")
+          .update(JSON.stringify([completion.versionId, completion.cacheKey]))
+          .digest("hex")
+      : input.lectureSourceKey);
   const scoped = db.tenant(ctx.tenantId);
   const stored = (
     await scoped.query<{ data: { answers: ExtractionJob["answers"] } }>(
@@ -1045,8 +1105,8 @@ export async function extractStep(
     )
   ).rows[0];
   const job: ExtractionJob = { answers: stored?.data.answers ?? {} };
-  const save = () =>
-    scoped.query(
+  const writeCheckpoint = (sql: Queryable) =>
+    sql.query(
       "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'extraction_job',$3,NULL,$4) ON CONFLICT ON CONSTRAINT records_pkey DO UPDATE SET data=excluded.data,updated_at=now()",
       [
         ctx.tenantId,
@@ -1055,12 +1115,48 @@ export async function extractStep(
         JSON.stringify({ answers: job.answers }),
       ],
     );
-  try {
-    const proposal = await extractPrerequisites(ctx, gateway, input, job);
-    await scoped.query(
+  const requireLease = async (tx: Queryable) => {
+    if (!completion) return;
+    const lease = await tx.query(
+      "SELECT 1 FROM km_build_jobs WHERE tenant_id=$1 AND course_id=$2 AND id=$3 AND status='processing' AND lease_token=$4 AND lease_until>now() FOR UPDATE",
+      [ctx.tenantId, ctx.courseId, completion.jobId, completion.lease],
+    );
+    if (!lease.rows.length) throw new Error("build_lease_lost");
+  };
+  const save = () =>
+    completion
+      ? scoped.transaction(async (tx) => {
+          await requireLease(tx);
+          await writeCheckpoint(tx);
+        })
+      : writeCheckpoint(scoped);
+  const clear = (sql: Queryable) =>
+    sql.query(
       "DELETE FROM records WHERE tenant_id=$1 AND course_id=$2 AND id=$3 AND kind='extraction_job'",
       [ctx.tenantId, ctx.courseId, id],
     );
+  if (completion) {
+    job.checkpoint = save;
+    job.persist = (write, proposalId) =>
+      scoped.transaction(async (tx) => {
+        await requireLease(tx);
+        await write(tx);
+        await tx.query(
+          "INSERT INTO km_build_results(tenant_id,course_id,version_id,cache_key,proposal_id) VALUES($1,$2,$3,$4,$5)",
+          [
+            ctx.tenantId,
+            ctx.courseId,
+            completion.versionId,
+            completion.cacheKey,
+            proposalId,
+          ],
+        );
+        await clear(tx);
+      });
+  }
+  try {
+    const proposal = await extractPrerequisites(ctx, gateway, input, job);
+    if (!completion) await clear(scoped);
     return { done: true as const, proposal };
   } catch (error) {
     if (

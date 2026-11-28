@@ -2,11 +2,14 @@ import { z } from "zod";
 import { requireAuth } from "@/server/auth";
 import {
   importAuthorizedPassage,
+  checkFingerprint,
   importLecture,
   importUmbrella,
   importExtractedPages,
   importCustomLecture,
   listMaterials,
+  listBuildDrafts,
+  changeBuildDraft,
   registerPack,
   sourceErrorResponse,
   MAX_FILE,
@@ -15,14 +18,15 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 export async function GET(req: Request) {
   try {
-    return Response.json(await listMaterials(await requireAuth(req)));
+    const ctx = await requireAuth(req, undefined, true);
+    return Response.json(new URL(req.url).searchParams.has("build-drafts") ? await listBuildDrafts(ctx) : await listMaterials(ctx));
   } catch (e) {
     return sourceErrorResponse(e, req.headers.get("accept-language") || "ar");
   }
 }
 export async function POST(req: Request) {
   try {
-    const ctx = await requireAuth(req, ["instructor"]);
+    const ctx = await requireAuth(req, ["instructor"], true);
     if (Number(req.headers.get("content-length") || 0) > MAX_FILE + 10000)
       return Response.json({ error: "file_size" }, { status: 413 });
     if (req.headers.get("content-type")?.includes("multipart/form-data")) {
@@ -36,6 +40,7 @@ export async function POST(req: Request) {
             title: String(form.get("title") || ""),
             filename: file.name,
             bytes: new Uint8Array(await file.arrayBuffer()),
+            revisionOf: form.get("revisionOf") ? String(form.get("revisionOf")) : undefined,
             rightsConfirmed: form.get("rightsConfirmed") === "true",
             rightsReference: String(form.get("rightsReference") || ""),
             sourceKey: form.get("sourceKey")
@@ -49,6 +54,7 @@ export async function POST(req: Request) {
             title: String(form.get("title") || ""),
             filename: file.name,
             bytes: new Uint8Array(await file.arrayBuffer()),
+            revisionOf: form.get("revisionOf") ? String(form.get("revisionOf")) : undefined,
             sourceKey: form.get("sourceKey")
               ? String(form.get("sourceKey"))
               : undefined,
@@ -64,6 +70,10 @@ export async function POST(req: Request) {
       );
     }
     const body = await req.json();
+    if (body.action === "remove-build-draft" || body.action === "restore-build-draft")
+      return Response.json(await changeBuildDraft(ctx,z.uuid().parse(body.id),body.action === "remove-build-draft"));
+    if (body.action === "check-fingerprint")
+      return Response.json(await checkFingerprint(ctx, body));
     if (body.action === "extracted-pages")
       return Response.json(await importExtractedPages(ctx, body));
     if (body.action === "authorized-passage") {

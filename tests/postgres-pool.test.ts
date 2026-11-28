@@ -48,7 +48,9 @@ describe("explicit official Neon transport and TLS/proxy policy", () => {
   });
   it("routes WSS through inherited HTTPS proxy and keeps certificate checks", async () => {
     vi.stubEnv("https_proxy", "http://proxy.example:8080");
-    vi.stubEnv("HTTPS_PROXY", "http://unused.example:8080");
+    // Windows exposes a single case-insensitive environment entry.
+    if (process.platform !== "win32")
+      vi.stubEnv("HTTPS_PROXY", "http://unused.example:8080");
     vi.stubEnv("no_proxy", "");
     vi.stubEnv("NO_PROXY", "");
     const options = await websocketOptions(

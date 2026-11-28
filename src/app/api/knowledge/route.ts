@@ -1,4 +1,6 @@
 import { requireAuth } from "@/server/auth";
+import { after } from "next/server";
+import { drainCourse } from "@/server/build-jobs";
 import {
   editTeaching,
   generateTeaching,
@@ -6,6 +8,7 @@ import {
   proposeKnowledge,
   reviewProposal,
   publishKnowledge,
+  queueExistingKnowledge,
   editTree,
   saveTreeLayout,
   stageComprehensiveGraph,
@@ -36,6 +39,7 @@ const input = z.object({
     "propose",
     "review",
     "publish",
+    "catch-up-connections",
     "generate",
     "edit",
     "stage-comprehensive",
@@ -53,6 +57,7 @@ const input = z.object({
   conceptIds: z.unknown().optional(),
   lectureSourceKey: z.string().optional(),
   accept: z.unknown().optional(),
+  resolutions: z.unknown().optional(),
   rejectConcepts: z.unknown().optional(),
   id: z.string().optional(),
   status: z.enum(["approved", "rejected"]).optional(),
@@ -63,7 +68,7 @@ const input = z.object({
 });
 export async function GET(req: Request) {
   try {
-    const ctx = await requireAuth(req);
+    const ctx = await requireAuth(req, undefined, true);
     const knowledge = await getKnowledge(ctx);
     return Response.json(
       ctx.role === "instructor"
@@ -89,7 +94,7 @@ export async function GET(req: Request) {
 }
 export async function POST(req: Request) {
   try {
-    const ctx = await requireAuth(req, ["instructor"]);
+    const ctx = await requireAuth(req, ["instructor"], true);
     const raw = await req.text();
     if (Buffer.byteLength(raw, "utf8") > 2_000_000)
       return Response.json(
@@ -142,6 +147,7 @@ export async function POST(req: Request) {
         await reviewPrerequisiteEdges(ctx, {
           id: body.id,
           accept: body.accept,
+          resolutions: body.resolutions,
           rejectConcepts: body.rejectConcepts ?? [],
         }),
       );
@@ -161,8 +167,17 @@ export async function POST(req: Request) {
       return Response.json(await generateTeaching(ctx));
     if (body.action === "propose")
       return Response.json(await proposeKnowledge(ctx, undefined, body.scope));
-    if (body.action === "publish") {
-      const release = await publishKnowledge(ctx);
+    if (body.action === "publish" || body.action === "catch-up-connections") {
+      const catchingUp = body.action === "catch-up-connections";
+      const release = catchingUp ? { recheckCourses: await queueExistingKnowledge(ctx) } : await publishKnowledge(ctx);
+      if (release.recheckCourses.length) after(async () => {
+        const deadline = Date.now() + 80000;
+        for (const id of release.recheckCourses) {
+          if (Date.now() >= deadline) break;
+          await drainCourse(ctx.tenantId,id).catch(error => console.error("Automatic knowledge recheck failed",error));
+        }
+      });
+      if (catchingUp) return Response.json(release);
       // Best effort: the tutor also tops the index up on demand.
       const index = await indexEmbeddings(ctx, new GeminiGateway(), 200).catch(
         () => ({ indexed: 0 }),

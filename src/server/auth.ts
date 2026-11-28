@@ -120,6 +120,7 @@ export async function createSession(
 export async function requireAuth(
   request: Request,
   roles?: Role[],
+  allowCourseOverride = false,
 ): Promise<AuthContext> {
   checkOrigin(request);
   const token = cookieValue(request, SESSION_COOKIE);
@@ -144,7 +145,11 @@ export async function requireAuth(
         [data.tid, data.uid],
       )
   ).rows.map((r) => r.course_id);
-  const wanted = cookieValue(request, COURSE_COOKIE);
+  // Explicit scope is opt-in for instructor build endpoints; never fall back to another course.
+  const explicit = allowCourseOverride ? request.headers.get("X-Notch-Course") : null;
+  if (explicit && (rows[0].role !== "instructor" || !courses.includes(explicit)))
+    throw new AppError(403, "FORBIDDEN");
+  const wanted = explicit || cookieValue(request, COURSE_COOKIE);
   return {
     tenantId: data.tid,
     userId: data.uid,

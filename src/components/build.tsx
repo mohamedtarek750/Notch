@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Box, Button, request, type Translate } from "./Workspace";
-import { uploadLargePdf } from "./sources";
-import { KnowledgeTree, TreePreview } from "./KnowledgeTree";
-import { ResetBox } from "./structure";
+import { KnowledgeBuildBatch } from "./KnowledgeBuildBatch";
+import type { BuildJob } from "@/server/build-job-types";
+import { TreePreview } from "./KnowledgeTree";
+import { HierarchicalKnowledgeMap } from "./HierarchicalKnowledgeMap";
+import { type Catalog } from "./structure";
 
 type Lang = "ar" | "en";
 type Edge = {
@@ -15,6 +17,7 @@ type Edge = {
 type Concept = {
   id: string;
   label: { ar: string; en: string };
+  identityCandidates?: {id:string;label:{ar:string;en:string}}[];
   scope?: string;
 };
 type Proposal = {
@@ -22,9 +25,6 @@ type Proposal = {
   title: string;
   graph: { concepts: Concept[]; edges: Edge[] };
 };
-type Step = { key: string; label: string };
-const titleOf = (file: File) =>
-  file.name.replace(/\.pdf$/i, "").trim() || file.name;
 const edgeKey = (proposal: string, e: Edge) => `${proposal}|${e.from}|${e.to}`;
 
 /** Would adding from -> to close a loop in the routing lines collected so far? */
@@ -48,25 +48,21 @@ export function BuildStudio({
   t,
   onError,
   go,
+  catalog,
+  destination,
+  onActive, storageKey, onNotice,
 }: {
   lang: Lang;
   t: Translate;
   onError: (message: string) => void;
   go: (view: string) => void;
+  catalog: Catalog | null;
+  destination: {id:string} | null;
+  storageKey: string; onNotice: (value: string) => void; onActive: (active: boolean) => void;
 }) {
   const [phase, setPhase] = useState<"pick" | "working" | "review" | "done">(
       "pick",
     ),
-    [lectures, setLectures] = useState<File[]>([]),
-    [references, setReferences] = useState<File[]>([]),
-    [rights, setRights] = useState(""),
-    [confirmed, setConfirmed] = useState(false),
-    [hasReference, setHasReference] = useState(false),
-    [steps, setSteps] = useState<Step[]>([]),
-    [current, setCurrent] = useState(0),
-    [detail, setDetail] = useState(""),
-    [tip, setTip] = useState(0),
-    [log, setLog] = useState<string[]>([]),
     [proposals, setProposals] = useState<Proposal[]>([]),
     [failed, setFailed] = useState<string[]>([]),
     [decisions, setDecisions] = useState<
@@ -76,13 +72,42 @@ export function BuildStudio({
     [busy, setBusy] = useState(false),
     [treeVersion, setTreeVersion] = useState(0),
     [questionsBusy, setQuestionsBusy] = useState(false);
-  const running = useRef(false);
-  // The question run keeps one fixed place among the children so its progress survives
+  const [resolutions, resolve] = useState<Record<string,string>>({});
+  const [target, select] = useState("");
+  const [recheckCourses, setRecheckCourses] = useState<string[]>([]);
+  const openBuildCourse = (id: string) => {
+    select(id);
+    localStorage.setItem(storageKey,id);
+    setPhase("pick");
+  };
+  const [uploading, setUploading] = useState(false);
+  useEffect(() => { select(localStorage.getItem(storageKey) || ""); }, [storageKey]);
+  useEffect(() => {
+    if (!destination) return;
+    select(destination.id);
+    setPhase("pick");
+    localStorage.setItem(storageKey, destination.id);
+  }, [destination, storageKey]);
+  const courseId = catalog?.courses.some(c => c.id === target) ? target : "";
+  const scopedRequest = (url: string, body?: unknown, locale: Lang = lang) => request(url, body, locale, courseId);
+  const catchUp = async () => {
+    setBusy(true);
+    onError("");
+    try {
+      const result = await scopedRequest("/api/knowledge",{action:"catch-up-connections"});
+      setRecheckCourses(result.recheckCourses ?? []);
+      onNotice(result.recheckCourses?.length ? t("بدأت مراجعة العلاقات للمقررات المرتبطة.","Checks were queued for related courses.") : t("لا توجد فحوصات جديدة لهذا الإصدار.","There are no new checks for this release."));
+    } catch(e) {onError((e as Error).message);}
+    finally {setBusy(false);}
+  };
+  useEffect(() => { onActive(uploading || questionsBusy); return () => onActive(false); }, [uploading, questionsBusy, onActive]);  // The question run keeps one fixed place among the children so its progress survives
   // every change of the screen around it.
   const frame = (before: ReactNode, after: ReactNode, show: boolean) => (
     <>
       {questionsBusy ? null : before}
       <QuestionRun
+        key={courseId}
+        courseId={courseId}
         lang={lang}
         t={t}
         onError={onError}
@@ -94,229 +119,19 @@ export function BuildStudio({
       {questionsBusy ? null : after}
     </>
   );
-  useEffect(() => {
-    request("/api/materials", undefined, lang)
-      .then((m) =>
-        setHasReference(
-          (m.umbrellas ?? []).some((u: any) => u.sections?.approved > 0) ||
-            (m.sharedUmbrellas ?? []).some((u: any) => u.approved > 0),
-        ),
-      )
-      .catch(() => {});
-  }, [lang]);
-  // A calm line that changes while the model works, so a long wait never looks stuck.
-  const tips = [
-    t(
-      "النموذج يقرأ كل صفحة حتى لا تفوته معلومة. هذا عمل دقيق ويستحق وقته.",
-      "The model reads every page so nothing is missed. Careful work takes a little time.",
-    ),
-    t(
-      "كل علاقة ستُعرض عليك مع الصفحة التي استندت إليها، ولن يُنشر شيء قبل موافقتك.",
-      "Every relationship will come with the page it rests on, and nothing is published before you approve.",
-    ),
-    t(
-      "يمكنك ترك هذه الصفحة مفتوحة ومتابعة عملك؛ سنخبرك حين تجهز الشجرة.",
-      "You can leave this tab open and carry on; the tree will be here when it is ready.",
-    ),
-    t(
-      "عند ازدحام النموذج ننتظر ونعيد المحاولة تلقائيًّا بدل أن نتوقف.",
-      "When the model is busy we wait and retry by ourselves instead of stopping.",
-    ),
-  ];
-  useEffect(() => {
-    if (phase !== "working") return;
-    const timer = setInterval(() => setTip((n) => n + 1), 7000);
-    return () => clearInterval(timer);
-  }, [phase]);
-
-  const run = async () => {
-    if (running.current) return;
-    running.current = true;
-    onError("");
-    const plan: Step[] = [
-      ...references.map((f, i) => ({
-        key: "ref" + i,
-        label: t(
-          `قراءة المرجع: ${titleOf(f)}`,
-          `Reading the reference: ${titleOf(f)}`,
-        ),
-      })),
-      ...lectures.map((f, i) => ({
-        key: "lec" + i,
-        label: t(
-          `قراءة المحاضرة: ${titleOf(f)}`,
-          `Reading the lecture: ${titleOf(f)}`,
-        ),
-      })),
-      ...lectures.map((f, i) => ({
-        key: "ext" + i,
-        label: t(
-          `استخراج المفاهيم وما يسبقها: ${titleOf(f)}`,
-          `Finding concepts and what precedes them: ${titleOf(f)}`,
-        ),
-      })),
-    ];
-    setSteps(plan);
-    setCurrent(0);
-    setProposals([]);
+  const reviewJob = async (job: BuildJob) => {
+    const knowledge = await scopedRequest("/api/knowledge");
+    const docs = new Map(job.documents.map(d => [d.proposalId, d.title]));
+    const found: Proposal[] = knowledge.proposals.filter((p: {id:string; data:{status:string}}) => docs.has(p.id) && p.data.status === "pending")
+      .map((p: {id:string; data:{graph:Proposal["graph"]}}) => ({ id:p.id, title:docs.get(p.id)!, graph:p.data.graph }));
+    if (!found.length) throw new Error(t("تمت مراجعة النتائج بالفعل.", "These results have already been reviewed."));
+    resolve({});
+    setProposals(found);
     setFailed([]);
-    setLog([]);
-    setPhase("working");
-    let done = 0;
-    const next = () => setCurrent(++done);
-    // What the model is doing right now, in plain words, kept as a short running log.
-    const say = (line: string) => {
-      setDetail(line);
-      setLog((all) => [...all.slice(-5), line]);
-    };
-    const describe = (step: {
-      kind: string;
-      part: number;
-      of: number;
-      about: string[];
-    }) =>
-      step.kind === "concepts"
-        ? t(
-            `يقرأ الصفحات ${step.about[0]}–${step.about[1]} ويستخرج ما تشرحه من مفاهيم (جزء ${step.part} من ${step.of})`,
-            `Reading pages ${step.about[0]}–${step.about[1]} and listing the concepts they teach (part ${step.part} of ${step.of})`,
-          )
-        : step.kind === "links"
-          ? t(
-              `يبحث في المرجع عمّا يسبق: ${step.about.join("، ")} (مجموعة ${step.part} من ${step.of})`,
-              `Searching the reference for what comes before: ${step.about.join(", ")} (group ${step.part} of ${step.of})`,
-            )
-          : t(
-              `يراجع مرة ثانية ما لم يجد له سابقًا: ${step.about.join("، ")} (${step.part} من ${step.of})`,
-              `Taking a second look at what had no prerequisite: ${step.about.join(", ")} (${step.part} of ${step.of})`,
-            );
-    const found: Proposal[] = [],
-      problems: string[] = [];
-    const upload = async (file: File, mode: "umbrella" | "lecture") => {
-      const result = await uploadLargePdf(file, {
-        mode,
-        title: titleOf(file),
-        rights: rights || "Course reference provided by the instructor",
-        confirmed: true,
-        lang,
-        progress: (n, total) =>
-          setDetail(t(`صفحة ${n} من ${total}`, `Page ${n} of ${total}`)),
-        slides: (n, total) =>
-          setDetail(
-            t(
-              `النموذج يقرأ الشرائح المصوّرة: ${n} من ${total}`,
-              `The model is reading picture slides: ${n} of ${total}`,
-            ),
-          ),
-      });
-      // Readable pages are approved here so the whole flow is one step; the instructor
-      // still reviews every relationship before anything reaches a student.
-      for (const id of result.versionIds)
-        await request(
-          `/api/materials/${id}`,
-          { action: "approve-pending" },
-          lang,
-        );
-      return result;
-    };
-    try {
-      for (const file of references) {
-        setDetail("");
-        await upload(file, "umbrella");
-        next();
-      }
-      const keys: { file: File; keys: string[] }[] = [];
-      for (const file of lectures) {
-        setDetail("");
-        try {
-          keys.push({ file, keys: (await upload(file, "lecture")).sourceKeys });
-        } catch (e) {
-          problems.push(`${titleOf(file)}: ${(e as Error).message}`);
-          keys.push({ file, keys: [] });
-        }
-        next();
-      }
-      for (const { file, keys: sourceKeys } of keys) {
-        setDetail(
-          t(
-            "يأخذ النموذج وقته كاملًا هنا حتى لا تفوته علاقة؛ قد يستغرق عدة دقائق لكل محاضرة.",
-            "The model takes all the time it needs here so no relationship is missed; this can take several minutes per lecture.",
-          ),
-        );
-        for (const lectureSourceKey of sourceKeys) {
-          // One model call per request: each answer is saved, so the run can take as
-          // long as it needs, and a busy provider only means waiting, never starting over.
-          let waits = 0;
-          for (;;) {
-            try {
-              const r = await request(
-                "/api/knowledge",
-                { action: "extract-step", lectureSourceKey },
-                lang,
-              );
-              waits = 0;
-              if (r.done) {
-                found.push({
-                  id: r.proposal.id,
-                  title: titleOf(file),
-                  graph: r.proposal.graph,
-                });
-                say(
-                  t(
-                    `اكتملت «${titleOf(file)}»: ${r.proposal.graph.concepts.length} مفهومًا و${r.proposal.graph.edges.length} علاقة.`,
-                    `“${titleOf(file)}” is done: ${r.proposal.graph.concepts.length} concepts and ${r.proposal.graph.edges.length} relationships.`,
-                  ),
-                );
-                break;
-              }
-              say(describe(r.next));
-            } catch (e) {
-              if (++waits > 12) {
-                problems.push(`${titleOf(file)}: ${(e as Error).message}`);
-                break;
-              }
-              setDetail(
-                t(
-                  "النموذج مزدحم الآن؛ ننتظر ثم نكمل من حيث توقفنا…",
-                  "The model is busy right now; waiting, then carrying on from where we stopped…",
-                ),
-              );
-              await new Promise((r) => setTimeout(r, 30000));
-            }
-          }
-        }
-        next();
-      }
-      const knowledge = await request("/api/knowledge", undefined, lang).catch(
-        () => null,
-      );
-      setPublished(knowledge?.releases?.[0]?.data?.graph?.edges ?? []);
-      setProposals(found);
-      setFailed(problems);
-      setDecisions(
-        Object.fromEntries(
-          found.flatMap((p) =>
-            p.graph.edges.map((e) => [
-              edgeKey(p.id, e),
-              { keep: true, type: e.type },
-            ]),
-          ),
-        ),
-      );
-      setPhase(found.length ? "review" : "pick");
-      if (!found.length)
-        onError(
-          problems.join(" · ") ||
-            t("لم يُستخرج شيء.", "Nothing could be extracted."),
-        );
-    } catch (e) {
-      onError((e as Error).message);
-      setPhase("pick");
-    } finally {
-      running.current = false;
-    }
-  };
-
-  // What will actually be published: the kept lines, minus any that would close a loop
+    setPublished(knowledge.releases?.[0]?.data?.graph?.edges ?? []);
+    setDecisions(Object.fromEntries(found.flatMap(p => p.graph.edges.map(e => [edgeKey(p.id,e), {keep:true,type:e.type}]))));
+    setPhase("review");
+  };  // What will actually be published: the kept lines, minus any that would close a loop
   // with the lines already published or kept from an earlier lecture.
   const lines = new Map<string, Set<string>>();
   const link = (from: string, to: string) =>
@@ -360,7 +175,7 @@ export function BuildStudio({
     onError("");
     try {
       for (const p of proposals)
-        await request(
+        await scopedRequest(
           "/api/knowledge",
           {
             action: "review-edges",
@@ -370,11 +185,13 @@ export function BuildStudio({
               to: e.to,
               type: e.type,
             })),
+            resolutions: Object.fromEntries(p.graph.concepts.flatMap(c => resolutions[p.id+c.id] ? [[c.id,resolutions[p.id+c.id]]] : [])),
             rejectConcepts: [],
           },
           lang,
         );
-      await request("/api/knowledge", { action: "publish" }, lang);
+      const release = await scopedRequest("/api/knowledge", { action: "publish" }, lang);
+      setRecheckCourses(release.recheckCourses ?? []);
       setTreeVersion((n) => n + 1);
       setPhase("done");
     } catch (e) {
@@ -384,77 +201,6 @@ export function BuildStudio({
     }
   };
 
-  if (phase === "working") {
-    const percent = steps.length
-      ? Math.round((100 * current) / steps.length)
-      : 0;
-    return frame(
-      null,
-      <Box>
-        <div className="working" role="status" aria-live="polite">
-          <div className="working-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24">
-              <path
-                d="M12 0c1 6.5 5.5 11 12 12-6.5 1-11 5.5-12 12-1-6.5-5.5-11-12-12 6.5-1 11-5.5 12-12z"
-                fill="#8b5cf6"
-              />
-            </svg>
-          </div>
-          <h2>
-            {t("نبني شجرة المعرفة لمقررك", "Building your knowledge tree")}
-          </h2>
-          <p>{tips[tip % tips.length]}</p>
-          <div
-            className="working-bar"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={percent}
-          >
-            <i style={{ width: `${Math.max(4, percent)}%` }} />
-          </div>
-          <strong>
-            {steps[current]?.label ??
-              t("نجمع الشجرة…", "Putting the tree together…")}
-          </strong>
-          <small>
-            {detail}
-            {detail ? " · " : ""}
-            {t(
-              `الخطوة ${Math.min(current + 1, steps.length)} من ${steps.length}`,
-              `Step ${Math.min(current + 1, steps.length)} of ${steps.length}`,
-            )}
-          </small>
-          {log.length > 0 && (
-            <ul
-              className="working-log"
-              aria-label={t("ما تمّ للتو", "Just done")}
-            >
-              {log.map((line, i) => (
-                <li key={i} className={i === log.length - 1 ? "now" : ""}>
-                  {line}
-                </li>
-              ))}
-            </ul>
-          )}
-          <ul className="working-steps">
-            {steps.map((s, i) => (
-              <li
-                key={s.key}
-                className={i < current ? "done" : i === current ? "now" : ""}
-              >
-                <span aria-hidden="true">
-                  {i < current ? "✓" : i === current ? "●" : "○"}
-                </span>
-                {s.label}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </Box>,
-      false,
-    );
-  }
   if (phase === "done")
     return frame(
       <div className="notice">
@@ -472,21 +218,19 @@ export function BuildStudio({
           <button
             className="textbtn"
             onClick={() => {
-              setLectures([]);
-              setReferences([]);
+
+
               setPhase("pick");
             }}
           >
             {t("ارفع محاضرات أخرى", "Upload more lectures")}
           </button>
         </div>
-        <KnowledgeTree
-          lang={lang}
-          t={t}
-          onError={onError}
-          go={go}
-          initialScope="major"
-        />
+        {!!recheckCourses.length && <div className="notice" role="status">
+          {t("بدأ فحص العلاقات تلقائيًا في المقررات التالية. افتح سجل المقرر لمراجعة الاقتراحات.", "Automatic cross-course checks were queued. Open a course to review suggestions in its build history.")}
+          <div className="row">{catalog?.courses.filter(c => recheckCourses.includes(c.id)).map(c => <Button key={c.id} onClick={() => openBuildCourse(c.id)}>{c.title[lang]}</Button>)}</div>
+        </div>}
+        <HierarchicalKnowledgeMap key={treeVersion} lang={lang} t={t} onError={onError} go={go} courseId={courseId} onRecheck={openBuildCourse} />
       </>,
       true,
     );
@@ -529,6 +273,11 @@ export function BuildStudio({
                 `${p.graph.concepts.length} concepts, ${p.graph.edges.length} proposed relationships`,
               )}
             </p>
+            {p.graph.concepts.filter(c=>c.identityCandidates?.length).map(c=><label key={c.id}>{c.label[lang]} · {t("تحقق من هوية المفهوم","Review concept identity")}
+              <select value={resolutions[p.id+c.id] || ""} onChange={e=>resolve({...resolutions,[p.id+c.id]:e.target.value})}>
+                <option value="">{t("مفهوم مستقل","Keep distinct")}</option>
+                {c.identityCandidates?.map(k=><option key={k.id} value={k.id}>{k.label[lang]} · {k.label[lang==="ar"?"en":"ar"]}</option>)}
+              </select></label>)}
             {p.graph.edges.map((e) => {
               const key = edgeKey(p.id, e);
               const d = decisions[key] ?? { keep: true, type: e.type };
@@ -580,6 +329,7 @@ export function BuildStudio({
                     <option value="prerequisite">
                       {t("متطلب سابق", "Prerequisite")}
                     </option>
+                    {([["related","مرتبط بـ","Related to"],["is_a","نوع من","Is a"],["part_of","جزء من","Part of"],["used_in","يستخدم في","Used in"],["solves","يحلّ","Solves"]]).map(([v,ar,en]) => <option key={v} value={v}>{t(ar,en)}</option>)}
                     <option value="optional_bridge">
                       {t("خلفية اختيارية", "Optional background")}
                     </option>
@@ -610,130 +360,23 @@ export function BuildStudio({
       </>,
       false,
     );
-  const needsReference = !hasReference && !references.length;
-  const blocked =
-    !lectures.length ||
-    needsReference ||
-    (references.length > 0 && (!confirmed || rights.trim().length < 5));
-  const picker = (
-    label: string,
-    hint: string,
-    files: File[],
-    set: (files: File[]) => void,
-  ) => (
-    <label style={{ display: "block", marginBottom: 14 }}>
-      <strong>{label}</strong>
-      <br />
-      <small>{hint}</small>
-      <br />
-      <input
-        type="file"
-        multiple
-        accept="application/pdf,.pdf"
-        onChange={(e) =>
-          set([...(e.target.files ?? [])].filter((f) => /\.pdf$/i.test(f.name)))
-        }
-      />
-      {files.length > 0 && (
-        <small style={{ display: "block", marginTop: 4 }}>
-          {files.map(titleOf).join(" · ")}
-        </small>
-      )}
-    </label>
-  );
-  return frame(
-    <>
-      <h1>{t("ابنِ شجرة المعرفة", "Build the knowledge tree")}</h1>
-      <p>
-        {t(
-          "خطوة واحدة: اختر كل محاضراتك ومرجع المقرر معًا، ونحن نقرؤها ونستخرج المفاهيم وما يسبق كل مفهوم، ثم نعرض عليك الشجرة لتراجعها وتعتمدها. بعدها نولّد أسئلة لكل مفهوم.",
-          "One step: choose all your lectures and the course reference together. We read them, find the concepts and what precedes each one, then show you the tree to review and approve. After that we draft questions for every concept.",
-        )}
-      </p>
-    </>,
-    <>
-      <Box>
-        {picker(
-          t("المحاضرات (PDF)", "Lectures (PDF)"),
-          t(
-            "اختر كل ملفات المحاضرات دفعة واحدة. اسم كل ملف يصبح عنوان المحاضرة.",
-            "Choose all lecture files at once. Each file's name becomes the lecture title.",
-          ),
-          lectures,
-          setLectures,
-        )}
-        {picker(
-          t("المرجع (PDF)", "Reference (PDF)"),
-          hasReference
-            ? t(
-                "لهذا التخصص مرجع معتمد بالفعل، فهذا الحقل اختياري. أضف مرجعًا آخر إن أردت.",
-                "This major already has an approved reference, so this is optional. Add another if you wish.",
-              )
-            : t(
-                "كتاب المقرر أو مذكرة الأساسيات. يُرفع مرة واحدة ويخدم كل مقررات التخصص.",
-                "The course textbook or a foundations handout. Uploaded once, it serves every course of the major.",
-              ),
-          references,
-          setReferences,
-        )}
-        {references.length > 0 && (
-          <>
-            <label style={{ display: "block", marginBottom: 10 }}>
-              {t(
-                "مرجع التصريح باستخدام الكتاب",
-                "Permission to use the reference",
-              )}
-              <input
-                value={rights}
-                maxLength={200}
-                placeholder={t(
-                  "مثال: كتاب المقرر المعتمد من القسم",
-                  "For example: the department's adopted textbook",
-                )}
-                onChange={(e) => setRights(e.target.value)}
-              />
-            </label>
-            <label className="checklabel">
-              <input
-                type="checkbox"
-                checked={confirmed}
-                onChange={(e) => setConfirmed(e.target.checked)}
-              />{" "}
-              {t(
-                "أؤكد أن لي تصريحًا باستخراج هذا المرجع وعرض مقاطعه وإرسالها إلى النموذج المعتمد.",
-                "I confirm permission to extract this reference, display its passages and send them to the approved model.",
-              )}
-            </label>
-          </>
-        )}
-        <div style={{ marginTop: 16 }}>
-          <Button primary disabled={blocked} onClick={() => void run()}>
-            {t("ارفع واستخرج الشجرة", "Upload and build the tree")}
-          </Button>
-          {needsReference && lectures.length > 0 && (
-            <small style={{ display: "block", marginTop: 6 }}>
-              {t(
-                "أضف مرجعًا: العلاقات بين المفاهيم تُستخرج منه.",
-                "Add a reference: relationships between concepts are taken from it.",
-              )}
-            </small>
-          )}
-        </div>
-      </Box>
-      <p>
-        <small>
-          {t(
-            "الصفحات المقروءة تُعتمد تلقائيًّا في هذه الخطوة، ولا يصل شيء إلى الطلاب قبل أن تعتمد الشجرة. للتحكم التفصيلي استخدم الخطوات ١ و٢ من القائمة.",
-            "Readable pages are approved automatically in this step, and nothing reaches students before you approve the tree. For fine control use steps 1 and 2 in the menu.",
-          )}
-        </small>
-      </p>
-      <ResetBox lang={lang} t={t} onError={onError} />
-    </>,
-    true,
-  );
+  return frame(<h1>{t("بناء نموذج المعرفة", "Build the knowledge model")}</h1>, <>
+    <Box><label>{t("المقرر المستهدف", "Target course")}
+      <select value={courseId} disabled={uploading || questionsBusy} onChange={e => { select(e.target.value); localStorage.setItem(storageKey,e.target.value); onNotice(""); }}>
+        <option value="">{t("اختر مقررًا", "Select course")}</option>
+        {catalog?.courses.map(c => <option key={c.id} value={c.id}>{c.code} · {c.title[lang]}</option>)}
+      </select></label>
+      <Button disabled={uploading || questionsBusy} onClick={() => go("structure")}>
+        {t("إضافة مقرر", "Add a course")}
+      </Button>
+    </Box>
+    {courseId && <>
+      <Button disabled={busy || uploading} onClick={()=>void catchUp()}>{t("ربط الملفات المنشورة سابقًا", "Connect existing published files")}</Button>
+      <div className="row">{catalog?.courses.filter(c=>recheckCourses.includes(c.id)).map(c=><Button key={c.id} onClick={()=>openBuildCourse(c.id)}>{c.title[lang]}</Button>)}</div>
+      <KnowledgeBuildBatch key={courseId} courseId={courseId} lang={lang} t={t} onBusy={setUploading} onNotice={onNotice} onReview={reviewJob}/>
+    </>}
+  </>, Boolean(courseId));
 }
-
 type Draft = {
   id: string;
   conceptId: string;
@@ -755,6 +398,7 @@ const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * none, show each draft with its answer, and publish the ones the instructor keeps.
  */
 function QuestionRun({
+  courseId,
   lang,
   t,
   onError,
@@ -763,6 +407,7 @@ function QuestionRun({
   version,
   onBusy,
 }: {
+  courseId: string;
   lang: Lang;
   t: Translate;
   onError: (message: string) => void;
@@ -790,8 +435,9 @@ function QuestionRun({
     setPhase(next);
     onBusy(next === "working" || next === "review");
   };
+  const scopedRequest = (url: string, body?: any, locale: Lang = lang) => request(url, body, locale, courseId);
   const load = async () => {
-    const k = await request("/api/knowledge", undefined, lang);
+    const k = await scopedRequest("/api/knowledge", undefined, lang);
     const pending: Draft[] = (k.proposals ?? [])
       .map((p: any) => ({ id: p.id, d: p.data ?? p }))
       .filter(
@@ -825,9 +471,9 @@ function QuestionRun({
     return pending;
   };
   useEffect(() => {
-    if (running.current) return;
+    if (running.current || !courseId) return;
     load().catch(() => {});
-  }, [lang, version]);
+  }, [lang, version, courseId]);
 
   const run = async () => {
     if (running.current) return;
@@ -848,7 +494,7 @@ function QuestionRun({
     const say = (line: string) => setLog((all) => [...all.slice(-5), line]);
     try {
       while (!stop.current) {
-        const r = await request(
+        const r = await scopedRequest(
           "/api/knowledge",
           { action: "bank-step", data: { skip } },
           lang,
@@ -933,7 +579,7 @@ function QuestionRun({
         reject = drafts.filter((d) => dropped[d.id]).map((d) => d.id);
       // In portions, so a large bank never rides on one long request.
       for (let i = 0; i < approve.length || i < reject.length; i += 60)
-        await request(
+        await scopedRequest(
           "/api/knowledge",
           {
             action: "bank-review",
@@ -945,7 +591,7 @@ function QuestionRun({
           lang,
         );
       if (approve.length)
-        await request("/api/knowledge", { action: "publish" }, lang);
+        await scopedRequest("/api/knowledge", { action: "publish" }, lang);
       setPublishedCount(approve.length);
       await load().catch(() => {});
       show("done");

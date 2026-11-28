@@ -11,6 +11,7 @@ import {
   type CourseOperation,
 } from "./auth";
 import manifest from "../../pilot/source-manifest.json";
+import { fingerprints, fingerprintMatch, rememberFingerprints, type Fingerprints } from "./material-fingerprints";
 
 export const COURSE = "CET351";
 export const MAX_FILE = 3_500_000;
@@ -19,11 +20,16 @@ export class SourceError extends Error {
   constructor(
     public code: string,
     public status = 400,
+    public currentVersionId?: string,
   ) {
     super(code);
   }
 }
 export const sourceMessages: Record<string, [string, string]> = {
+  draft_in_use: ["الملف منشور أو قيد المعالجة أو مستخدم في نتائج معتمدة. أوقف البناء الجاري أولًا إن وُجد.", "This file is published, processing, or used by approved results. Cancel an active build before removing its files."],
+  draft_conflict: ["يوجد إصدار حالي لهذا الملف. لا يمكن استرجاع المسودة الآن.", "A current version exists for this file. The draft cannot be restored yet."],
+  revision_required: ["يوجد إصدار بهذا العنوان. أكّد إضافة إصدار جديد.", "A version with this title exists. Confirm the revision before replacing it."],
+  course_required: ["اختر المقرر أولاً.", "Select a course first."],
   file_size: [
     "حجم الملف أكبر من الحد المسموح (٣٫٥ ميجابايت).",
     "File exceeds the 3.5 MB limit.",
@@ -152,7 +158,7 @@ export function sourceErrorResponse(error: unknown, language = "ar") {
     "Service temporarily unavailable. Please retry.",
   ];
   return Response.json(
-    { error: code, message: texts[language === "en" ? 1 : 0] },
+      { error: code, message: texts[language.startsWith("en") ? 1 : 0], ...(error instanceof SourceError && error.currentVersionId ? { currentVersionId: error.currentVersionId } : {}) },
     { status: e.status || 503 },
   );
 }
@@ -200,10 +206,10 @@ export async function registerPack(ctx: AuthContext) {
     const h = hashBytes(JSON.stringify(metadata));
     await db.tenant(ctx.tenantId).query(
       `INSERT INTO material_versions(tenant_id,id,course_id,source_key,title,role,hash,rights,metadata,status,current_version)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false) ON CONFLICT(tenant_id,source_key,hash) DO NOTHING`,
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,false) ON CONFLICT(tenant_id,course_id,source_key,hash) DO NOTHING`,
       [
         ctx.tenantId,
-        `registration-${sourceKey}`,
+        ctx.courseId === DEFAULT_COURSE ? `registration-${sourceKey}` : `registration-${ctx.courseId}-${sourceKey}`,
         ctx.courseId,
         sourceKey,
         "title" in entry ? entry.title : sourceKey,
@@ -239,8 +245,9 @@ export async function majorCourses(
   return (
     await sql.query<{ course_id: string }>(
       `SELECT o.course_id FROM records me JOIN records o ON o.tenant_id=me.tenant_id AND o.kind='course' AND o.data->>'majorId'=me.data->>'majorId'
+       JOIN course_access a ON a.tenant_id=o.tenant_id AND a.course_id=o.course_id AND a.user_id=$3 AND a.active
        WHERE me.tenant_id=$1 AND me.kind='course' AND me.course_id=$2 AND me.data->>'majorId' IS NOT NULL AND o.course_id<>$2`,
-      [ctx.tenantId, ctx.courseId],
+      [ctx.tenantId, ctx.courseId, ctx.userId],
     )
   ).rows.map((r) => r.course_id);
 }
@@ -250,6 +257,30 @@ const keyText = (ctx: AuthContext, title: string) =>
   (ctx.courseId === DEFAULT_COURSE ? "" : ctx.courseId + "\n") +
   title.normalize("NFKC").toLowerCase();
 export const UMBRELLA_PREFIX = "UMBRELLA-";
+const fingerprintInput = z.object({
+  mode: z.enum(["lecture","umbrella"]),
+  documentHash: z.string().regex(/^[a-f0-9]{64}$/),
+});
+
+export async function checkFingerprint(ctx: AuthContext, raw: unknown) {
+  await staff(ctx);
+  const { mode, documentHash } = fingerprintInput.parse(raw);
+  const parts = (await db.tenant(ctx.tenantId).query<{
+    id:string; sourceKey:string; firstPage:number; lastPage:number; total:number;
+  }>(`SELECT v.id,v.source_key AS "sourceKey", f.first_page AS "firstPage",
+      f.last_page AS "lastPage", f.document_pages AS total
+    FROM material_fingerprints f JOIN material_versions v ON v.tenant_id=f.tenant_id AND v.id=f.version_id
+    WHERE f.tenant_id=$1 AND f.course_id=$2 AND f.role=$3 AND f.kind='file' AND f.digest=$4
+      AND v.current_version ORDER BY f.first_page`,
+    [ctx.tenantId, ctx.courseId, mode === "lecture" ? "instructor" : "umbrella", documentHash],
+  )).rows;
+  let nextPage = 1;
+  for (const p of parts) {
+    if (p.firstPage !== nextPage || p.total !== parts[0].total) break;
+    nextPage = p.lastPage + 1;
+  }
+  return { complete: parts.length > 0 && nextPage === parts[0].total + 1, parts };
+}
 const umbrellaKeyPattern = /^UMBRELLA-[0-9A-F]{12}$/;
 /** Split an instructor-supplied text/Markdown reference into bounded, locatable sections. */
 export function splitUmbrellaText(text: string) {
@@ -292,6 +323,7 @@ export async function importUmbrella(
     rightsConfirmed: boolean;
     rightsReference: string;
     sourceKey?: string;
+    revisionOf?: string;
   },
 ) {
   await staff(ctx);
@@ -307,6 +339,12 @@ export async function importUmbrella(
     UMBRELLA_PREFIX + hashBytes(keyText(ctx, title)).slice(0, 12).toUpperCase();
   const safeName = path.basename(input.filename || "umbrella").normalize("NFC");
   const isPdf = Buffer.from(input.bytes.slice(0, 5)).toString() === "%PDF-";
+  const fileHash = hashBytes(input.bytes);
+  const known = await checkFingerprint(ctx, { mode: "umbrella", documentHash: fileHash });
+  if (known.complete && known.parts.length === 1) {
+    const part = known.parts[0];
+    return { id: part.id, sourceKey: part.sourceKey, deduplicated: true, duplicate: true, pages: part.total };
+  }
   let pages: NewMaterial["pages"];
   if (isPdf)
     pages = (await parsePdf(input.bytes)).map((text, i) => ({
@@ -339,7 +377,9 @@ export async function importUmbrella(
     filename: safeName,
     mime: isPdf ? "application/pdf" : "text/plain",
     bytes: input.bytes,
-    hash: hashBytes(input.bytes),
+    hash: fileHash,
+    fingerprint: fingerprints(pages, fileHash),
+    expectedCurrentVersion: input.revisionOf,
     pages,
     metadata: {
       instructorUmbrella: true,
@@ -352,7 +392,7 @@ export async function importUmbrella(
       },
     },
   });
-  return { ...result, sourceKey };
+  return result;
 }
 export const LECTURE_PREFIX = "LECTURE-";
 /** Any lecture PDF the instructor teaches from, beyond the fixed pilot pack. */
@@ -363,6 +403,7 @@ export async function importCustomLecture(
     filename: string;
     bytes: Uint8Array;
     sourceKey?: string;
+    revisionOf?: string;
   },
 ) {
   await staff(ctx);
@@ -373,7 +414,13 @@ export async function importCustomLecture(
   const sourceKey =
     input.sourceKey ||
     LECTURE_PREFIX + hashBytes(keyText(ctx, title)).slice(0, 12).toUpperCase();
-  const pages = await parsePdf(input.bytes);
+  const fileHash = hashBytes(input.bytes);
+  const known = await checkFingerprint(ctx, { mode: "lecture", documentHash: fileHash });
+  if (known.complete && known.parts.length === 1) {
+    const part = known.parts[0];
+    return { id: part.id, sourceKey: part.sourceKey, deduplicated: true, duplicate: true, pages: part.total };
+  }
+  const pages = (await parsePdf(input.bytes)).map((text, i) => ({ text, page: i+1, section: null }));
   const result = await persistMaterial(ctx, {
     sourceKey,
     title,
@@ -381,16 +428,22 @@ export async function importCustomLecture(
     filename: path.basename(input.filename || "lecture.pdf").normalize("NFC"),
     mime: "application/pdf",
     bytes: input.bytes,
-    hash: hashBytes(input.bytes),
-    pages: pages.map((text, i) => ({ text, page: i + 1, section: null })),
+    hash: fileHash,
+    fingerprint: fingerprints(pages, fileHash),
+    expectedCurrentVersion: input.revisionOf,
+    pages,
     metadata: { customLecture: true, uploadedBy: ctx.userId },
   });
-  return { ...result, sourceKey };
+  return result;
 }
 const extractedPages = z.object({
   mode: z.enum(["umbrella", "lecture"]),
   title: z.string().trim().min(1).max(200),
   filename: z.string().max(300).default("document.pdf"),
+  documentHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  documentPages: z.number().int().positive().max(100000).optional(),
+  rejectDuplicate: z.boolean().optional(),
+  revisionOf: z.string().max(200).optional(),
   rightsConfirmed: z.boolean().optional(),
   rightsReference: z.string().max(500).optional(),
   pages: z
@@ -429,7 +482,10 @@ export async function importExtractedPages(ctx: AuthContext, raw: unknown) {
   const sourceKey =
     (input.mode === "umbrella" ? UMBRELLA_PREFIX : LECTURE_PREFIX) +
     hashBytes(keyText(ctx, input.title)).slice(0, 12).toUpperCase();
-  if (input.mode === "umbrella") {
+  const fp = fingerprints(pages, input.documentHash, input.documentPages);
+  if (input.documentHash && (!input.documentPages || fp.lastPage > input.documentPages || fp.lastPage - fp.firstPage + 1 !== pages.length))
+    throw new SourceError("invalid_review");
+  if (input.mode === "umbrella" && fp.contentHash && !input.documentHash) {
     // The same reference already uploaded in another course of this major serves this
     // course too: recognise it instead of storing a second copy.
     const twin = (
@@ -456,10 +512,14 @@ export async function importExtractedPages(ctx: AuthContext, raw: unknown) {
     filename: path.basename(input.filename).normalize("NFC") + ".txt",
     mime: "text/plain",
     bytes: Buffer.from(text),
-    hash: hashBytes(text),
+    hash: input.documentHash ? hashBytes(input.documentHash + ":" + fp.firstPage + ":" + fp.lastPage)
+      : fp.contentHash ? hashBytes(text) : hashBytes(randomUUID()),
+    fingerprint: fp,
+    expectedCurrentVersion: input.revisionOf,
     pages,
     metadata: {
       extractedInBrowser: true,
+      ...(input.documentHash ? { documentHash: input.documentHash, documentPages: input.documentPages, originalFilename: input.filename } : {}),
       originalStored: false,
       firstPage: pages[0].page,
       lastPage: pages.at(-1)!.page,
@@ -476,7 +536,7 @@ export async function importExtractedPages(ctx: AuthContext, raw: unknown) {
         : { customLecture: true }),
     },
   });
-  return { ...result, sourceKey };
+  return result;
 }
 /** Approve every readable pending section of one current umbrella version in a single
  * explicit instructor decision. Quarantined sections still need a corrected extract. */
@@ -514,6 +574,50 @@ export async function approvePendingUmbrella(
     return { versionId, approved: updated.rows.length };
   });
 }
+const draftFiles = `FROM material_versions v WHERE v.tenant_id=$1 AND v.course_id=$2 AND v.role IN ('instructor','umbrella')
+  AND (v.source_key LIKE 'LECTURE-%' OR v.source_key LIKE 'UMBRELLA-%') AND v.status<>'published'`;
+export async function listBuildDrafts(ctx: AuthContext) {
+  await staff(ctx);
+  return (await db.tenant(ctx.tenantId).query(`SELECT min(v.id) id,coalesce(v.metadata->>'originalFilename',v.title) title,v.role,
+      (v.metadata->>'removedFromBuild'='true') IS TRUE AS removed
+    ${draftFiles} AND (v.current_version OR v.metadata->>'removedFromBuild'='true')
+    GROUP BY COALESCE(v.metadata->>'documentHash',v.id),2,3,4 ORDER BY max(v.created_at) DESC`,[ctx.tenantId,ctx.courseId])).rows;
+}
+
+export async function changeBuildDraft(ctx: AuthContext, id: string, remove: boolean) {
+  await staff(ctx,"publish");
+  return db.tenant(ctx.tenantId).transaction(async tx => {
+    await authorizeCourseInTransaction(ctx,ctx.courseId,"publish",tx);
+    const scope = [ctx.tenantId,ctx.courseId] as const;
+    await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))",[ctx.tenantId+":knowledge:"+ctx.courseId]);
+    await tx.query("SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))",[...scope]);
+    const versions = (await tx.query<{id:string;source_key:string}>(`SELECT v.id,v.source_key ${draftFiles}
+      AND (v.current_version OR v.metadata->>'removedFromBuild'='true') AND ((v.metadata->>'removedFromBuild'='true') IS TRUE) <> $4::boolean
+      AND EXISTS (SELECT 1 FROM material_versions original WHERE original.tenant_id=$1 AND original.course_id=$2 AND original.id=$3 AND original.role=v.role
+        AND COALESCE(original.metadata->>'documentHash',original.id)=COALESCE(v.metadata->>'documentHash',v.id)) FOR UPDATE`,[...scope,id,remove])).rows;
+    if (!versions.length) throw new SourceError("draft_in_use",409);
+    const ids=versions.map(v=>v.id);
+    if (remove) {
+      const usages=await tx.query(`SELECT 1 FROM km_build_jobs j CROSS JOIN LATERAL jsonb_array_elements(j.documents) doc
+          WHERE j.tenant_id=$1 AND j.course_id=$2 AND j.status IN ('queued','processing') AND doc->>'versionId'=ANY($3::text[])
+        UNION ALL SELECT 1 FROM evidence_chunks e WHERE e.tenant_id=$1 AND e.version_id=ANY($3::text[]) AND (
+          EXISTS (SELECT 1 FROM km_citations k WHERE k.tenant_id=e.tenant_id AND k.evidence_id=e.id)
+          OR EXISTS (SELECT 1 FROM km_edges k WHERE k.tenant_id=e.tenant_id AND k.evidence ? e.id)
+          OR EXISTS (SELECT 1 FROM records p WHERE p.tenant_id=e.tenant_id AND p.kind='knowledge_proposal'
+            AND p.data->>'status' IN ('approved','published') AND p.data->'evidenceIds' ? e.id)) LIMIT 1`,[...scope,ids]);
+      if(usages.rows.length) throw new SourceError("draft_in_use",409);
+      const revision = await tx.query("SELECT 1 FROM material_versions WHERE tenant_id=$1 AND course_id=$2 AND source_key=ANY($3::text[]) AND status='published' LIMIT 1",[...scope,versions.map(v=>v.source_key)]);
+      if (revision.rows.length) throw new SourceError("draft_in_use",409);
+    } else {
+      const conflict=await tx.query("SELECT 1 FROM material_versions WHERE tenant_id=$1 AND course_id=$2 AND current_version AND source_key=ANY($3::text[]) LIMIT 1",[...scope,versions.map(v=>v.source_key)]);
+      if(conflict.rows.length) throw new SourceError("draft_conflict",409);
+    }
+    await tx.query(`UPDATE material_versions SET current_version=NOT $4::boolean,metadata=CASE WHEN $4 THEN metadata || '{"removedFromBuild":true}'::jsonb ELSE metadata-'removedFromBuild' END
+      WHERE tenant_id=$1 AND course_id=$2 AND id=ANY($3::text[])`,[...scope,ids,remove]);
+    return {changed:ids.length};
+  });
+}
+
 export async function listMaterials(ctx: AuthContext) {
   await authorizeCourse(ctx, ctx.courseId, "read");
   const rows = (
@@ -526,8 +630,8 @@ export async function listMaterials(ctx: AuthContext) {
   ).rows;
   const umbrellaRows = rows.filter(
     (r) =>
-      (r.role === "umbrella" && r.source_key.startsWith(UMBRELLA_PREFIX)) ||
-      (r.role === "instructor" && r.source_key.startsWith(LECTURE_PREFIX)),
+      !r.metadata?.removedFromBuild && ((r.role === "umbrella" && r.source_key.startsWith(UMBRELLA_PREFIX)) ||
+      (r.role === "instructor" && r.source_key.startsWith(LECTURE_PREFIX))),
   );
   const counts = umbrellaRows.length
     ? (
@@ -667,8 +771,8 @@ export async function importLecture(
     await db
       .tenant(ctx.tenantId)
       .query<Material>(
-        "SELECT * FROM material_versions WHERE tenant_id=$1 AND source_key=$2 AND hash=$3",
-        [ctx.tenantId, entry.source_key, hash],
+        "SELECT * FROM material_versions WHERE tenant_id=$1 AND source_key=$2 AND hash=$3 AND course_id=$4",
+        [ctx.tenantId, entry.source_key, hash, ctx.courseId],
       )
   ).rows[0];
   if (previous)
@@ -703,6 +807,7 @@ type NewMaterial = {
   pages: { text: string; page: number | null; section: string | null }[];
   metadata: Record<string, unknown>;
   expectedCurrentVersion?: string;
+  fingerprint?: Fingerprints;
   authorization?: "write" | "publish";
 };
 async function persistMaterial(ctx: AuthContext, raw: NewMaterial) {
@@ -711,6 +816,7 @@ async function persistMaterial(ctx: AuthContext, raw: NewMaterial) {
     pages: raw.pages.map((p) => ({ ...p, text: storable(p.text) })),
   };
   let id: string = randomUUID();
+  let sourceKey = input.sourceKey;
   let changed = 0;
   let deduplicated = false;
   await db.tenant(ctx.tenantId).transaction(async (tx) => {
@@ -720,40 +826,63 @@ async function persistMaterial(ctx: AuthContext, raw: NewMaterial) {
       input.authorization || "write",
       tx,
     );
+    // Serialize only this course's short commit phase. Extraction happens outside it.
     await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
-      ctx.tenantId + ":source:" + input.sourceKey,
+      ctx.tenantId + ":material:" + ctx.courseId,
     ]);
+    if (input.fingerprint) {
+      const match = await fingerprintMatch(tx, ctx, input.role, input.fingerprint);
+      if (match) {
+        if (!match.current_version) throw new SourceError("stale_source", 409);
+        id = match.id;
+        sourceKey = match.source_key;
+        deduplicated = true;
+        await rememberFingerprints(tx, ctx, input.role, input.fingerprint, id);
+        return;
+      }
+      if (input.expectedCurrentVersion) {
+        const previous = (await tx.query<{source_key:string}>(
+          "SELECT source_key FROM material_versions WHERE tenant_id=$1 AND course_id=$2 AND role=$3 AND id=$4 AND current_version",
+          [ctx.tenantId,ctx.courseId,input.role,input.expectedCurrentVersion],
+        )).rows[0];
+        if (!previous) throw new SourceError("stale_source",409);
+        sourceKey = previous.source_key;
+      }
+    }
     const existing = (
-      await tx.query<{ id: string }>(
-        "SELECT id FROM material_versions WHERE tenant_id=$1 AND source_key=$2 AND hash=$3",
-        [ctx.tenantId, input.sourceKey, input.hash],
+      await tx.query<{ id: string;current_version:boolean }>(
+        "SELECT id,current_version FROM material_versions WHERE tenant_id=$1 AND source_key=$2 AND hash=$3 AND course_id=$4",
+        [ctx.tenantId, sourceKey, input.hash, ctx.courseId],
       )
     ).rows[0];
     if (existing) {
+      if (input.fingerprint && !existing.current_version) throw new SourceError("stale_source",409);
       id = existing.id;
       deduplicated = true;
+      if (input.fingerprint) await rememberFingerprints(tx,ctx,input.role,input.fingerprint,id);
       return;
     }
-    if (input.expectedCurrentVersion) {
-      const current = await tx.query(
-        "SELECT id FROM material_versions WHERE tenant_id=$1 AND source_key=$2 AND current_version=true AND id=$3",
-        [ctx.tenantId, input.sourceKey, input.expectedCurrentVersion],
-      );
-      if (current.rows.length !== 1) throw new SourceError("stale_source", 409);
-    }
+    const current = (await tx.query<{id:string}>(
+      "SELECT id FROM material_versions WHERE tenant_id=$1 AND course_id=$2 AND source_key=$3 AND current_version FOR UPDATE",
+      [ctx.tenantId,ctx.courseId,sourceKey],
+    )).rows[0];
+    if (input.expectedCurrentVersion && current?.id !== input.expectedCurrentVersion)
+      throw new SourceError("stale_source",409);
+    if (current && input.fingerprint && !input.expectedCurrentVersion)
+      throw new SourceError("revision_required",409,current.id);
     const old = (
       await tx.query<{
         page: number | null;
         section: string | null;
         text_content: string;
       }>(
-        `SELECT c.page,c.section,c.text_content FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE v.tenant_id=$1 AND v.source_key=$2 AND v.current_version=true`,
-        [ctx.tenantId, input.sourceKey],
+        `SELECT c.page,c.section,c.text_content FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE v.tenant_id=$1 AND v.source_key=$2 AND v.course_id=$3 AND v.current_version=true`,
+        [ctx.tenantId, sourceKey, ctx.courseId],
       )
     ).rows;
     await tx.query(
-      "UPDATE material_versions SET current_version=false WHERE tenant_id=$1 AND source_key=$2",
-      [ctx.tenantId, input.sourceKey],
+      "UPDATE material_versions SET current_version=false WHERE tenant_id=$1 AND source_key=$2 AND course_id=$3 AND current_version",
+      [ctx.tenantId, sourceKey, ctx.courseId],
     );
     await tx.query(
       `INSERT INTO material_versions(tenant_id,id,course_id,source_key,title,role,hash,filename,mime_type,bytes,page_count,rights,metadata,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending')`,
@@ -761,7 +890,7 @@ async function persistMaterial(ctx: AuthContext, raw: NewMaterial) {
         ctx.tenantId,
         id,
         ctx.courseId,
-        input.sourceKey,
+        sourceKey,
         input.title,
         input.role,
         input.hash,
@@ -779,6 +908,12 @@ async function persistMaterial(ctx: AuthContext, raw: NewMaterial) {
         JSON.stringify(input.metadata),
       ],
     );
+    if (input.fingerprint) await rememberFingerprints(tx,ctx,input.role,input.fingerprint,id);
+    if (current && input.metadata.extractionRevision) {
+      // OCR/corrections change the extract, but the original bytes still identify it.
+      await tx.query("UPDATE material_fingerprints SET version_id=$3 WHERE tenant_id=$1 AND version_id=$2 AND kind='file'", [ctx.tenantId,current.id,id]);
+      await rememberFingerprints(tx,ctx,input.role,fingerprints(input.pages),id);
+    }
     for (const p of input.pages) {
       const flagged =
         (input.sourceKey === "CET351-L4" && p.page === 16) ||
@@ -815,6 +950,8 @@ async function persistMaterial(ctx: AuthContext, raw: NewMaterial) {
   });
   return {
     id,
+    sourceKey,
+    ...(deduplicated ? { duplicate: true } : {}),
     deduplicated,
     pages: input.pages.length,
     changedPages: changed,
@@ -828,8 +965,8 @@ export async function importSupplement(ctx: AuthContext, text: string) {
     await db
       .tenant(ctx.tenantId)
       .query<{ id: string }>(
-        "SELECT id FROM material_versions WHERE tenant_id=$1 AND source_key=$2 AND hash=$3",
-        [ctx.tenantId, "TILWA-PILOT-FOUNDATIONS", hash],
+        "SELECT id FROM material_versions WHERE tenant_id=$1 AND source_key=$2 AND hash=$3 AND course_id=$4",
+        [ctx.tenantId, "TILWA-PILOT-FOUNDATIONS", hash,ctx.courseId],
       )
   ).rows[0];
   if (prior) return { id: prior.id, deduplicated: true };
@@ -1250,3 +1387,5 @@ export async function importAuthorizedPassage(
     },
   });
 }
+
+

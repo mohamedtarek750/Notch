@@ -615,6 +615,7 @@ async function readSlidePictures(
   pages: number[],
   lang: Lang,
   progress: (done: number, total: number) => void,
+  courseId?: string,
 ) {
   let read = 0,
     unreadable = 0,
@@ -656,6 +657,7 @@ async function readSlidePictures(
           `/api/materials/${current}`,
           { action: "transcribe-images", images },
           lang,
+          courseId,
         );
         current = r.versionId ?? current;
         read += r.transcribed ?? 0;
@@ -704,6 +706,9 @@ export async function uploadLargePdf(
   file: File,
   options: {
     mode: "umbrella" | "lecture";
+    courseId?: string;
+    rejectDuplicate?: boolean;
+    revisions?: Record<number, string>;
     title: string;
     rights: string;
     confirmed: boolean;
@@ -712,9 +717,22 @@ export async function uploadLargePdf(
     slides?: (done: number, total: number) => void;
   },
 ) {
+  const bytes = await file.arrayBuffer();
+  const documentHash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
+  const known = await request("/api/materials", {
+    action: "check-fingerprint", mode: options.mode, documentHash,
+  }, options.lang, options.courseId);
+  const stored = known.parts as { id: string; sourceKey: string; firstPage: number; lastPage: number }[];
+  if (known.complete && stored.length) {
+    const pages = Math.max(...stored.map((part) => part.lastPage));
+    options.progress(pages, pages);
+    return { pages, parts: stored.length, empty: 0, read: 0, stopped: "",
+      versionIds: stored.map((p) => p.id), sourceKeys: stored.map((p) => p.sourceKey), duplicates: stored.length };
+  }
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-  const task = pdfjs.getDocument({ data: await file.arrayBuffer() });
+  const task = pdfjs.getDocument({ data: bytes });
+  try {
   const pdf = await task.promise;
   const total = pdf.numPages;
   let parts = 0,
@@ -752,16 +770,23 @@ export async function uploadLargePdf(
             ? `${options.title} (${start}–${end})`
             : options.title,
         filename: file.name,
+        documentHash,
+        revisionOf: options.revisions?.[start],
+        documentPages: total,
+        rejectDuplicate: options.rejectDuplicate === true,
         rightsConfirmed: options.confirmed,
         rightsReference: options.rights,
         pages,
       },
       options.lang,
-    );
+      options.courseId,
+    ).catch((error) => { throw Object.assign(error, { firstPage: start }); });
     parts++;
     // A reference this major already has is recognised, not stored again.
-    if (part?.duplicate) {
+    if (part?.duplicate || (options.rejectDuplicate && part?.deduplicated)) {
       duplicates++;
+      if (part.id) versionIds.push(part.id);
+      if (part.sourceKey) sourceKeys.push(part.sourceKey);
       continue;
     }
     let versionId: string | undefined = part?.id;
@@ -775,6 +800,7 @@ export async function uploadLargePdf(
         pictures,
         options.lang,
         options.slides ?? (() => {}),
+        options.courseId,
       );
       read += result.read;
       stopped = result.stopped;
@@ -782,7 +808,6 @@ export async function uploadLargePdf(
     }
     if (versionId) versionIds.push(versionId);
   }
-  await task.destroy();
   return {
     pages: total,
     parts,
@@ -793,6 +818,9 @@ export async function uploadLargePdf(
     sourceKeys,
     duplicates,
   };
+  } finally {
+    await task.destroy();
+  }
 }
 function UmbrellaUpload({
   mode,
@@ -845,6 +873,7 @@ function UmbrellaUpload({
             const result = await act(() =>
               uploadLargePdf(file, {
                 mode,
+                revisions: replace ? { 1: replace } : undefined,
                 title,
                 rights,
                 confirmed,
@@ -887,7 +916,7 @@ function UmbrellaUpload({
           form.append("title", title);
           form.append("rightsConfirmed", String(confirmed));
           form.append("rightsReference", rights);
-          if (replace) form.append("sourceKey", replace);
+          if (replace) form.append("revisionOf", replace);
           DN("");
           const r = await act(() => request("/api/materials", form, lang));
           if (r)
@@ -961,7 +990,7 @@ function UmbrellaUpload({
                     : t("مرجع جديد", "New reference")}
                 </option>
                 {umbrellas.map((u) => (
-                  <option key={u.sourceKey} value={u.sourceKey}>
+                  <option key={u.sourceKey} value={u.currentVersionId}>
                     {t("نسخة جديدة من", "New version of")} {u.title}
                   </option>
                 ))}

@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
+import { semanticTypes } from "../lib/knowledge-graph";
 import { db } from "./db";
+import { queueCrossCourseRechecks } from "./cross-course-rechecks";
 import {
   type AuthContext,
   authorizeCourse,
@@ -65,7 +67,7 @@ const conceptSchema = z.object({
 const edgeSchema = z.object({
   from: z.string(),
   to: z.string(),
-  type: z.enum(["prerequisite", "related", "optional_bridge"]),
+  type: z.enum(semanticTypes),
   evidenceIds: z.array(z.string()).min(1).max(6),
   reason: bilingual,
 });
@@ -85,6 +87,8 @@ export type Graph = {
     referenceLinks?: z.infer<typeof referenceLinkSchema>[];
     /** Set when the instructor linked this concept in from another course of the major. */
     importedFrom?: string;
+    sense?: string;
+    identityCandidates?: { id: string; label: { ar: string; en: string } }[];
   }[];
   edges: {
     from: string;
@@ -108,6 +112,8 @@ export function validateGraph(graph: Graph) {
   const seen = new Set<string>();
   const adjacency = new Map<string, string[]>();
   for (const edge of graph.edges) {
+    if (!semanticTypes.some((type) => type === edge.type))
+      throw new SourceError("invalid_relationship", 422);
     if (!ids.has(edge.from) || !ids.has(edge.to))
       throw new SourceError("phantom_endpoint");
     if (edge.from === edge.to) throw new SourceError("self_loop");
@@ -140,6 +146,7 @@ const reviewedGraphSchema = z.object({
         aliases: z.array(z.string().min(1).max(150)).max(50),
         evidenceIds: z.array(z.string().min(1).max(200)).min(1).max(160),
         summary: bilingualText.optional(),
+        sense: z.string().max(180).optional(),
         scope: z.enum(["course", "foundation"]).optional(),
         coverageLevel: z.enum(["explained", "named_only"]).optional(),
         referenceLinks: z.array(referenceLinkSchema).max(8).optional(),
@@ -553,8 +560,8 @@ export async function getKnowledge(ctx: AuthContext) {
         await db
           .tenant(ctx.tenantId)
           .query<Evidence>(
-            `SELECT c.*,v.source_key,v.title,v.role,v.hash FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.id=ANY($2::text[])`,
-            [ctx.tenantId, evidenceIds],
+            `SELECT c.*,v.source_key,v.title,v.role,v.hash FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE c.tenant_id=$1 AND c.id=ANY($2::text[]) AND EXISTS(SELECT 1 FROM course_access a WHERE a.tenant_id=v.tenant_id AND a.course_id=v.course_id AND a.user_id=$3 AND a.active)`,
+            [ctx.tenantId, evidenceIds, ctx.userId],
           )
       ).rows
     : [];
@@ -565,7 +572,7 @@ export async function getKnowledge(ctx: AuthContext) {
     proposals: proposals.map((p) => ({
       ...p,
       passages: passages.filter((e) =>
-        (p.data.evidenceIds as string[]).includes(e.id),
+        ((p.data.evidenceIds ?? []) as string[]).includes(e.id),
       ),
     })),
     // Every tree edit is a release: send the current one in full and only the
@@ -670,7 +677,13 @@ export async function reviewProposal(
         ].some((id) => !record.data.evidenceIds.includes(id))
       )
         throw new SourceError("invalid_citation", 422);
-      data.graph = graph;
+      const origins = new Map(record.data.kind === "prerequisite-extraction"
+        ? record.data.graph?.concepts.map(c => [c.id,c.importedFrom])
+        : []);
+      data.graph = { ...graph, concepts: graph.concepts.map(c => {
+        const importedFrom = c.scope === "foundation" && origins.get(c.id);
+        return importedFrom ? { ...c, importedFrom } : c;
+      }) };
     }
     if (status === "approved" && data.graph && data.coverage)
       validateComprehensiveCoverage(
@@ -679,8 +692,8 @@ export async function reviewProposal(
         await readCurrentEvidence(tx, ctx.tenantId, ctx.courseId),
       );
     await tx.query(
-      "UPDATE records SET data=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2",
-      [ctx.tenantId, id, JSON.stringify(data)],
+      "UPDATE records SET data=$3,updated_at=now() WHERE tenant_id=$1 AND id=$2 AND course_id=$4 AND kind='knowledge_proposal'",
+      [ctx.tenantId, id, JSON.stringify(data), ctx.courseId],
     );
     await tx.query(
       "INSERT INTO records(tenant_id,id,kind,course_id,owner_id,data) VALUES($1,$2,'knowledge_review',$3,$4,$5)",
@@ -717,7 +730,8 @@ const treeEdit = z.object({
   op: z.enum(["add", "remove", "retype"]),
   from: z.string().min(1).max(120),
   to: z.string().min(1).max(120),
-  type: z.enum(["prerequisite", "optional_bridge"]).default("prerequisite"),
+  type: z.enum(semanticTypes).default("prerequisite"),
+  originalType: z.enum(semanticTypes).optional(),
   /** The course a prerequisite is taught in, when it is not yet part of this course's tree. */
   fromCourse: z.string().min(1).max(40).optional(),
 });
@@ -743,7 +757,9 @@ export async function editTree(ctx: AuthContext, raw: unknown) {
     ).rows[0];
     if (!prior) throw new SourceError("tree_not_published", 409);
     const same = (e: Graph["edges"][number]) =>
-      e.from === edit.from && e.to === edit.to;
+      e.from === edit.from && e.to === edit.to && (edit.op === "add" ? e.type === edit.type : !edit.originalType || e.type === edit.originalType);
+    if (edit.op !== "add" && prior.data.graph.edges.filter(same).length > 1)
+      throw new SourceError("ambiguous_relationship", 409);
     const existing = prior.data.graph.edges.find(same);
     let edges = prior.data.graph.edges;
     let concepts = prior.data.graph.concepts;
@@ -832,6 +848,21 @@ export async function editTree(ctx: AuthContext, raw: unknown) {
     return { graph };
   });
 }
+export async function queueExistingKnowledge(ctx: AuthContext) {
+  await staff(ctx, "publish");
+  return db.tenant(ctx.tenantId).transaction(async tx => {
+    await authorizeCourseInTransaction(ctx,ctx.courseId,"publish",tx);
+    const release = (await tx.query<{id:string;data:{graph:Graph}}>(
+      "SELECT id,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release' ORDER BY created_at DESC,id DESC LIMIT 1",
+      [ctx.tenantId,ctx.courseId],
+    )).rows[0];
+    if (!release) return [];
+    const refs = (await tx.query<{id:string}>("SELECT id FROM material_versions WHERE tenant_id=$1 AND course_id=$2 AND role='umbrella' AND current_version AND status='published'",[ctx.tenantId,ctx.courseId])).rows;
+    return queueCrossCourseRechecks(tx,ctx,"existing:"+release.id,
+      release.data.graph.concepts.filter(c=>c.scope!=="foundation"&&!c.importedFrom).map(c=>c.id),refs.map(r=>r.id));
+  });
+}
+
 export async function publishKnowledge(ctx: AuthContext) {
   await staff(ctx, "publish");
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
@@ -898,14 +929,16 @@ export async function publishKnowledge(ctx: AuthContext) {
         [ctx.tenantId],
       )
     ).rows.map((r) => r.id);
-    const retainedConcepts = (
-      full ? [] : prior?.data.graph.concepts || []
-    ).filter((c) => c.evidenceIds.every((id) => currentApproved.includes(id)));
+    const current = new Set(currentApproved);
+    const retainEvidence = <T extends { evidenceIds: string[] }>(entry: T): T[] => {
+      const evidenceIds = entry.evidenceIds.filter(id => current.has(id));
+      return evidenceIds.length || !entry.evidenceIds.length ? [{ ...entry, evidenceIds }] : [];
+    };
+    const retainedConcepts = (full ? [] : prior?.data.graph.concepts || []).flatMap(retainEvidence);
     const graph: Graph = {
       concepts: retainedConcepts,
-      edges: (full ? [] : prior?.data.graph.edges || []).filter(
+      edges: (full ? [] : prior?.data.graph.edges || []).flatMap(retainEvidence).filter(
         (e) =>
-          e.evidenceIds.every((id) => currentApproved.includes(id)) &&
           retainedConcepts.some((c) => c.id === e.from) &&
           retainedConcepts.some((c) => c.id === e.to),
       ),
@@ -923,21 +956,17 @@ export async function publishKnowledge(ctx: AuthContext) {
               ...old,
               ...c,
               label: old.label,
-              scope: old.scope ?? c.scope,
+              scope: old.scope === "course" || c.scope === "course" ? "course" : old.scope ?? c.scope,
               aliases: [...new Set([...(old.aliases ?? []), ...c.aliases])],
               evidenceIds: [...new Set([...old.evidenceIds, ...c.evidenceIds])],
             };
           } else graph.concepts[idx] = c;
         }
-        graph.edges.push(
-          ...p.data.graph.edges.filter(
-            (e) =>
-              !graph.edges.some(
-                (old) =>
-                  old.from === e.from && old.to === e.to && old.type === e.type,
-              ),
-          ),
-        );
+        for (const edge of p.data.graph.edges) {
+          const priorEdge = graph.edges.find(e => e.from === edge.from && e.to === edge.to && e.type === edge.type);
+          if (priorEdge) priorEdge.evidenceIds = [...new Set([...priorEdge.evidenceIds, ...edge.evidenceIds])];
+          else graph.edges.push(edge);
+        }
       }
     }
     validateGraph(graph);
@@ -1038,20 +1067,28 @@ export async function publishKnowledge(ctx: AuthContext) {
           ],
         );
       await tx.query(
-        "UPDATE records SET data=data || $3::jsonb,updated_at=now() WHERE tenant_id=$1 AND id=$2",
+        "UPDATE records SET data=data || $3::jsonb,updated_at=now() WHERE tenant_id=$1 AND id=$2 AND course_id=$4 AND kind='knowledge_proposal'",
         [
           ctx.tenantId,
           p.id,
           JSON.stringify({ status: "published", releaseId }),
+          ctx.courseId,
         ],
       );
     }
-    await tx.query(
-      `UPDATE material_versions SET status='published' WHERE tenant_id=$1 AND course_id=$2 AND current_version=true AND id IN (SELECT version_id FROM evidence_chunks WHERE tenant_id=$1 AND status='approved')`,
+    const publishedMaterials = await tx.query<{ id: string; role: string }>(
+      `UPDATE material_versions SET status='published' WHERE tenant_id=$1 AND course_id=$2 AND current_version=true AND status<>'published'
+       AND id IN (SELECT version_id FROM evidence_chunks WHERE tenant_id=$1 AND status='approved') RETURNING id,role`,
       [ctx.tenantId, ctx.courseId],
     );
+    const previousTeaching = new Set((prior?.data.graph.concepts ?? [])
+      .filter(c => c.scope !== "foundation" && !c.importedFrom).map(c => c.id));
+    const newTeaching = graph.concepts.filter(c => c.scope !== "foundation" && !c.importedFrom && !previousTeaching.has(c.id));
+    const recheckCourses = await queueCrossCourseRechecks(tx,ctx,releaseId,newTeaching.map(c => c.id),
+      publishedMaterials.rows.filter(material => material.role === "umbrella").map(material => material.id));
     return {
       releaseId,
+      recheckCourses,
       concepts: graph.concepts.length,
       edges: graph.edges.length,
       publishedProposals: proposals.length,

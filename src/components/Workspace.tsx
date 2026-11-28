@@ -39,7 +39,7 @@ import { FieldArt } from "./FieldArt";
 import { ClassDashboard, CourseReport } from "./instructor";
 import { AdvisorDashboard } from "./advisor";
 import { CourseConceptMap } from "./CourseConceptMap";
-import { KnowledgeTree } from "./KnowledgeTree";
+import { HierarchicalKnowledgeMap } from "./HierarchicalKnowledgeMap";
 import { BuildStudio } from "./build";
 import {
   AcademicStructure,
@@ -75,20 +75,20 @@ export function localized(v: any, l: Lang): string {
   if (typeof v === "string" || typeof v === "number") return String(v);
   return v[l] || v.en || v.ar || "";
 }
-export async function request(url: string, body?: any, lang: Lang = "ar") {
+export async function request(url: string, body?: any, lang: Lang = "ar", courseId?: string) {
   const response = await fetch(url, {
     method: body === undefined ? "GET" : "POST",
     headers:
       body instanceof FormData
-        ? { "Accept-Language": lang }
-        : { "Content-Type": "application/json", "Accept-Language": lang },
+        ? { "Accept-Language": lang, ...(courseId ? { "X-Notch-Course": courseId } : {}) }
+        : { "Content-Type": "application/json", "Accept-Language": lang, ...(courseId ? { "X-Notch-Course": courseId } : {}) },
     ...(body === undefined
       ? {}
       : { body: body instanceof FormData ? body : JSON.stringify(body) }),
   });
   const result = await response.json();
   if (!response.ok)
-    throw new Error(
+    throw Object.assign(new Error(
       localized(
         result.error?.message || result.message || result.error,
         lang,
@@ -96,7 +96,7 @@ export async function request(url: string, body?: any, lang: Lang = "ar") {
         (lang === "ar"
           ? "تعذّر إتمام الطلب. حاول مرة أخرى."
           : "Unable to complete the request. Please retry."),
-    );
+    ), { code: result.error?.code ?? result.error, currentVersionId: result.currentVersionId });
   return result;
 }
 export function Box({
@@ -140,6 +140,9 @@ const STUDENT_NAV = [
   ["review", "المراجعة", "Review", NotebookPen],
   ["exam", "جاهزية الامتحان", "Exam readiness", GraduationCap],
   ["structure", "خطة الدراسة", "Study plan", Landmark],
+  ["practice", "الاختبارات والتدريب", "Practice", Target],
+  ["assignments", "التكليفات", "Assignments", ClipboardList],
+  ["career", "الخطة المهنية", "Career plan", Compass],
 ] as const;
 const INSTRUCTOR_NAV = [
   ["build", "ابنِ الشجرة", "Build the tree", Sparkles],
@@ -153,11 +156,14 @@ const INSTRUCTOR_NAV = [
   ["bank", "٣ · بنك الأسئلة", "3 · Question bank", NotebookPen],
   ["launch", "٤ · الإطلاق", "4 · Launch", ShieldCheck],
   ["teaching", "متابعة الفصل", "Class dashboard", Users],
+  ["interventions", "المحاضرة القادمة", "Teaching interventions", Lightbulb],
   ["report", "تقرير المقرر", "Course report", ClipboardList],
+  ["assignments", "التكليفات", "Assignments", FileText],
+  ["qms", "الجودة التعليمية", "Educational quality", Activity],
   ["map", "شجرة المعرفة", "Knowledge tree", Network],
   ["structure", "الهيكل الأكاديمي", "Academic structure", Landmark],
 ] as const;
-const ADVISOR_NAV = [["advising", "طلابي", "My students", Users]] as const;
+const ADVISOR_NAV = [["advising", "طلابي", "My students", Users], ["career", "الخطة المهنية", "Career plan", Compass]] as const;
 export function Workspace({
   inviteOnlyPilot = false,
   openPilot = false,
@@ -184,6 +190,15 @@ export function Workspace({
   const t: Translate = (a, b) => (lang === "ar" ? a : b);
   const tr = (v: any) => localized(v, lang);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [buildDestination, setBuildDestination] = useState<{id:string} | null>(null);
+  const [buildActive, setBuildActive] = useState(false);
+  const [buildNotice, setBuildNotice] = useState("");
+  useEffect(() => {
+    if (!buildActive) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [buildActive]);
   const refresh = async () => {
     request("/api/catalog", undefined, lang)
       .then(setCatalog)
@@ -313,7 +328,6 @@ export function Workspace({
         },
         lang,
       );
-      U(r.user);
       WC(r.workspaceCode || "");
       await refresh();
       go(
@@ -323,6 +337,7 @@ export function Workspace({
             ? "advising"
             : "home",
       );
+      U(r.user);
     } catch (e) {
       E((e as Error).message);
     } finally {
@@ -580,7 +595,7 @@ export function Workspace({
             </strong>
           </div>
           <div className="toolbar">
-            <CourseSwitcher catalog={catalog} lang={lang} t={t} />
+            <CourseSwitcher catalog={catalog} lang={lang} t={t} disabled={buildActive} />
             <button onClick={switchLanguage}>
               <Languages size={17} />
               {lang === "ar" ? "English" : "العربية"}
@@ -650,8 +665,13 @@ export function Workspace({
               {view === "report" && (
                 <CourseReport lang={lang} t={t} onError={E} />
               )}
-              {view === "build" && user?.role === "instructor" && (
-                <BuildStudio lang={lang} t={t} onError={E} go={go} />
+              {user?.role === "instructor" && (
+                <div hidden={view !== "build"} style={view !== "build" ? { display: "none" } : undefined}>
+                  <BuildStudio key={user.tenantId + ":" + user.userId} lang={lang} t={t} onError={E} go={go} catalog={catalog} destination={buildDestination} storageKey={`notch.build.course.${user.tenantId}.${user.userId}`} onActive={setBuildActive} onNotice={setBuildNotice} />
+                </div>
+              )}
+              {buildNotice && view !== "build" && user?.role === "instructor" && (
+                <div className="notice" role="status">{buildNotice}{" "}<button className="textbtn" onClick={() => go("build")}>{t("عرض التقدم والمراجعة", "View progress / review")}</button></div>
               )}
               {view === "structure" && (
                 <AcademicStructure
@@ -659,6 +679,15 @@ export function Workspace({
                   t={t}
                   onError={E}
                   canEdit={user?.role === "instructor"}
+                  onCatalogChange={setCatalog}
+                  onCourseCreated={id => {
+                    if (buildActive) {
+                      N(t("تمت إضافة المقرر. اختره بعد انتهاء العمل الجاري.", "Course added. Select it after the current work finishes."));
+                      return;
+                    }
+                    setBuildDestination({id});
+                    go("build");
+                  }}
                 />
               )}
               {view === "home" && user?.role === "student" && (
@@ -845,7 +874,7 @@ export function Workspace({
                 <Roadmap data={data} lang={lang} t={t} learn={learn} />
               )}
               {view === "map" && user?.role === "instructor" && (
-                <KnowledgeTree lang={lang} t={t} onError={E} go={go} />
+                <HierarchicalKnowledgeMap contextKey={user.tenantId + "/" + user.userId} lang={lang} t={t} onError={E} go={go} onRecheck={id => { setBuildDestination({id}); go("build"); }} />
               )}
               {view === "map" && user?.role === "advisor" && (
                 <LearningMap data={data} lang={lang} t={t} go={go} />
@@ -979,6 +1008,7 @@ export function Workspace({
               {view === "teaching" && (
                 <ClassDashboard lang={lang} t={t} onError={E} go={go} />
               )}
+              {view === "interventions" && user.role === "instructor" && <Teaching data={data} lang={lang} t={t} perform={perform} busy={busy} />}
               {view === "qms" && <Quality data={data} t={t} lang={lang} />}
               {view === "advising" && (
                 <AdvisorDashboard lang={lang} t={t} onError={E} />
@@ -3031,3 +3061,4 @@ function LessonContent({
     </div>
   );
 }
+

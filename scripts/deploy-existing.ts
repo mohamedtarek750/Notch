@@ -239,13 +239,16 @@ export async function inspectInventory(sql: Sql): Promise<Inventory> {
     WHERE n.nspname NOT IN ('pg_catalog','information_schema','neon_auth') AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp%'
     AND c.relkind IN ('r','p','v','m','f') AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e') ORDER BY n.nspname,c.relname`)
   ).rows;
+  // Permit only the invoker-rights routines shipped with the graph migration.
+  const graphSql = await readFile(resolve("migrations/008_knowledge_graph.sql"), "utf8");
+  const bodies = [...graphSql.matchAll(/CREATE FUNCTION (km_\w+)\([^)]*\) RETURNS \w+\s+LANGUAGE plpgsql AS \$\$([\s\S]*?)\$\$;/g)].map(m => m[2].replace(/\r\n/g,"\n"));
   const routines =
     (
       await sql.query<{
         count: number;
       }>(`SELECT count(*)::int AS count FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname NOT IN ('pg_catalog','information_schema','neon_auth') AND n.nspname NOT LIKE 'pg_%'
-    AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')`)
+    AND NOT (n.nspname='public' AND NOT p.prosecdef AND p.proconfig IS NULL AND p.prolang=(SELECT oid FROM pg_language WHERE lanname='plpgsql') AND ((p.oid IS NOT DISTINCT FROM to_regprocedure('public.km_index_release(text,text,text,jsonb)') AND replace(p.prosrc,chr(13),'')=$1) OR (p.oid IS NOT DISTINCT FROM to_regprocedure('public.km_on_release()') AND replace(p.prosrc,chr(13),'')=$2))) AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')`, bodies)
     ).rows[0]?.count ?? 0;
   let migrationNames: string[] = [];
   const ledger = relations.find(
@@ -848,3 +851,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
     );
     process.exitCode = 1;
   });
+
+

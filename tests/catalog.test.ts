@@ -1,3 +1,4 @@
+import { changeJob, drainCourse, listJobs } from "../src/server/build-jobs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { db } from "../src/server/db";
@@ -360,6 +361,81 @@ describe("faculty, major and course structure", () => {
       }),
     ).rejects.toMatchObject({ code: "phantom_endpoint" });
   });
+  it("recovers a completed extraction when the worker stops before updating job progress", async () => {
+    const entry = await catalogAction(instructor, {
+      action: "create-course",
+      majorId,
+      code: "RC401",
+      title: "Recovery test",
+    });
+    if (!("id" in entry)) throw new Error("Expected a course");
+    const ctx = { ...instructor, courseId: entry.id };
+    const lecture = await importExtractedPages(ctx, {
+      mode: "lecture",
+      title: "Recovery lecture",
+      pages: [
+        {
+          page: 1,
+          text: "Gradient descent lowers the error by stepping against the gradient of the loss.",
+        },
+      ],
+    });
+    await approvePendingUmbrella(ctx, lecture.id);
+    const job = await changeJob(ctx, {
+      action: "create",
+      documentIds: [lecture.id],
+    });
+    await expect(
+      changeJob(ctx, { action: "hide", id: job.id }),
+    ).rejects.toMatchObject({ status: 409 });
+    const lease = randomUUID();
+    const sql = db.tenant(ctx.tenantId);
+    await sql.query(
+      "UPDATE km_build_jobs SET status='processing',lease_token=$3,lease_until=now()+interval '1 minute' WHERE tenant_id=$1 AND id=$2",
+      [ctx.tenantId, job.id, lease],
+    );
+    const completion = {
+      jobId: job.id,
+      lease,
+      versionId: lecture.id,
+      cacheKey: job.documents[0].cacheKey!,
+    };
+    let done;
+    for (let i = 0; i < 8; i++) {
+      const step = await extractStep(
+        ctx,
+        { lectureSourceKey: lecture.sourceKey, lectureOnlyAllowed: true },
+        model,
+        completion,
+      );
+      if (step.done) {
+        done = step.proposal;
+        break;
+      }
+    }
+    expect(done).toBeDefined();
+    expect((await listJobs(ctx))[0].status).toBe("processing");
+    await sql.query(
+      "UPDATE km_build_jobs SET lease_until=now()-interval '1 second' WHERE tenant_id=$1 AND id=$2",
+      [ctx.tenantId, job.id],
+    );
+    await drainCourse(ctx.tenantId, ctx.courseId);
+    const resumed = (await listJobs(ctx))[0];
+    expect(resumed.status).toBe("completed");
+    expect(resumed.documents[0].proposalId).toBe(done!.id);
+    await changeJob(ctx, { action: "hide", id: job.id });
+    expect(await listJobs(ctx)).toEqual([]);
+    expect(await listJobs(ctx, true)).toEqual([resumed]);
+    expect((await getKnowledge(ctx)).proposals).toHaveLength(1);
+    expect((await listMaterials(ctx)).lectures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceKey: lecture.sourceKey }),
+      ]),
+    );
+    await changeJob(ctx, { action: "restore", id: job.id });
+    expect(await listJobs(ctx, true)).toEqual([]);
+    expect(await listJobs(ctx)).toEqual([resumed]);
+  });
   it("extracts step by step: one model call per request, resumable, with a second look", async () => {
     const create = async (code: string) =>
       (
@@ -706,4 +782,64 @@ describe("faculty, major and course structure", () => {
     expect(bare.faculties).toHaveLength(0);
     expect(bare.courses.map((c) => c.id)).toEqual(["CET351"]);
   });
+});
+
+it("removes and restores catalog entries without erasing published course data", async () => {
+  const create = async (input: Record<string, unknown>) => {
+    const result = await catalogAction(instructor, input);
+    if (!("id" in result) || !result.id) throw new Error("Expected an item ID");
+    return result.id;
+  };
+  const facultyId = await create({
+    action: "create-faculty",
+    name: "Temporary faculty",
+  });
+  const majorId = await create({
+    action: "create-major",
+    name: "Temporary major",
+    facultyId,
+  });
+  const courseId = await create({
+    action: "create-course",
+    title: "Temporary course",
+    majorId,
+  });
+  const change = (action: string, kind: string, id: string, ctx = instructor) =>
+    catalogAction(ctx, { action, kind, id });
+  const courseCtx = { ...instructor, courseId };
+  await teach(courseCtx);
+  await expect(
+    change("remove-structure", "faculty", facultyId),
+  ).rejects.toMatchObject({ status: 409 });
+  await expect(
+    change("remove-structure", "major", majorId),
+  ).rejects.toMatchObject({ status: 409 });
+  await expect(
+    change("remove-structure", "course", courseId, student),
+  ).rejects.toMatchObject({ status: 403 });
+  await change("remove-structure", "course", courseId);
+  await change("remove-structure", "major", majorId);
+  await change("remove-structure", "faculty", facultyId);
+  expect((await catalog(instructor)).removed.map((item) => item.id)).toEqual(
+    expect.arrayContaining([facultyId, majorId, courseId]),
+  );
+  expect((await catalog(student)).removed).toEqual([]);
+  expect(
+    (await catalog(student)).courses.map((course) => course.id),
+  ).not.toContain(courseId);
+  await expect(
+    change("restore-structure", "course", courseId),
+  ).rejects.toMatchObject({ status: 409 });
+  await change("restore-structure", "faculty", facultyId);
+  await change("restore-structure", "major", majorId);
+  await change("restore-structure", "course", courseId);
+  expect((await listMaterials(courseCtx)).lectures).toHaveLength(1);
+  expect((await getKnowledge(courseCtx)).releases).toHaveLength(1);
+  expect(
+    (await catalog(student)).courses.find((course) => course.id === courseId)
+      ?.majorId,
+  ).toBe(majorId);
+  await change("remove-structure", "course", courseId);
+  await change("remove-structure", "major", majorId);
+  await change("remove-structure", "faculty", facultyId);
 });

@@ -8,6 +8,11 @@ export type Catalog = {
   current: string;
   faculties: Named[];
   majors: (Named & { facultyId: string })[];
+  removed?: {
+    id: string;
+    kind: "faculty" | "major" | "course";
+    label: Named["name"];
+  }[];
   courses: {
     id: string;
     code: string;
@@ -16,6 +21,7 @@ export type Catalog = {
     term?: string | null;
     order?: number;
     prerequisites?: string[];
+    relatedCourses?: string[];
     externalPrerequisites?: string[];
     assessable?: number;
     percent?: number | null;
@@ -276,10 +282,12 @@ export function CourseSwitcher({
   catalog,
   lang,
   t,
+  disabled = false,
 }: {
   catalog: Catalog | null;
   lang: Lang;
   t: Translate;
+  disabled?: boolean;
 }) {
   if (!catalog || catalog.courses.length < 2) return null;
   const label = (c: Catalog["courses"][number]) => {
@@ -290,6 +298,7 @@ export function CourseSwitcher({
     <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <select
         aria-label={t("المقرر المفتوح", "Open course")}
+        disabled={disabled}
         value={catalog.current}
         onChange={(e) => void openCourse(e.target.value, lang)}
       >
@@ -308,27 +317,31 @@ export function AcademicStructure({
   t,
   onError,
   canEdit,
+  onCatalogChange,
+  onCourseCreated,
 }: {
   lang: Lang;
   t: Translate;
   onError: (message: string) => void;
   canEdit: boolean;
+  onCatalogChange?: (catalog: Catalog) => void;
+  onCourseCreated?: (id: string) => void;
 }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null),
     [busy, setBusy] = useState(false),
     [faculty, setFaculty] = useState(""),
     [major, setMajor] = useState<Record<string, string>>({}),
-    [course, setCourse] = useState<
-      Record<string, { code: string; title: string }>
-    >({}),
+    [course, setCourse] = useState({ code: "", title: "", majorId: "" }),
     [place, setPlace] = useState<Record<string, string>>({});
   const load = useCallback(async () => {
     try {
-      setCatalog(await request("/api/catalog", undefined, lang));
+      const next: Catalog = await request("/api/catalog", undefined, lang);
+      setCatalog(next);
+      onCatalogChange?.(next);
     } catch (e) {
       onError((e as Error).message);
     }
-  }, [lang, onError]);
+  }, [lang, onError, onCatalogChange]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -347,6 +360,25 @@ export function AcademicStructure({
     }
   };
   if (!catalog) return <p role="status">{t("جارٍ التحميل…", "Loading…")}</p>;
+  const selectedMajor =
+    course.majorId ||
+    catalog.courses.find((c) => c.id === catalog.current)?.majorId ||
+    (catalog.majors.length === 1 ? catalog.majors[0].id : "");
+  const remove = (
+    kind: "faculty" | "major" | "course",
+    id: string,
+    label: string,
+  ) => {
+    if (
+      window.confirm(
+        t(
+          `إزالة «${label}»؟ يمكنك استرجاعه من قسم العناصر المُزالة.`,
+          `Remove “${label}”? You can restore it under Removed items.`,
+        ),
+      )
+    )
+      void act({ action: "remove-structure", kind, id });
+  };
   const courseRow = (c: Catalog["courses"][number]) => (
     <div
       key={c.id}
@@ -368,6 +400,76 @@ export function AcademicStructure({
           {t("افتح المقرر", "Open course")}
         </Button>
       )}
+      {canEdit && (
+        <Button
+          disabled={busy}
+          onClick={() => remove("course", c.id, c.title?.[lang] || c.code)}
+        >
+          {t("إزالة المقرر", "Remove course")}
+        </Button>
+      )}
+      {canEdit && catalog.courses.length > 1 && (
+        <details style={{ flexBasis: "100%" }}>
+          <summary>{t("ربط المقررات", "Course connections")}</summary>
+          {(["relatedCourses", "prerequisites"] as const).map((field) => {
+            const related = field === "relatedCourses";
+            const selected = c[field] ?? [];
+            return (
+              <form
+                key={field + selected.join(",")}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const ids = new FormData(event.currentTarget).getAll(field);
+                  void act({
+                    action: related
+                      ? "set-related-courses"
+                      : "set-prerequisites",
+                    courseId: c.id,
+                    [field]: ids,
+                  });
+                }}
+              >
+                <fieldset disabled={busy}>
+                  <legend>
+                    {related
+                      ? t("مقررات مرتبطة", "Related courses")
+                      : t("متطلبات سابقة", "Prerequisites")}
+                  </legend>
+                  <p>
+                    {related
+                      ? t(
+                          "أضف رابطًا في الخريطة. وتظهر بعض الروابط تلقائيًا لما المقررين ينشروا نفس المفهوم.",
+                          "Add a link on the map. A link can also appear automatically when both courses publish the same concept.",
+                        )
+                      : t(
+                          "اختر المقررات التي يجب إنهاؤها قبل هذا المقرر.",
+                          "Choose the courses students must finish before this course.",
+                        )}
+                  </p>
+                  {catalog.courses
+                    .filter((other) => other.id !== c.id)
+                    .map((other) => (
+                      <label className="checklabel" key={other.id}>
+                        <input
+                          type="checkbox"
+                          name={field}
+                          value={other.id}
+                          defaultChecked={selected.includes(other.id)}
+                        />
+                        {other.title?.[lang] || other.code} ({other.code})
+                      </label>
+                    ))}
+                  <Button type="submit">
+                    {related
+                      ? t("احفظ الروابط", "Save connections")
+                      : t("احفظ المتطلبات", "Save prerequisites")}
+                  </Button>
+                </fieldset>
+              </form>
+            );
+          })}
+        </details>
+      )}
     </div>
   );
   const unplaced = catalog.courses.filter((c) => !c.majorId);
@@ -380,11 +482,109 @@ export function AcademicStructure({
           "The university is divided into faculties, each faculty into majors, and each major into courses. Every course has its own lectures, tree, questions and students. Open the course you want to work on.",
         )}
       </p>
+      {canEdit && (
+        <Box>
+          <h2>{t("إضافة مقرر", "Add a course")}</h2>
+          {catalog.majors.length ? (
+            <form
+              className="two-columns"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                const result = await act({
+                  action: "create-course",
+                  majorId: selectedMajor,
+                  title: course.title.trim(),
+                  ...(course.code.trim() && { code: course.code.trim() }),
+                });
+                if (result?.id) {
+                  setCourse({ title: "", code: "", majorId: selectedMajor });
+                  onCourseCreated?.(result.id);
+                }
+              }}
+            >
+              <label>
+                {t("اسم المقرر", "Course name")}
+                <input
+                  required
+                  minLength={2}
+                  maxLength={120}
+                  value={course.title}
+                  onChange={(event) =>
+                    setCourse({ ...course, title: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                {t("التخصص", "Major")}
+                <select
+                  value={selectedMajor}
+                  required
+                  onChange={(event) =>
+                    setCourse({ ...course, majorId: event.target.value })
+                  }
+                >
+                  <option value="">
+                    {t("اختر التخصص", "Choose the major")}
+                  </option>
+                  {catalog.majors.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {[
+                        catalog.faculties.find((f) => f.id === m.facultyId)
+                          ?.name[lang],
+                        m.name[lang],
+                        catalog.courses
+                          .filter((c) => c.majorId === m.id)
+                          .slice(0, 2)
+                          .map((c) => c.title?.[lang] || c.code)
+                          .join(", "),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {t("رمز المقرر (اختياري)", "Course code (optional)")}
+                <input
+                  minLength={2}
+                  maxLength={20}
+                  value={course.code}
+                  onChange={(event) =>
+                    setCourse({ ...course, code: event.target.value })
+                  }
+                />
+              </label>
+              <Button
+                type="submit"
+                primary
+                disabled={
+                  busy || !selectedMajor || course.title.trim().length < 2
+                }
+              >
+                {t("أضف مقررًا", "Add course")}
+              </Button>
+            </form>
+          ) : (
+            <p>
+              {t("أضف كلية وتخصصًا أولًا.", "Add a faculty and a major first.")}
+            </p>
+          )}
+        </Box>
+      )}
       {catalog.faculties.map((f) => (
         <Box key={f.id}>
           <h2>
             {t("كلية", "Faculty")}: {f.name[lang]}
           </h2>
+          {canEdit && (
+            <Button
+              disabled={busy}
+              onClick={() => remove("faculty", f.id, f.name[lang])}
+            >
+              {t("إزالة الكلية", "Remove faculty")}
+            </Button>
+          )}
           {catalog.majors
             .filter((m) => m.facultyId === f.id)
             .map((m) => (
@@ -399,6 +599,14 @@ export function AcademicStructure({
                 <h3>
                   {t("تخصص", "Major")}: {m.name[lang]}
                 </h3>
+                {canEdit && (
+                  <Button
+                    disabled={busy}
+                    onClick={() => remove("major", m.id, m.name[lang])}
+                  >
+                    {t("إزالة التخصص", "Remove major")}
+                  </Button>
+                )}
                 <StudyMap
                   catalog={catalog}
                   majorId={m.id}
@@ -408,7 +616,7 @@ export function AcademicStructure({
                   onError={onError}
                 />
                 {catalog.courses
-                  .filter((c) => c.majorId === m.id && !c.term)
+                  .filter((c) => c.majorId === m.id && (!c.term || canEdit))
                   .map(courseRow)}
                 {canEdit && (
                   <label style={{ display: "block", margin: "8px 0" }}>
@@ -448,70 +656,6 @@ export function AcademicStructure({
                 )}
                 {!catalog.courses.some((c) => c.majorId === m.id) && (
                   <small>{t("لا مقررات بعد.", "No courses yet.")}</small>
-                )}
-                {canEdit && (
-                  <form
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      flexWrap: "wrap",
-                      alignItems: "end",
-                      marginTop: 8,
-                    }}
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-                      const draft = course[m.id];
-                      if (!draft?.code || !draft?.title) return;
-                      if (
-                        await act({
-                          action: "create-course",
-                          majorId: m.id,
-                          code: draft.code,
-                          title: draft.title,
-                        })
-                      )
-                        setCourse({
-                          ...course,
-                          [m.id]: { code: "", title: "" },
-                        });
-                    }}
-                  >
-                    <label>
-                      {t("رمز المقرر", "Course code")}
-                      <input
-                        value={course[m.id]?.code ?? ""}
-                        maxLength={20}
-                        onChange={(e) =>
-                          setCourse({
-                            ...course,
-                            [m.id]: {
-                              title: course[m.id]?.title ?? "",
-                              code: e.target.value,
-                            },
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      {t("اسم المقرر", "Course name")}
-                      <input
-                        value={course[m.id]?.title ?? ""}
-                        maxLength={120}
-                        onChange={(e) =>
-                          setCourse({
-                            ...course,
-                            [m.id]: {
-                              code: course[m.id]?.code ?? "",
-                              title: e.target.value,
-                            },
-                          })
-                        }
-                      />
-                    </label>
-                    <Button type="submit" disabled={busy}>
-                      {t("أضف مقررًا", "Add course")}
-                    </Button>
-                  </form>
                 )}
               </div>
             ))}
@@ -631,6 +775,30 @@ export function AcademicStructure({
               {t("أضف الكلية", "Add faculty")}
             </Button>
           </form>
+        </Box>
+      )}
+      {canEdit && !!catalog.removed?.length && (
+        <Box>
+          <details>
+            <summary>{t("العناصر المُزالة", "Removed items")}</summary>
+            {catalog.removed.map((item) => (
+              <div className="row" key={item.kind + item.id}>
+                <span>{item.label[lang]}</span>
+                <Button
+                  disabled={busy}
+                  onClick={() =>
+                    void act({
+                      action: "restore-structure",
+                      kind: item.kind,
+                      id: item.id,
+                    })
+                  }
+                >
+                  {t("استرجع", "Restore")}
+                </Button>
+              </div>
+            ))}
+          </details>
         </Box>
       )}
       {canEdit && <ResetBox lang={lang} t={t} onError={onError} />}

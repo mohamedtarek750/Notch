@@ -4,7 +4,7 @@ import { errorResponse, localeFrom } from "@/server/errors";
 export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
-    const ctx = await requireAuth(request);
+    const ctx = await requireAuth(request, undefined, true);
     const tree = new URL(request.url).searchParams.get("tree");
     return Response.json(
       tree === "major" || tree === "university"
