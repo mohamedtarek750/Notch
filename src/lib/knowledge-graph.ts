@@ -25,12 +25,19 @@ export type KGNode = {
 };
 export type KGEdge = { from: string; to: string; type: KGRelation };
 export type KGView = { nodes: KGNode[]; edges: KGEdge[]; nextCursor: number | null };
+export type KGRequirement = {
+  concept: KGNode;
+  target: KGNode;
+  course?: KGNode;
+  evidence: { id: string; courseId: string; title: string; page: number | null };
+};
 export type KGDetail = {
   node: KGNode;
   definition?: KGText;
   aliases: string[];
   parents: KGNode[];
   children: KGNode[];
+  requirements?: KGRequirement[];
   relations: { node: KGNode; type: KGRelation; direction: "in" | "out" }[];
   resources: { id: string; title: string; courseId: string; page: number | null; section: string | null; excerpt?: string }[];
 };

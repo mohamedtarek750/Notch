@@ -109,6 +109,21 @@ for (const lang of ["ar", "en"] as const)
       .locator("[data-graph-node=lecture]")
       .filter({ hasText: "Derivatives" });
     await lecture.click({ timeout: 20000 });
+    await expect(
+      page.getByRole("heading", {
+        name: lang === "ar" ? "المعرفة المطلوبة" : "Knowledge Required",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name:
+          lang === "ar"
+            ? "افحص متطلبات من مقررات أخرى"
+            : "Check other courses for prerequisites",
+        exact: true,
+      }),
+    ).toBeVisible();
     const concept = page.locator("[data-graph-node=concept]").first();
     await concept.click();
     await expect(page.locator(".kg-detail-body")).toContainText("Chain rule");

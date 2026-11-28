@@ -5,6 +5,7 @@ import { db } from "./db";
 import { AppError } from "./errors";
 import { majorCourses } from "./sources";
 import { extractStep } from "./prerequisites";
+import { lectureKey } from "./knowledge-graph";
 import type { BuildJob, BuildDocument } from "./build-job-types";
 
 const columns =
@@ -14,6 +15,7 @@ const action = z.discriminatedUnion("action", [
     action: z.literal("create"),
     documentIds: z.array(z.string().max(200)).min(1).max(300),
   }),
+  z.object({ action: z.literal("recheck-lecture"), lectureId: z.string().min(1).max(200) }),
   z.object({ action: z.enum(["cancel", "retry", "hide", "restore"]), id: z.uuid() }),
 ]);
 const hiddenBuildKind = "km_build_history_hidden";
@@ -43,7 +45,7 @@ export async function changeJob(ctx: AuthContext, raw: unknown) {
       "SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))",
       scope,
     );
-    if (input.action !== "create") {
+    if (input.action !== "create" && input.action !== "recheck-lecture") {
       const job = (
         await tx.query<BuildJob>(
           "SELECT " +
@@ -95,7 +97,13 @@ export async function changeJob(ctx: AuthContext, raw: unknown) {
         )
       ).rows[0];
     }
-    const ids = [...new Set(input.documentIds)].sort();
+    const recheck = input.action === "recheck-lecture";
+    const ids = recheck ? (
+      await tx.query<{id:string}>(`SELECT v.id FROM material_versions v
+        WHERE v.tenant_id=$1 AND v.course_id=$2 AND v.current_version AND v.role='instructor'
+        AND ${lectureKey}=$3 ORDER BY v.id LIMIT 300`, [...scope,input.lectureId])
+    ).rows.map(r=>r.id) : [...new Set(input.documentIds)].sort();
+    if (!ids.length) throw new AppError(404, "NOT_FOUND");
     const docs = (
       await tx.query<BuildDocument>(
         `SELECT id AS "versionId",source_key AS "sourceKey",title,role FROM material_versions WHERE tenant_id=$1 AND course_id=$2 AND current_version AND role IN ('instructor','umbrella') AND id=ANY($3::text[]) ORDER BY id`,
@@ -118,12 +126,16 @@ export async function changeJob(ctx: AuthContext, raw: unknown) {
       docs.push(...affected.rows);
     }
     const referenceCourses = [ctx.courseId, ...(await majorCourses(ctx, tx))];
-    const snapshot = (
+    const referenceSnapshot = (
       await tx.query<{ key: string }>(
         "SELECT md5(coalesce(string_agg(c.id,',' ORDER BY c.id),'')) AS key FROM evidence_chunks c JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id WHERE v.tenant_id=$1 AND v.course_id=ANY($2::text[]) AND v.current_version AND v.role='umbrella' AND c.status='approved'",
         [ctx.tenantId, referenceCourses],
       )
     ).rows[0].key;
+    const siblingReleases = recheck ? (await tx.query<{id:string}>(`SELECT DISTINCT ON (course_id) id FROM records
+      WHERE tenant_id=$1 AND course_id=ANY($2::text[]) AND kind='graph_release' ORDER BY course_id,created_at DESC,id DESC`,
+      [ctx.tenantId, referenceCourses.slice(1)])).rows.map(r=>r.id) : [];
+    const snapshot = recheck ? createHash("sha256").update(JSON.stringify(["lecture-cross-course-v1",referenceSnapshot,siblingReleases])).digest("hex") : referenceSnapshot;
     const key = createHash("sha256")
       .update(JSON.stringify([ids, snapshot]))
       .digest("hex");
@@ -150,6 +162,7 @@ export async function changeJob(ctx: AuthContext, raw: unknown) {
             docs.map((d) => ({
               ...d,
               cacheKey: snapshot,
+              ...(recheck ? { recheckPublished: true } : {}),
               status: "queued",
               completedSteps: 0,
               error: null,
@@ -218,6 +231,7 @@ export async function drainCourse(tenantId: string, courseId: string) {
             {
               lectureSourceKey: d.sourceKey,
               lectureOnlyAllowed: true,
+              recheckPublished: d.recheckPublished,
             },
             undefined,
             { versionId: d.versionId, cacheKey, jobId: job.id, lease: token },

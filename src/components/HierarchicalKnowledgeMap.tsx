@@ -75,6 +75,7 @@ export function HierarchicalKnowledgeMap({
   go,
   courseId,
   contextKey,
+  onRecheck,
 }: {
   lang: Lang;
   t: Translate;
@@ -82,6 +83,7 @@ export function HierarchicalKnowledgeMap({
   go: (view: string) => void;
   courseId?: string;
   contextKey?: string;
+  onRecheck: (courseId: string) => void;
 }) {
   const key = contextKey && JSON.stringify([contextKey, courseId || ""]);
   const [frame, setFrame] = useState<Frame>(
@@ -91,6 +93,7 @@ export function HierarchicalKnowledgeMap({
   const prior = useRef(new Map<string, Frame>());
   const sequence = useRef(0);
   const [editor, setEditor] = useState(false);
+  const [rechecking, setRechecking] = useState(false);
   const [version, setVersion] = useState(0);
   const [page, setPage] = useState<{
     key: string;
@@ -479,6 +482,30 @@ export function HierarchicalKnowledgeMap({
           lang={lang}
           t={t}
           open={(n) => void openNode(n)}
+          rechecking={rechecking}
+          recheck={async () => {
+            if (
+              selected?.kind !== "lecture" ||
+              !selected.courseId ||
+              rechecking
+            )
+              return;
+            setRechecking(true);
+            onError("");
+            try {
+              await request(
+                "/api/knowledge/jobs",
+                { action: "recheck-lecture", lectureId: selected.id },
+                lang,
+                selected.courseId,
+              );
+              onRecheck(selected.courseId);
+            } catch (e) {
+              onError((e as Error).message);
+            } finally {
+              setRechecking(false);
+            }
+          }}
           status={
             selected && !detail
               ? (inspector.key === detailKey && inspector.error) ||

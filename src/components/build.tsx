@@ -49,7 +49,7 @@ export function BuildStudio({
   onError,
   go,
   catalog,
-  createdCourse,
+  destination,
   onActive, storageKey, onNotice,
 }: {
   lang: Lang;
@@ -57,7 +57,7 @@ export function BuildStudio({
   onError: (message: string) => void;
   go: (view: string) => void;
   catalog: Catalog | null;
-  createdCourse: string;
+  destination: {id:string} | null;
   storageKey: string; onNotice: (value: string) => void; onActive: (active: boolean) => void;
 }) {
   const [phase, setPhase] = useState<"pick" | "working" | "review" | "done">(
@@ -77,11 +77,11 @@ export function BuildStudio({
   const [uploading, setUploading] = useState(false);
   useEffect(() => { select(localStorage.getItem(storageKey) || ""); }, [storageKey]);
   useEffect(() => {
-    if (!createdCourse) return;
-    select(createdCourse);
+    if (!destination) return;
+    select(destination.id);
     setPhase("pick");
-    localStorage.setItem(storageKey, createdCourse);
-  }, [createdCourse, storageKey]);
+    localStorage.setItem(storageKey, destination.id);
+  }, [destination, storageKey]);
   const courseId = catalog?.courses.some(c => c.id === target) ? target : "";
   const scopedRequest = (url: string, body?: unknown, locale: Lang = lang) => request(url, body, locale, courseId);
   useEffect(() => { onActive(uploading || questionsBusy); return () => onActive(false); }, [uploading, questionsBusy, onActive]);  // The question run keeps one fixed place among the children so its progress survives
@@ -209,7 +209,7 @@ export function BuildStudio({
             {t("ارفع محاضرات أخرى", "Upload more lectures")}
           </button>
         </div>
-        <HierarchicalKnowledgeMap key={treeVersion} lang={lang} t={t} onError={onError} go={go} courseId={courseId} />
+        <HierarchicalKnowledgeMap key={treeVersion} lang={lang} t={t} onError={onError} go={go} courseId={courseId} onRecheck={() => setPhase("pick")} />
       </>,
       true,
     );

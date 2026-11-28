@@ -676,7 +676,13 @@ export async function reviewProposal(
         ].some((id) => !record.data.evidenceIds.includes(id))
       )
         throw new SourceError("invalid_citation", 422);
-      data.graph = graph;
+      const origins = new Map(record.data.kind === "prerequisite-extraction"
+        ? record.data.graph?.concepts.map(c => [c.id,c.importedFrom])
+        : []);
+      data.graph = { ...graph, concepts: graph.concepts.map(c => {
+        const importedFrom = c.scope === "foundation" && origins.get(c.id);
+        return importedFrom ? { ...c, importedFrom } : c;
+      }) };
     }
     if (status === "approved" && data.graph && data.coverage)
       validateComprehensiveCoverage(

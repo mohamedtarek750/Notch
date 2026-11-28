@@ -8,6 +8,7 @@ import {
   type KGEdge,
   type KGKind,
   type KGNode,
+  type KGRequirement,
   type KGText,
   type KGView,
 } from "../lib/knowledge-graph";
@@ -47,7 +48,7 @@ function node(kind: KGKind, r: Row): KGNode {
     ...(kind === "lecture" && { lectureId: r.id }),
   };
 }
-const lectureKey = `CASE WHEN v.metadata->>'documentPages' IS NOT NULL AND
+export const lectureKey = `CASE WHEN v.metadata->>'documentPages' IS NOT NULL AND
   COALESCE(NULLIF(v.metadata->>'firstPage',''),'1') <> '' AND
   ((v.metadata->>'firstPage')::int > 1 OR (v.metadata->>'lastPage')::int < (v.metadata->>'documentPages')::int)
   THEN COALESCE(v.metadata->>'documentHash',v.source_key) ELSE v.source_key END`;
@@ -361,6 +362,67 @@ async function graphReader(
     detail.children = data.nodes.filter(
       (n) => n.kind === "concept" && !n.external,
     );
+    const requirements = await rows<{
+      source: string;
+      source_label: KGText;
+      target: string;
+      target_label: KGText;
+      origin_id: string | null;
+      origin_label: KGText;
+      origin_code: string;
+      origin_major: string;
+      evidence: KGRequirement["evidence"];
+    }>(
+      `SELECT edge.source,s.data->'label' source_label,edge.target,t.data->'label' target_label,
+      origin.course_id origin_id,origin.label origin_label,origin.code origin_code,origin.major_id origin_major,
+      jsonb_build_object('id',ev.id,'courseId',ev.course_id,'title',ev.title,'page',ev.page) evidence
+      FROM km_edges edge JOIN visible current_course ON current_course.course_id=edge.course_id
+      JOIN km_memberships s ON s.tenant_id=edge.tenant_id AND s.course_id=edge.course_id AND s.concept_id=edge.source
+      JOIN km_memberships t ON t.tenant_id=edge.tenant_id AND t.course_id=edge.course_id AND t.concept_id=edge.target
+      LEFT JOIN LATERAL (
+        SELECT other.* FROM km_memberships m JOIN visible other ON other.course_id=m.course_id
+        WHERE m.tenant_id=edge.tenant_id AND m.concept_id=edge.source AND m.course_id<>edge.course_id
+          AND COALESCE(m.data->>'scope','course')<>'foundation' AND NOT (m.data ? 'importedFrom')
+          AND (m.course_id=s.data->>'importedFrom' OR (current_course.major_id<>'~unassigned' AND other.major_id=current_course.major_id))
+        ORDER BY (m.course_id IS DISTINCT FROM s.data->>'importedFrom'), m.course_id LIMIT 1
+      ) origin ON true
+      JOIN LATERAL (
+        SELECT v.id,v.course_id,v.title,c.page FROM jsonb_array_elements_text(edge.evidence) ids(id)
+        JOIN evidence_chunks c ON c.tenant_id=edge.tenant_id AND c.id=ids.id AND c.status='approved'
+        JOIN material_versions v ON v.tenant_id=c.tenant_id AND v.id=c.version_id AND v.current_version
+        JOIN visible allowed ON allowed.course_id=v.course_id
+        WHERE v.rights->>'displayExcerpt'='true' ORDER BY (v.course_id<>edge.course_id),c.page,c.id LIMIT 1
+      ) ev ON true
+      WHERE edge.tenant_id=$1 AND edge.course_id=$4 AND edge.kind='prerequisite'
+      AND EXISTS (SELECT 1 ${evidenceJoins} AND k.course_id=edge.course_id AND k.concept_id=edge.target
+        AND v.course_id=edge.course_id AND v.role='instructor' AND ${lectureKey}=$5)
+      ORDER BY (origin.course_id IS NULL),edge.source,edge.target LIMIT 100`,
+      [q.courseId, id],
+    );
+    detail.requirements = requirements.map((r) => ({
+      concept: node("concept", {
+        id: r.source,
+        label: r.source_label,
+        course_id: r.origin_id ?? q.courseId,
+      }),
+      target: node("concept", {
+        id: r.target,
+        label: r.target_label,
+        course_id: q.courseId,
+      }),
+      ...(r.origin_id
+        ? {
+            course: node("course", {
+              id: r.origin_id,
+              course_id: r.origin_id,
+              label: r.origin_label,
+              code: r.origin_code,
+              major_id: r.origin_major,
+            }),
+          }
+        : {}),
+      evidence: r.evidence,
+    }));
     const direct = new Set(detail.children.map((n) => n.id));
     for (const e of data.edges.filter((e) => e.type !== "CONTAINS")) {
       const n = data.nodes.find(

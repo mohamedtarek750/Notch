@@ -51,6 +51,7 @@ Rules:
 - "to" is the key of a lecture concept, or of a foundation you add (so you can state chains such as A -> B -> lecture concept when the umbrella states both steps).
 - "from" is the key of a candidate concept, of another lecture concept, or of a foundation you add to "foundations".
 - A candidate marked taughtInEarlierCourse is taught in a course the student finishes before this one. When a passage or the lecture excerpt relies on that idea, state it as the prerequisite (cite the passage or the lectureEvidenceId that relies on it) rather than adding a new foundation for the same idea.
+- A candidate marked taughtInCourse is already taught in another course. Use it only when this lecture or its reference actually depends on it. Use the candidate key and cite the passage or lectureEvidenceId that demonstrates the dependency. Its course membership alone is not evidence.
 - Add a foundation ONLY when an umbrella passage presents that background idea as needed and no candidate or lecture concept already names it.
 - State a dependency whenever an umbrella passage shows it: the dependent "requires", "is built on", "is derived from", "is defined in terms of", "applies" or "uses" the prerequisite, the learner needs it "first" or "before", or the passage's own definition, formula or procedure for the dependent is written in terms of the prerequisite (for example an update rule that is computed from a gradient depends on the gradient). Mere co-occurrence or similarity is NOT a prerequisite.
 - Consider every lecture concept in turn, including dependencies between two lecture concepts; do not stop after the first concept that has clear evidence.
@@ -130,6 +131,7 @@ const linkJsonSchema = {
 
 export const extractionInput = z.object({
   lectureOnlyAllowed: z.boolean().default(false),
+  recheckPublished: z.boolean().default(false),
   lectureSourceKey: z
     .string()
     .refine(
@@ -284,6 +286,7 @@ export async function extractPrerequisites(
   // linked to what a sibling course teaches.
   /** Concepts taught in a course that comes before this one in the study plan. */
   const taughtEarlier = new Map<string, string>();
+  const taughtOutside = new Map<string, { id: string; code: string }>();
   const siblings = await majorCourses(ctx);
   if (siblings.length) {
     const taught = (
@@ -319,12 +322,11 @@ export async function extractPrerequisites(
     );
     for (const row of taught)
       for (const c of row.graph?.concepts ?? []) {
-        if (earlier.has(row.course_id) && c.scope !== "foundation")
-          taughtEarlier.set(
-            c.id,
-            plan.find((p) => p.course_id === row.course_id)?.code ??
-              row.course_id,
-          );
+        const code = plan.find((p) => p.course_id === row.course_id)?.code ?? row.course_id;
+        if (c.scope !== "foundation" && !c.importedFrom) {
+          if (!taughtOutside.has(c.id)) taughtOutside.set(c.id, { id: row.course_id, code });
+          if (earlier.has(row.course_id)) taughtEarlier.set(c.id, code);
+        }
         if (!known.some((k) => k.id === c.id))
           known.push({ id: c.id, label: c.label, aliases: c.aliases ?? [] });
       }
@@ -442,11 +444,22 @@ export async function extractPrerequisites(
   // Pass 1 — what does the lecture teach? Every approved page is read in order.
   const lectureConcepts = new Map<string, Concept>();
   const nameToId = new Map<string, string>();
+  if (input.recheckPublished) {
+    const pageIds = new Set(lecture.map(page => page.id));
+    for (const concept of release?.data.graph.concepts ?? []) {
+      const evidenceIds = concept.evidenceIds.filter(id => pageIds.has(id));
+      if (evidenceIds.length && concept.scope !== "foundation" && !concept.importedFrom) {
+        evidenceIds.forEach(id => supplied.add(id));
+        lectureConcepts.set(concept.id, { ...concept, evidenceIds });
+      }
+    }
+    if (!lectureConcepts.size) throw new SourceError("insufficient_evidence", 422);
+  }
   const budget = Math.min(
     prepared.maxContextCharacters - 1500,
     CONCEPT_CALL_CHARS,
   );
-  const batches = batchPages(lecture, budget, MAX_CONCEPT_CALLS);
+  const batches = input.recheckPublished ? [] : batchPages(lecture, budget, MAX_CONCEPT_CALLS);
   for (const [batchIndex, batch] of batches.entries()) {
     const ids = batch.map((e) => e.id);
     ids.forEach((id) => supplied.add(id));
@@ -570,11 +583,12 @@ export async function extractPrerequisites(
   // Work list: every concept in small groups, then a second look at each concept that
   // came out with no prerequisite, using other passages and every lecture concept.
   const queue: { group: Concept[]; recheck: boolean }[] = [];
-  for (let i = 0; umbrella.length && i < all.length; i += LINK_GROUP)
+  const canLink = umbrella.length > 0 || taughtOutside.size > 0;
+  for (let i = 0; canLink && i < all.length; i += LINK_GROUP)
     queue.push({ group: all.slice(i, i + LINK_GROUP), recheck: false });
   const firstPass = queue.length;
   for (let q = 0; ; q++) {
-    if (umbrella.length && q === firstPass && job) {
+    if (umbrella.length && q === firstPass && job && !input.recheckPublished) {
       // The thorough, step-by-step run looks again at whatever is still unlinked.
       const linkedNow = new Set(
         edges.filter((e) => e.type === "prerequisite").map((e) => e.to),
@@ -666,7 +680,7 @@ export async function extractPrerequisites(
     const snippets = new Map(
       passages.map((e) => [e.id, window(e.text_content, hints.get(e.id) ?? 0)]),
     );
-    if (!passages.length) {
+    if (!passages.length && !taughtOutside.size) {
       unsupported.push(...group.map((c) => c.id));
       continue;
     }
@@ -682,15 +696,17 @@ export async function extractPrerequisites(
       ...all.filter((c) => !groupIds.has(c.id)),
       ...known.filter((k) => !lectureConcepts.has(k.id)),
     ]
+      .filter(c => !input.recheckPublished || taughtOutside.has(c.id))
       .filter(
         (c) =>
           (recheck && lectureConcepts.has(c.id)) ||
           names(c).some((n) => passageText.includes(` ${n} `)) ||
           // An idea from an earlier course that these lecture pages themselves use.
-          (taughtEarlier.has(c.id) &&
+          (taughtOutside.has(c.id) &&
             names(c).some((n) => groupPages.includes(` ${n} `))),
       )
       .slice(0, MAX_CANDIDATES);
+    if (input.recheckPublished && !candidates.length) continue;
     const excerpts = group.map((c) => {
       const page = lecture.find((e) => e.id === c.evidenceIds[0])!;
       return { c, page };
@@ -711,11 +727,12 @@ export async function extractPrerequisites(
             key: c.id,
             label: c.label,
             lectureEvidenceId: page.id,
-            lectureExcerpt: page.text_content.slice(0, EXCERPT_CHARS),
+            lectureExcerpt: page.text_content.slice(0, input.recheckPublished ? 1600 : EXCERPT_CHARS),
           })),
           candidates: candidates.map((c) => ({
             key: c.id,
             label: c.label,
+            ...(taughtOutside.has(c.id) ? { taughtInCourse: taughtOutside.get(c.id)!.code } : {}),
             ...(taughtEarlier.has(c.id)
               ? { taughtInEarlierCourse: taughtEarlier.get(c.id) }
               : {}),
@@ -763,6 +780,7 @@ export async function extractPrerequisites(
     const local = new Map<string, Concept>();
     for (const c of candidates) {
       const full = lectureConcepts.get(c.id);
+      const origin = taughtOutside.get(c.id);
       local.set(
         c.id,
         full ?? {
@@ -770,11 +788,12 @@ export async function extractPrerequisites(
           label: c.label,
           aliases: c.aliases,
           evidenceIds: [],
+          ...(origin ? { scope: "foundation", importedFrom: origin.id } : {}),
         },
       );
     }
     const newFoundations = new Set<string>();
-    for (const f of parsed.data.foundations) {
+    for (const f of input.recheckPublished ? [] : parsed.data.foundations) {
       const cited = [
         ...new Set(f.evidenceIds.filter((id) => passageIds.has(id))),
       ];
@@ -799,7 +818,8 @@ export async function extractPrerequisites(
             ]),
           ].slice(0, 40),
           evidenceIds: match ? [] : cited,
-          ...(match ? {} : { scope: "foundation" as const }),
+          ...(!match || taughtOutside.has(id) ? { scope: "foundation" as const } : {}),
+          ...(taughtOutside.has(id) ? { importedFrom: taughtOutside.get(id)!.id } : {}),
         };
       local.set(f.key, node);
       local.set(id, node);
@@ -829,7 +849,7 @@ export async function extractPrerequisites(
         reject("dependent_not_in_lecture");
         continue;
       }
-      if (!from) {
+      if (!from || (input.recheckPublished && (e.type !== "prerequisite" || !from.importedFrom))) {
         reject("unknown_prerequisite");
         continue;
       }
@@ -852,7 +872,7 @@ export async function extractPrerequisites(
             lectureConcepts.has(to.id) &&
             // Between two concepts of the lecture, or onto one taught in an earlier
             // course of the study plan that the lecture page itself relies on.
-            (lectureConcepts.has(from.id) || taughtEarlier.has(from.id))
+            (lectureConcepts.has(from.id) || taughtOutside.has(from.id))
           ))
       ) {
         reject("no_umbrella_citation");
@@ -881,7 +901,7 @@ export async function extractPrerequisites(
         node.evidenceIds = [
           ...new Set([
             ...node.evidenceIds,
-            ...cited.filter((id) => umbrellaIds.has(id)),
+            ...cited.filter((id) => umbrellaIds.has(id) || node.importedFrom),
           ]),
         ].slice(0, 12);
         endpoints.set(end.id, node);

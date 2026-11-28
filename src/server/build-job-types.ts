@@ -1,6 +1,7 @@
 export type BuildStatus = "queued" | "processing" | "completed" | "failed" | "cancelled";
 export type BuildDocument = {
   cacheKey?: string;
+  recheckPublished?: boolean;
   versionId: string;
   sourceKey: string;
   title: string;

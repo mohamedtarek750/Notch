@@ -190,7 +190,7 @@ export function Workspace({
   const t: Translate = (a, b) => (lang === "ar" ? a : b);
   const tr = (v: any) => localized(v, lang);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
-  const [createdBuildCourse, setCreatedBuildCourse] = useState("");
+  const [buildDestination, setBuildDestination] = useState<{id:string} | null>(null);
   const [buildActive, setBuildActive] = useState(false);
   const [buildNotice, setBuildNotice] = useState("");
   useEffect(() => {
@@ -667,7 +667,7 @@ export function Workspace({
               )}
               {user?.role === "instructor" && (
                 <div hidden={view !== "build"} style={view !== "build" ? { display: "none" } : undefined}>
-                  <BuildStudio key={user.tenantId + ":" + user.userId} lang={lang} t={t} onError={E} go={go} catalog={catalog} createdCourse={createdBuildCourse} storageKey={`notch.build.course.${user.tenantId}.${user.userId}`} onActive={setBuildActive} onNotice={setBuildNotice} />
+                  <BuildStudio key={user.tenantId + ":" + user.userId} lang={lang} t={t} onError={E} go={go} catalog={catalog} destination={buildDestination} storageKey={`notch.build.course.${user.tenantId}.${user.userId}`} onActive={setBuildActive} onNotice={setBuildNotice} />
                 </div>
               )}
               {buildNotice && view !== "build" && user?.role === "instructor" && (
@@ -685,7 +685,7 @@ export function Workspace({
                       N(t("تمت إضافة المقرر. اختره بعد انتهاء العمل الجاري.", "Course added. Select it after the current work finishes."));
                       return;
                     }
-                    setCreatedBuildCourse(id);
+                    setBuildDestination({id});
                     go("build");
                   }}
                 />
@@ -874,7 +874,7 @@ export function Workspace({
                 <Roadmap data={data} lang={lang} t={t} learn={learn} />
               )}
               {view === "map" && user?.role === "instructor" && (
-                <HierarchicalKnowledgeMap contextKey={user.tenantId + "/" + user.userId} lang={lang} t={t} onError={E} go={go} />
+                <HierarchicalKnowledgeMap contextKey={user.tenantId + "/" + user.userId} lang={lang} t={t} onError={E} go={go} onRecheck={id => { setBuildDestination({id}); go("build"); }} />
               )}
               {view === "map" && user?.role === "advisor" && (
                 <LearningMap data={data} lang={lang} t={t} go={go} />

@@ -11,6 +11,8 @@ export function GraphInspector({
   lang,
   t,
   open,
+  recheck,
+  rechecking,
 }: {
   node: KGNode | undefined;
   detail: KGDetail | null;
@@ -18,6 +20,8 @@ export function GraphInspector({
   lang: "ar" | "en";
   t: Translate;
   open: (item: KGNode) => void;
+  recheck: () => void;
+  rechecking: boolean;
 }) {
   if (!node)
     return (
@@ -88,6 +92,78 @@ export function GraphInspector({
       )}
       {detail && (
         <div className="kg-detail-body">
+          {node.kind === "lecture" && (
+            <section className="kg-detail-group">
+              <h3>{t("المعرفة المطلوبة", "Knowledge Required")}</h3>
+              {detail.requirements?.length ? (
+                <ul>
+                  {detail.requirements.map(
+                    ({ concept, target, course, evidence }) => (
+                      <li key={[concept.id, target.id].join("|")}>
+                        <button
+                          className="kg-inspect-link"
+                          onClick={() => open(concept)}
+                        >
+                          <span dir="auto">{concept.label[lang]}</span>
+                          <ArrowUpRight size={13} />
+                        </button>
+                        {course && (
+                          <small dir="auto">
+                            {t("من مقرر", "From")} {course.label[lang]}
+                            {course.code && (
+                              <>
+                                {" "}
+                                · <bdi>{course.code}</bdi>
+                              </>
+                            )}
+                          </small>
+                        )}
+                        <div>
+                          <small dir="auto">
+                            {t("مطلوب لفهم", "Needed for")} {target.label[lang]}
+                          </small>
+                        </div>
+                        <a
+                          href={`/sources/${encodeURIComponent(evidence.id)}?${new URLSearchParams({ courseId: evidence.courseId, lang, ...(evidence.page !== null && { page: String(evidence.page) }) })}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {evidence.title}
+                          {evidence.page !== null && (
+                            <>
+                              {" "}
+                              · {t("ص", "p.")} {evidence.page}
+                            </>
+                          )}
+                        </a>
+                      </li>
+                    ),
+                  )}
+                </ul>
+              ) : (
+                <p>
+                  {t(
+                    "لا توجد متطلبات منشورة لهذه المحاضرة بعد.",
+                    "This lecture has no published prerequisites yet.",
+                  )}
+                </p>
+              )}
+              {children.length > 0 && (
+                <button
+                  className="kg-action"
+                  disabled={rechecking}
+                  onClick={recheck}
+                >
+                  {rechecking
+                    ? t("جارٍ بدء الفحص…", "Starting check…")
+                    : t(
+                        "افحص متطلبات من مقررات أخرى",
+                        "Check other courses for prerequisites",
+                      )}
+                </button>
+              )}
+            </section>
+          )}
           {node.kind === "concept" && (
             <section className="kg-detail-group">
               <h3>{t("المصطلحات", "Terminology")}</h3>

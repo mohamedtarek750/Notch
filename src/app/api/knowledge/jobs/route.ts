@@ -18,7 +18,7 @@ async function handle(req: Request, write: boolean) {
           ),
         };
     if (
-      ["create", "cancel", "retry"].includes(input?.action) ||
+      ["create", "recheck-lecture", "cancel", "retry"].includes(input?.action) ||
       result.jobs?.some(
         (j) => j.status === "queued" || j.status === "processing",
       )
