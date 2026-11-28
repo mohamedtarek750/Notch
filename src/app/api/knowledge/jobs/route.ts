@@ -8,11 +8,17 @@ async function handle(req: Request, write: boolean) {
     if (!req.headers.get("X-Notch-Course"))
       throw new AppError(400, "INVALID_INPUT");
     const ctx = await requireAuth(req, ["instructor"], true);
+    const input = write ? await req.json() : undefined;
     const result = write
-      ? { job: await changeJob(ctx, await req.json()) }
-      : { jobs: await listJobs(ctx) };
+      ? { job: await changeJob(ctx, input) }
+      : {
+          jobs: await listJobs(
+            ctx,
+            new URL(req.url).searchParams.get("hidden") === "1",
+          ),
+        };
     if (
-      write ||
+      ["create", "cancel", "retry"].includes(input?.action) ||
       result.jobs?.some(
         (j) => j.status === "queued" || j.status === "processing",
       )

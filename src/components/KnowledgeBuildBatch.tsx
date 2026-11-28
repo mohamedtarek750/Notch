@@ -37,6 +37,7 @@ export function KnowledgeBuildBatch({
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [jobs, setJobs] = useState<BuildJob[]>([]);
+  const [showHidden, setShowHidden] = useState(false);
   const [error, setError] = useState("");
   const [pollError, setPollError] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -50,7 +51,7 @@ export function KnowledgeBuildBatch({
       let delay = 12000;
       try {
         const result: { jobs: BuildJob[] } = await request(
-          "/api/knowledge/jobs",
+          showHidden ? "/api/knowledge/jobs?hidden=1" : "/api/knowledge/jobs",
           undefined,
           lang,
           courseId,
@@ -96,7 +97,7 @@ export function KnowledgeBuildBatch({
       active = false;
       clearTimeout(timer);
     };
-  }, [courseId, lang, refresh, onNotice]); // translations follow lang
+  }, [courseId, lang, refresh, showHidden, onNotice]); // translations follow lang
 
   const labels = {
     queued: t("في قائمة الانتظار", "Queued"),
@@ -219,7 +220,10 @@ export function KnowledgeBuildBatch({
       onBusy(false);
     }
   };
-  const act = async (job: BuildJob, action: "cancel" | "retry" | "review") => {
+  const act = async (
+    job: BuildJob,
+    action: "cancel" | "retry" | "review" | "hide" | "restore",
+  ) => {
     setBusy(true);
     setError("");
     try {
@@ -356,64 +360,85 @@ export function KnowledgeBuildBatch({
         )}
       </Box>
       {pollError && <p role="alert">{pollError}</p>}
-      {jobs.length > 0 && (
-        <Box>
-          <h2>{t("عمليات بناء المقرر", "Course build history")}</h2>
-          {jobs.map((job) => (
-            <article className="build-job" key={job.id}>
-              <div className="row">
-                <strong>{labels[job.status]}</strong>
-                <time dateTime={job.createdAt}>
-                  {new Date(job.createdAt).toLocaleString(lang)}
-                </time>
-              </div>
-              <progress
-                aria-label={t("معالجة الملفات", "Document processing")}
-                max={job.documents.length || 1}
-                value={
-                  job.documents.filter((d) => d.status === "completed").length
-                }
-              />
-              <ul className="build-files">
-                {job.documents.map((d) => (
-                  <li key={d.versionId}>
-                    <span>
-                      <bdi>{d.title}</bdi>
-                      <small>
-                        {d.role === "instructor"
-                          ? t("محاضرة", "Lecture")
-                          : t("مرجع", "Reference")}{" "}
-                        · {labels[d.status]}{" "}
-                        {d.completedSteps > 0 &&
-                          " · " +
-                            t("خطوات", "Steps") +
-                            " " +
-                            d.completedSteps}{" "}
-                        {d.error}
-                      </small>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              {["queued", "processing"].includes(job.status) && (
-                <Button disabled={busy} onClick={() => act(job, "cancel")}>
-                  {t("إلغاء المعالجة", "Cancel build")}
-                </Button>
-              )}
-              {["cancelled", "failed"].includes(job.status) && (
-                <Button disabled={busy} onClick={() => act(job, "retry")}>
-                  {t("إعادة المحاولة", "Retry build")}
-                </Button>
-              )}
-              {job.documents.some((d) => d.proposalId) && (
-                <Button disabled={busy} onClick={() => act(job, "review")}>
-                  {t("مراجعة النتائج", "Review results")}
-                </Button>
-              )}
-            </article>
-          ))}
-        </Box>
-      )}
+      <Box>
+        <h2>{t("عمليات بناء المقرر", "Course build history")}</h2>
+        <Button
+          disabled={busy}
+          onClick={() => {
+            setJobs([]);
+            setShowHidden(!showHidden);
+          }}
+        >
+          {showHidden
+            ? t("العودة إلى السجل", "Back to history")
+            : t("عرض العمليات المخفية", "Show hidden builds")}
+        </Button>
+        {jobs.map((job) => (
+          <article className="build-job" key={job.id}>
+            <div className="row">
+              <strong>{labels[job.status]}</strong>
+              <time dateTime={job.createdAt}>
+                {new Date(job.createdAt).toLocaleString(lang)}
+              </time>
+            </div>
+            <progress
+              aria-label={t("معالجة الملفات", "Document processing")}
+              max={job.documents.length || 1}
+              value={
+                job.documents.filter((d) => d.status === "completed").length
+              }
+            />
+            <ul className="build-files">
+              {job.documents.map((d) => (
+                <li key={d.versionId}>
+                  <span>
+                    <bdi>{d.title}</bdi>
+                    <small>
+                      {d.role === "instructor"
+                        ? t("محاضرة", "Lecture")
+                        : t("مرجع", "Reference")}{" "}
+                      · {labels[d.status]}{" "}
+                      {d.completedSteps > 0 &&
+                        " · " +
+                          t("خطوات", "Steps") +
+                          " " +
+                          d.completedSteps}{" "}
+                      {d.error}
+                    </small>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {showHidden ? (
+              <Button disabled={busy} onClick={() => act(job, "restore")}>
+                {t("أعد إلى السجل", "Restore to history")}
+              </Button>
+            ) : (
+              <>
+                {["queued", "processing"].includes(job.status) ? (
+                  <Button disabled={busy} onClick={() => act(job, "cancel")}>
+                    {t("إلغاء المعالجة", "Cancel build")}
+                  </Button>
+                ) : (
+                  <Button disabled={busy} onClick={() => act(job, "hide")}>
+                    {t("أخفِ من السجل", "Hide from history")}
+                  </Button>
+                )}
+                {["cancelled", "failed"].includes(job.status) && (
+                  <Button disabled={busy} onClick={() => act(job, "retry")}>
+                    {t("إعادة المحاولة", "Retry build")}
+                  </Button>
+                )}
+                {job.documents.some((d) => d.proposalId) && (
+                  <Button disabled={busy} onClick={() => act(job, "review")}>
+                    {t("مراجعة النتائج", "Review results")}
+                  </Button>
+                )}
+              </>
+            )}
+          </article>
+        ))}
+      </Box>
     </>
   );
 }

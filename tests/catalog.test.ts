@@ -385,6 +385,9 @@ describe("faculty, major and course structure", () => {
       action: "create",
       documentIds: [lecture.id],
     });
+    await expect(
+      changeJob(ctx, { action: "hide", id: job.id }),
+    ).rejects.toMatchObject({ status: 409 });
     const lease = randomUUID();
     const sql = db.tenant(ctx.tenantId);
     await sql.query(
@@ -420,7 +423,18 @@ describe("faculty, major and course structure", () => {
     const resumed = (await listJobs(ctx))[0];
     expect(resumed.status).toBe("completed");
     expect(resumed.documents[0].proposalId).toBe(done!.id);
+    await changeJob(ctx, { action: "hide", id: job.id });
+    expect(await listJobs(ctx)).toEqual([]);
+    expect(await listJobs(ctx, true)).toEqual([resumed]);
     expect((await getKnowledge(ctx)).proposals).toHaveLength(1);
+    expect((await listMaterials(ctx)).lectures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceKey: lecture.sourceKey }),
+      ]),
+    );
+    await changeJob(ctx, { action: "restore", id: job.id });
+    expect(await listJobs(ctx, true)).toEqual([]);
+    expect(await listJobs(ctx)).toEqual([resumed]);
   });
   it("extracts step by step: one model call per request, resumable, with a second look", async () => {
     const create = async (code: string) =>
@@ -768,4 +782,64 @@ describe("faculty, major and course structure", () => {
     expect(bare.faculties).toHaveLength(0);
     expect(bare.courses.map((c) => c.id)).toEqual(["CET351"]);
   });
+});
+
+it("removes and restores catalog entries without erasing published course data", async () => {
+  const create = async (input: Record<string, unknown>) => {
+    const result = await catalogAction(instructor, input);
+    if (!("id" in result) || !result.id) throw new Error("Expected an item ID");
+    return result.id;
+  };
+  const facultyId = await create({
+    action: "create-faculty",
+    name: "Temporary faculty",
+  });
+  const majorId = await create({
+    action: "create-major",
+    name: "Temporary major",
+    facultyId,
+  });
+  const courseId = await create({
+    action: "create-course",
+    title: "Temporary course",
+    majorId,
+  });
+  const change = (action: string, kind: string, id: string, ctx = instructor) =>
+    catalogAction(ctx, { action, kind, id });
+  const courseCtx = { ...instructor, courseId };
+  await teach(courseCtx);
+  await expect(
+    change("remove-structure", "faculty", facultyId),
+  ).rejects.toMatchObject({ status: 409 });
+  await expect(
+    change("remove-structure", "major", majorId),
+  ).rejects.toMatchObject({ status: 409 });
+  await expect(
+    change("remove-structure", "course", courseId, student),
+  ).rejects.toMatchObject({ status: 403 });
+  await change("remove-structure", "course", courseId);
+  await change("remove-structure", "major", majorId);
+  await change("remove-structure", "faculty", facultyId);
+  expect((await catalog(instructor)).removed.map((item) => item.id)).toEqual(
+    expect.arrayContaining([facultyId, majorId, courseId]),
+  );
+  expect((await catalog(student)).removed).toEqual([]);
+  expect(
+    (await catalog(student)).courses.map((course) => course.id),
+  ).not.toContain(courseId);
+  await expect(
+    change("restore-structure", "course", courseId),
+  ).rejects.toMatchObject({ status: 409 });
+  await change("restore-structure", "faculty", facultyId);
+  await change("restore-structure", "major", majorId);
+  await change("restore-structure", "course", courseId);
+  expect((await listMaterials(courseCtx)).lectures).toHaveLength(1);
+  expect((await getKnowledge(courseCtx)).releases).toHaveLength(1);
+  expect(
+    (await catalog(student)).courses.find((course) => course.id === courseId)
+      ?.majorId,
+  ).toBe(majorId);
+  await change("remove-structure", "course", courseId);
+  await change("remove-structure", "major", majorId);
+  await change("remove-structure", "faculty", facultyId);
 });

@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { db } from "./db";
+import { db, type Queryable } from "./db";
 import { AppError } from "./errors";
 import { DEFAULT_COURSE, type AuthContext } from "./auth";
 
@@ -10,6 +10,10 @@ import { DEFAULT_COURSE, type AuthContext } from "./auth";
  * learner records under its course id.
  */
 const name = z.string().trim().min(2).max(120);
+const structureItem = {
+  kind: z.enum(["faculty", "major", "course"]),
+  id: z.string().min(1).max(80),
+};
 const input = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create-faculty"), name }),
   z.object({
@@ -20,7 +24,7 @@ const input = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("create-course"),
     majorId: z.string().min(1).max(80),
-    code: z.string().trim().min(2).max(20),
+    code: z.string().trim().min(2).max(20).optional(),
     title: name,
   }),
   z.object({
@@ -56,6 +60,11 @@ const input = z.discriminatedUnion("action", [
     prerequisites: z.array(z.string().min(1).max(40)).max(8),
   }),
   z.object({
+    action: z.literal("set-related-courses"),
+    courseId: z.string().min(1).max(40),
+    relatedCourses: z.array(z.string().min(1).max(40)).max(100),
+  }),
+  z.object({
     action: z.literal("unlock-course"),
     courseId: z.string().min(1).max(40),
     studentId: z.string().min(1).max(80),
@@ -71,6 +80,8 @@ const input = z.discriminatedUnion("action", [
     action: z.literal("select-course"),
     courseId: z.string().min(1).max(40),
   }),
+  z.object({ action: z.literal("remove-structure"), ...structureItem }),
+  z.object({ action: z.literal("restore-structure"), ...structureItem }),
 ]);
 type Row = { id: string; kind: string; course_id: string | null; data: any };
 const both = (value: string) => ({ ar: value, en: value });
@@ -79,8 +90,11 @@ export async function catalog(ctx: AuthContext) {
   const conn = db.tenant(ctx.tenantId);
   const rows = (
     await conn.query<Row>(
-      "SELECT id,kind,course_id,data FROM records WHERE tenant_id=$1 AND kind IN ('faculty','major','course') ORDER BY created_at,id",
-      [ctx.tenantId],
+      `SELECT id,kind,course_id,data FROM records WHERE tenant_id=$1 AND (
+        kind IN ('faculty','major','course') OR ($2::boolean AND kind IN ('removed_faculty','removed_major','removed_course')
+        AND (course_id IS NULL OR COALESCE(data->'removedActiveUsers','[]') ? $3))
+      ) ORDER BY created_at,id`,
+      [ctx.tenantId, ctx.role === "instructor", ctx.userId],
     )
   ).rows;
   const mine = new Set(
@@ -109,6 +123,13 @@ export async function catalog(ctx: AuthContext) {
       .filter((r) => r.kind === "faculty")
       .map((r) => ({ id: r.id, name: r.data.name })),
     majors,
+    removed: rows
+      .filter((r) => r.kind.startsWith("removed_"))
+      .map((r) => ({
+        id: r.course_id ?? r.id,
+        kind: r.kind.slice("removed_".length),
+        label: r.data.title ?? r.data.name,
+      })),
     courses: rows
       .filter(
         (r) => r.kind === "course" && r.course_id && mine.has(r.course_id),
@@ -124,6 +145,9 @@ export async function catalog(ctx: AuthContext) {
         term: (r.data.term as string | undefined) ?? null,
         order: (r.data.order as number | undefined) ?? 0,
         prerequisites: (r.data.prerequisites as string[] | undefined) ?? [],
+        relatedCourses: (
+          (r.data.relatedCourses as string[] | undefined) ?? []
+        ).filter((id) => mine.has(id)),
         externalPrerequisites:
           (r.data.externalPrerequisites as string[] | undefined) ?? [],
         ...(standing.get(r.course_id!) ?? {
@@ -241,6 +265,10 @@ export async function catalogAction(ctx: AuthContext, raw: unknown) {
   if (a.action === "reset-workspace")
     return resetWorkspace(ctx, a.keepStructure);
   return conn.transaction(async (tx) => {
+    await tx.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1 || ':academic-catalog'))",
+      [ctx.tenantId],
+    );
     const exists = async (id: string, kind: string) =>
       (
         await tx.query(
@@ -263,6 +291,16 @@ export async function catalogAction(ctx: AuthContext, raw: unknown) {
         "INSERT INTO audit_events(tenant_id,id,actor_id,action,entity_id,data) VALUES($1,$2,$3,$4,$5,$6)",
         [ctx.tenantId, randomUUID(), ctx.userId, action, id, JSON.stringify(a)],
       );
+    if (a.action === "remove-structure" || a.action === "restore-structure") {
+      await changeStructureVisibility(tx, ctx, a);
+      await audit(
+        a.action === "remove-structure"
+          ? "catalog.structure_removed"
+          : "catalog.structure_restored",
+        a.id,
+      );
+      return { id: a.id };
+    }
     if (a.action === "create-faculty") {
       const id = "faculty:" + randomBytes(5).toString("hex");
       await add(id, "faculty", null, { name: both(a.name) });
@@ -326,11 +364,47 @@ export async function catalogAction(ctx: AuthContext, raw: unknown) {
       await audit("catalog.course_unlock", a.courseId);
       return { id: a.courseId };
     }
-    if (a.action === "set-prerequisites") {
+    if (
+      a.action === "set-prerequisites" ||
+      a.action === "set-related-courses"
+    ) {
       const all = await coursesOf();
+      const requested =
+        a.action === "set-prerequisites" ? a.prerequisites : a.relatedCourses;
       const ids = new Set(all.map((c) => c.course_id!));
-      if (!ids.has(a.courseId) || a.prerequisites.some((p) => !ids.has(p)))
+      if (!ids.has(a.courseId) || requested.some((p) => !ids.has(p)))
         throw new AppError(404, "NOT_FOUND");
+      const accessible = await tx.query<{ course_id: string }>(
+        "SELECT course_id FROM course_access WHERE tenant_id=$1 AND user_id=$2 AND active",
+        [ctx.tenantId, ctx.userId],
+      );
+      const allowed = new Set(accessible.rows.map((r) => r.course_id));
+      if (![a.courseId, ...requested].every((id) => allowed.has(id)))
+        throw new AppError(403, "COURSE_FORBIDDEN");
+      if (a.action === "set-related-courses") {
+        const course = all.find((c) => c.course_id === a.courseId)!;
+        const related = new Set(requested.filter((id) => id !== a.courseId));
+        const previous = (course.data.relatedCourses ?? []) as string[];
+        await patch(a.courseId, {
+          relatedCourses: [
+            ...new Set([
+              ...previous.filter((id) => !allowed.has(id)),
+              ...related,
+            ]),
+          ],
+        });
+        for (const other of all) {
+          const id = other.course_id!;
+          if (!allowed.has(id) || previous.includes(id) === related.has(id))
+            continue;
+          const reciprocal = new Set<string>(other.data.relatedCourses ?? []);
+          if (related.has(id)) reciprocal.add(a.courseId);
+          else reciprocal.delete(a.courseId);
+          await patch(id, { relatedCourses: [...reciprocal] });
+        }
+        await audit("catalog.related_courses_set", a.courseId);
+        return { id: a.courseId };
+      }
       const links = new Map(
         all.map((c) => [
           c.course_id!,
@@ -410,11 +484,139 @@ export async function catalogAction(ctx: AuthContext, raw: unknown) {
       await audit("catalog.course_assigned", a.courseId);
       return { id: a.courseId };
     }
-    const courseId = await createCourse(a.code, a.title, a.majorId);
+    const siblings = await coursesOf(a.majorId);
+    const courseCode =
+      a.code ??
+      (a.title
+        .match(/[a-z0-9]+/gi)
+        ?.map((word) => word[0])
+        .join("")
+        .slice(0, 8)
+        .toUpperCase() || "COURSE") +
+        "-" +
+        randomBytes(2).toString("hex").toUpperCase();
+    if (
+      siblings.some(
+        (c) =>
+          c.data.code?.toUpperCase() === courseCode.toUpperCase() ||
+          c.data.title?.en?.trim().toLowerCase() === a.title.toLowerCase(),
+      )
+    )
+      throw new AppError(409, "COURSE_ALREADY_EXISTS");
+    const courseId = await createCourse(courseCode, a.title, a.majorId);
     await audit("catalog.course_created", courseId);
     // Creating a course does not open it; the instructor opens it when ready.
     return { id: courseId };
   });
+}
+
+async function changeStructureVisibility(
+  tx: Queryable,
+  ctx: AuthContext,
+  action: {
+    action: "remove-structure" | "restore-structure";
+    kind: "faculty" | "major" | "course";
+    id: string;
+  },
+) {
+  const { id, kind } = action;
+  const removing = action.action === "remove-structure";
+  const recordId = kind === "course" ? `course:${id}` : id;
+  const currentKind = removing ? kind : `removed_${kind}`;
+  const nextKind = removing ? `removed_${kind}` : kind;
+  const scope = [ctx.tenantId, recordId, currentKind];
+  const row = (
+    await tx.query<Row>(
+      "SELECT id,kind,course_id,data FROM records WHERE tenant_id=$1 AND id=$2 AND kind=$3 FOR UPDATE",
+      scope,
+    )
+  ).rows[0];
+  if (!row) throw new AppError(404, "NOT_FOUND");
+  if (kind !== "course") {
+    if (removing) {
+      const children = await tx.query(
+        "SELECT 1 FROM records WHERE tenant_id=$1 AND kind=$2 AND data->>($3::text)=$4 LIMIT 1",
+        [
+          ctx.tenantId,
+          kind === "faculty" ? "major" : "course",
+          kind === "faculty" ? "facultyId" : "majorId",
+          id,
+        ],
+      );
+      if (children.rows.length)
+        throw new AppError(409, "STRUCTURE_HAS_CHILDREN");
+    } else if (kind === "major") {
+      const parent = await tx.query(
+        "SELECT 1 FROM records WHERE tenant_id=$1 AND id=$2 AND kind='faculty'",
+        [ctx.tenantId, row.data.facultyId],
+      );
+      if (!parent.rows.length)
+        throw new AppError(409, "STRUCTURE_PARENT_REMOVED");
+    }
+    await tx.query(
+      "UPDATE records SET kind=$4,updated_at=now() WHERE tenant_id=$1 AND id=$2 AND kind=$3",
+      [...scope, nextKind],
+    );
+    return;
+  }
+
+  await tx.query("SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))", [
+    ctx.tenantId,
+    id,
+  ]);
+  const access = (
+    await tx.query<{ user_id: string; active: boolean }>(
+      "SELECT user_id,active FROM course_access WHERE tenant_id=$1 AND course_id=$2 FOR UPDATE",
+      [ctx.tenantId, id],
+    )
+  ).rows;
+  const canChange = removing
+    ? access.some((a) => a.user_id === ctx.userId && a.active)
+    : row.data.removedActiveUsers?.includes(ctx.userId);
+  if (!canChange) throw new AppError(403, "COURSE_FORBIDDEN");
+  if (removing) {
+    const blockers = (
+      await tx.query<{ last: boolean; in_use: boolean }>(
+        `SELECT NOT EXISTS (SELECT 1 FROM course_access WHERE tenant_id=$1 AND user_id=$3 AND course_id<>$2 AND active) AS last,
+         (EXISTS (SELECT 1 FROM km_build_jobs WHERE tenant_id=$1 AND course_id=$2 AND status IN ('queued','processing'))
+          OR EXISTS (SELECT 1 FROM exam_sessions WHERE tenant_id=$1 AND course_id=$2 AND status='active')
+          OR EXISTS (SELECT 1 FROM records WHERE tenant_id=$1 AND kind='course' AND course_id<>$2 AND COALESCE(data->'prerequisites','[]') ? $2)) AS in_use`,
+        [ctx.tenantId, id, ctx.userId],
+      )
+    ).rows[0];
+    if (blockers.last) throw new AppError(409, "STRUCTURE_LAST_COURSE");
+    if (blockers.in_use) throw new AppError(409, "STRUCTURE_COURSE_IN_USE");
+    await tx.query(
+      "UPDATE course_access SET active=false WHERE tenant_id=$1 AND course_id=$2 AND active",
+      [ctx.tenantId, id],
+    );
+    await tx.query(
+      "UPDATE records SET kind=$4,data=data || jsonb_build_object('removedActiveUsers',$5::jsonb),updated_at=now() WHERE tenant_id=$1 AND id=$2 AND kind=$3",
+      [
+        ...scope,
+        nextKind,
+        JSON.stringify(access.filter((a) => a.active).map((a) => a.user_id)),
+      ],
+    );
+    return;
+  }
+
+  if (row.data.majorId) {
+    const parent = await tx.query(
+      "SELECT 1 FROM records WHERE tenant_id=$1 AND id=$2 AND kind='major'",
+      [ctx.tenantId, row.data.majorId],
+    );
+    if (!parent.rows.length)
+      throw new AppError(409, "STRUCTURE_PARENT_REMOVED");
+  }
+  await tx.query(
+    "UPDATE course_access a SET active=true WHERE a.tenant_id=$1 AND a.course_id=$2 AND a.user_id=ANY($3::text[]) AND EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id=a.tenant_id AND m.user_id=a.user_id AND m.active)",
+    [ctx.tenantId, id, row.data.removedActiveUsers ?? []],
+  );
+  await tx.query(
+    "UPDATE records SET kind=$4,data=data-'removedActiveUsers',updated_at=now() WHERE tenant_id=$1 AND id=$2 AND kind=$3",
+    [...scope, nextKind],
+  );
 }
 
 type GraphConcept = {
@@ -491,25 +693,56 @@ export async function unionTree(
       edges.set(id, edge);
     }
   }
-  const sourceRows = (await conn.query<{ id: string; course_id: string; source_key: string; title: string; role: string; document_hash: string | null; original_filename: string | null; evidence_id: string | null }>(
-    "SELECT v.id,v.course_id,v.source_key,v.title,v.role,v.metadata->>'documentHash' AS document_hash,v.metadata->>'originalFilename' AS original_filename,c.id AS evidence_id FROM material_versions v LEFT JOIN evidence_chunks c ON c.tenant_id=v.tenant_id AND c.version_id=v.id AND c.status='approved' WHERE v.tenant_id=$1 AND v.course_id=ANY($2::text[]) AND v.current_version=true AND v.role IN ('instructor','umbrella') ORDER BY v.course_id,v.title,c.page",
-    [ctx.tenantId, courses.map((c) => c.id)],
-  )).rows;
-  const materials = new Map<string, { id: string; courseId: string; title: string; role: string; versionIds: string[]; conceptIds: string[] }>();
+  const sourceRows = (
+    await conn.query<{
+      id: string;
+      course_id: string;
+      source_key: string;
+      title: string;
+      role: string;
+      document_hash: string | null;
+      original_filename: string | null;
+      evidence_id: string | null;
+    }>(
+      "SELECT v.id,v.course_id,v.source_key,v.title,v.role,v.metadata->>'documentHash' AS document_hash,v.metadata->>'originalFilename' AS original_filename,c.id AS evidence_id FROM material_versions v LEFT JOIN evidence_chunks c ON c.tenant_id=v.tenant_id AND c.version_id=v.id AND c.status='approved' WHERE v.tenant_id=$1 AND v.course_id=ANY($2::text[]) AND v.current_version=true AND v.role IN ('instructor','umbrella') ORDER BY v.course_id,v.title,c.page",
+      [ctx.tenantId, courses.map((c) => c.id)],
+    )
+  ).rows;
+  const materials = new Map<
+    string,
+    {
+      id: string;
+      courseId: string;
+      title: string;
+      role: string;
+      versionIds: string[];
+      conceptIds: string[];
+    }
+  >();
   const byEvidence = new Map<string, string>();
   for (const s of sourceRows) {
-    const id = s.course_id + ":" + s.role + ":" + (s.document_hash || s.source_key);
-    const material = materials.get(id) ?? { id, courseId: s.course_id, title: s.original_filename?.replace(/\.pdf$/i, "") || s.title, role: s.role, versionIds: [], conceptIds: [] };
+    const id =
+      s.course_id + ":" + s.role + ":" + (s.document_hash || s.source_key);
+    const material = materials.get(id) ?? {
+      id,
+      courseId: s.course_id,
+      title: s.original_filename?.replace(/\.pdf$/i, "") || s.title,
+      role: s.role,
+      versionIds: [],
+      conceptIds: [],
+    };
     if (!material.versionIds.includes(s.id)) material.versionIds.push(s.id);
     if (s.evidence_id) byEvidence.set(s.evidence_id, id);
     materials.set(id, material);
   }
-  for (const r of releases) for (const c of r.graph?.concepts ?? []) {
-    for (const evidenceId of c.evidenceIds ?? []) {
-      const material = materials.get(byEvidence.get(evidenceId) ?? "");
-      if (material && !material.conceptIds.includes(c.id)) material.conceptIds.push(c.id);
+  for (const r of releases)
+    for (const c of r.graph?.concepts ?? []) {
+      for (const evidenceId of c.evidenceIds ?? []) {
+        const material = materials.get(byEvidence.get(evidenceId) ?? "");
+        if (material && !material.conceptIds.includes(c.id))
+          material.conceptIds.push(c.id);
+      }
     }
-  }
   const layout = (
     await conn.query<{ data: { positions?: Record<string, unknown> } }>(
       "SELECT data FROM records WHERE tenant_id=$1 AND id=$2 AND kind='tree_layout' AND course_id IS NULL",

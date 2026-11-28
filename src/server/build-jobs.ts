@@ -14,25 +14,30 @@ const action = z.discriminatedUnion("action", [
     action: z.literal("create"),
     documentIds: z.array(z.string().max(200)).min(1).max(300),
   }),
-  z.object({ action: z.enum(["cancel", "retry"]), id: z.uuid() }),
+  z.object({ action: z.enum(["cancel", "retry", "hide", "restore"]), id: z.uuid() }),
 ]);
-export async function listJobs(ctx: AuthContext) {
+const hiddenBuildKind = "km_build_history_hidden";
+
+export async function listJobs(ctx: AuthContext, hidden = false) {
   await authorizeCourse(ctx, ctx.courseId, "write");
   return (
     await db
       .tenant(ctx.tenantId)
       .query<BuildJob>(
-        "SELECT " +
-          columns +
-          " FROM km_build_jobs WHERE tenant_id=$1 AND course_id=$2 ORDER BY created_at DESC LIMIT 30",
-        [ctx.tenantId, ctx.courseId],
+        `SELECT ${columns} FROM km_build_jobs j
+         WHERE j.tenant_id=$1 AND j.course_id=$2 AND EXISTS (
+           SELECT 1 FROM records r WHERE r.tenant_id=j.tenant_id AND r.course_id=j.course_id
+           AND r.owner_id=$3 AND r.kind=$5 AND r.id='km_job_hidden:' || $3 || ':' || j.id
+         ) = $4::boolean ORDER BY j.created_at DESC LIMIT 30`,
+        [ctx.tenantId, ctx.courseId, ctx.userId, hidden, hiddenBuildKind],
       )
   ).rows;
 }
 export async function changeJob(ctx: AuthContext, raw: unknown) {
-  await authorizeCourse(ctx, ctx.courseId, "generate");
   const input = action.parse(raw),
-    scope = [ctx.tenantId, ctx.courseId];
+    scope = [ctx.tenantId, ctx.courseId],
+    historyOnly = input.action === "hide" || input.action === "restore";
+  await authorizeCourse(ctx, ctx.courseId, historyOnly ? "write" : "generate");
   return db.tenant(ctx.tenantId).transaction(async (tx) => {
     await tx.query(
       "SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))",
@@ -48,6 +53,23 @@ export async function changeJob(ctx: AuthContext, raw: unknown) {
         )
       ).rows[0];
       if (!job) throw new AppError(404, "NOT_FOUND");
+      if (historyOnly) {
+        const marker = [...scope, ctx.userId, `km_job_hidden:${ctx.userId}:${job.id}`, hiddenBuildKind];
+        if (input.action === "hide") {
+          if (job.status === "queued" || job.status === "processing")
+            throw new AppError(409, "INVALID_INPUT");
+          await tx.query(
+            "INSERT INTO records(tenant_id,course_id,owner_id,id,kind,data) VALUES($1,$2,$3,$4,$5,'{}'::jsonb) ON CONFLICT ON CONSTRAINT records_pkey DO NOTHING",
+            marker,
+          );
+        } else {
+          await tx.query(
+            "DELETE FROM records WHERE tenant_id=$1 AND course_id=$2 AND owner_id=$3 AND id=$4 AND kind=$5",
+            marker,
+          );
+        }
+        return job;
+      }
       const cancel = input.action === "cancel";
       if (
         !(cancel ? ["queued", "processing"] : ["cancelled", "failed"]).includes(

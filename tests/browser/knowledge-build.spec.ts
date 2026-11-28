@@ -125,6 +125,32 @@ for (const lang of ["ar", "en"] as const)
         name: lang === "ar" ? "ارفع محاضرات أخرى" : "Upload more lectures",
       })
       .click();
+    const historyJob = page
+      .locator(".build-job")
+      .filter({ hasText: "Derivatives" });
+    await historyJob
+      .getByRole("button", {
+        name: lang === "ar" ? "أخفِ من السجل" : "Hide from history",
+      })
+      .click();
+    await expect(historyJob).toHaveCount(0);
+    await page
+      .getByRole("button", {
+        name: lang === "ar" ? "عرض العمليات المخفية" : "Show hidden builds",
+      })
+      .click();
+    await historyJob
+      .getByRole("button", {
+        name: lang === "ar" ? "أعد إلى السجل" : "Restore to history",
+      })
+      .click();
+    await expect(historyJob).toHaveCount(0);
+    await page
+      .getByRole("button", {
+        name: lang === "ar" ? "العودة إلى السجل" : "Back to history",
+      })
+      .click();
+    await expect(historyJob).toBeVisible();
     await page
       .getByLabel(lang === "ar" ? "محاضرات (PDF)" : "Lectures (PDF)", {
         exact: true,
@@ -143,4 +169,55 @@ for (const lang of ["ar", "en"] as const)
     await expect(page.locator(".build-files").first()).toContainText(
       lang === "ar" ? "موجود بالفعل" : "Already uploaded",
     );
+    const act = async (data: Record<string, unknown>) => {
+      const response = await page.request.post("/api/catalog", { data });
+      expect(response.ok()).toBeTruthy();
+      return response.json();
+    };
+    const faculty = await act({
+      action: "create-faculty",
+      name: "Fixture faculty",
+    });
+    const major = await act({
+      action: "create-major",
+      facultyId: faculty.id,
+      name: "Fixture major",
+    });
+    await act({
+      action: "assign-course",
+      courseId: "CET351",
+      majorId: major.id,
+    });
+    await page
+      .getByRole("button", {
+        name: lang === "ar" ? "إضافة مقرر" : "Add a course",
+        exact: true,
+      })
+      .click();
+    await page
+      .getByLabel(lang === "ar" ? "اسم المقرر" : "Course name", { exact: true })
+      .fill("Fixture new course");
+    await expect(
+      page.getByRole("combobox", {
+        name: lang === "ar" ? "التخصص" : "Major",
+        exact: true,
+      }),
+    ).toHaveValue(major.id);
+    await page
+      .getByRole("button", {
+        name: lang === "ar" ? "أضف مقررًا" : "Add course",
+        exact: true,
+      })
+      .click();
+    const target = page.getByLabel(
+      lang === "ar" ? "المقرر المستهدف" : "Target course",
+    );
+    await expect(target.locator("option:checked")).toContainText(
+      "Fixture new course",
+    );
+    await expect(
+      page.getByLabel(lang === "ar" ? "محاضرات (PDF)" : "Lectures (PDF)", {
+        exact: true,
+      }),
+    ).toBeVisible();
   });

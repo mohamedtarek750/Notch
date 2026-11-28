@@ -49,6 +49,7 @@ export function BuildStudio({
   onError,
   go,
   catalog,
+  createdCourse,
   onActive, storageKey, onNotice,
 }: {
   lang: Lang;
@@ -56,6 +57,7 @@ export function BuildStudio({
   onError: (message: string) => void;
   go: (view: string) => void;
   catalog: Catalog | null;
+  createdCourse: string;
   storageKey: string; onNotice: (value: string) => void; onActive: (active: boolean) => void;
 }) {
   const [phase, setPhase] = useState<"pick" | "working" | "review" | "done">(
@@ -74,6 +76,12 @@ export function BuildStudio({
   const [target, select] = useState("");
   const [uploading, setUploading] = useState(false);
   useEffect(() => { select(localStorage.getItem(storageKey) || ""); }, [storageKey]);
+  useEffect(() => {
+    if (!createdCourse) return;
+    select(createdCourse);
+    setPhase("pick");
+    localStorage.setItem(storageKey, createdCourse);
+  }, [createdCourse, storageKey]);
   const courseId = catalog?.courses.some(c => c.id === target) ? target : "";
   const scopedRequest = (url: string, body?: unknown, locale: Lang = lang) => request(url, body, locale, courseId);
   useEffect(() => { onActive(uploading || questionsBusy); return () => onActive(false); }, [uploading, questionsBusy, onActive]);  // The question run keeps one fixed place among the children so its progress survives
@@ -336,7 +344,11 @@ export function BuildStudio({
       <select value={courseId} disabled={uploading || questionsBusy} onChange={e => { select(e.target.value); localStorage.setItem(storageKey,e.target.value); onNotice(""); }}>
         <option value="">{t("اختر مقررًا", "Select course")}</option>
         {catalog?.courses.map(c => <option key={c.id} value={c.id}>{c.code} · {c.title[lang]}</option>)}
-      </select></label></Box>
+      </select></label>
+      <Button disabled={uploading || questionsBusy} onClick={() => go("structure")}>
+        {t("إضافة مقرر", "Add a course")}
+      </Button>
+    </Box>
     {courseId && <KnowledgeBuildBatch key={courseId} courseId={courseId} lang={lang} t={t} onBusy={setUploading} onNotice={onNotice} onReview={reviewJob}/>}
   </>, Boolean(courseId));
 }

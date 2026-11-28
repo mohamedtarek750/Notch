@@ -190,6 +190,7 @@ export function Workspace({
   const t: Translate = (a, b) => (lang === "ar" ? a : b);
   const tr = (v: any) => localized(v, lang);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [createdBuildCourse, setCreatedBuildCourse] = useState("");
   const [buildActive, setBuildActive] = useState(false);
   const [buildNotice, setBuildNotice] = useState("");
   useEffect(() => {
@@ -666,7 +667,7 @@ export function Workspace({
               )}
               {user?.role === "instructor" && (
                 <div hidden={view !== "build"} style={view !== "build" ? { display: "none" } : undefined}>
-                  <BuildStudio key={user.tenantId + ":" + user.userId} lang={lang} t={t} onError={E} go={go} catalog={catalog} storageKey={`notch.build.course.${user.tenantId}.${user.userId}`} onActive={setBuildActive} onNotice={setBuildNotice} />
+                  <BuildStudio key={user.tenantId + ":" + user.userId} lang={lang} t={t} onError={E} go={go} catalog={catalog} createdCourse={createdBuildCourse} storageKey={`notch.build.course.${user.tenantId}.${user.userId}`} onActive={setBuildActive} onNotice={setBuildNotice} />
                 </div>
               )}
               {buildNotice && view !== "build" && user?.role === "instructor" && (
@@ -678,6 +679,15 @@ export function Workspace({
                   t={t}
                   onError={E}
                   canEdit={user?.role === "instructor"}
+                  onCatalogChange={setCatalog}
+                  onCourseCreated={id => {
+                    if (buildActive) {
+                      N(t("تمت إضافة المقرر. اختره بعد انتهاء العمل الجاري.", "Course added. Select it after the current work finishes."));
+                      return;
+                    }
+                    setCreatedBuildCourse(id);
+                    go("build");
+                  }}
                 />
               )}
               {view === "home" && user?.role === "student" && (

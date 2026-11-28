@@ -56,7 +56,8 @@ const lectureKey = `CASE WHEN v.metadata->>'documentPages' IS NOT NULL AND
 const visible = `WITH visible AS (
   SELECT a.course_id, COALESCE(m.id,'~unassigned') major_id, m.data->'name' major_label,
     COALESCE(c.data->'title',to_jsonb(a.course_id)) label, COALESCE(c.data->>'code',a.course_id) code,
-    COALESCE(c.data->'prerequisites','[]') prerequisites
+    COALESCE(c.data->'prerequisites','[]') prerequisites,
+    COALESCE(c.data->'relatedCourses','[]') related_courses
   FROM course_access a JOIN memberships u ON u.tenant_id=a.tenant_id AND u.user_id=a.user_id
   LEFT JOIN records c ON c.tenant_id=a.tenant_id AND c.kind='course' AND c.course_id=a.course_id
   LEFT JOIN records m ON m.tenant_id=a.tenant_id AND m.kind='major' AND m.id=c.data->>'majorId'
@@ -196,7 +197,7 @@ async function graphReader(
   const courseLinks = async (ids: string[], both: boolean) =>
     (
       await rows<StoredEdge>(
-        `SELECT DISTINCT s.source,s.target,'prerequisite' kind FROM (
+        `, prerequisite_links AS (
        SELECT p.id source,a.course_id target FROM visible a CROSS JOIN LATERAL jsonb_array_elements_text(a.prerequisites) p(id)
        JOIN visible before ON before.course_id=p.id
        UNION
@@ -206,12 +207,33 @@ async function graphReader(
        JOIN km_memberships base ON base.tenant_id=e.tenant_id AND base.concept_id=e.source
        JOIN visible b ON b.course_id=base.course_id
        JOIN km_memberships target ON target.tenant_id=e.tenant_id AND target.course_id=e.course_id AND target.concept_id=e.target
-       WHERE e.tenant_id=$1 AND e.kind='prerequisite' AND here.data->>'scope'='foundation'
+       WHERE e.tenant_id=$1 AND e.kind='prerequisite'
+       AND (here.data->>'scope'='foundation' OR here.data->>'importedFrom'=base.course_id)
        AND COALESCE(base.data->>'scope','course')<>'foundation' AND COALESCE(target.data->>'scope','course')<>'foundation'
+     ), related_links AS (
+       SELECT a.course_id source,b.course_id target FROM visible a
+       CROSS JOIN LATERAL jsonb_array_elements_text(a.related_courses) p(id)
+       JOIN visible b ON b.course_id=p.id WHERE a.course_id<b.course_id
+       UNION
+       SELECT left_course.course_id,right_course.course_id
+       FROM km_memberships l
+       JOIN km_memberships r ON r.tenant_id=l.tenant_id AND r.concept_id=l.concept_id AND l.course_id<r.course_id
+       JOIN visible left_course ON left_course.course_id=l.course_id
+       JOIN visible right_course ON right_course.course_id=r.course_id AND right_course.major_id=left_course.major_id
+       WHERE l.tenant_id=$1 AND left_course.major_id<>'~unassigned'
+       AND (l.course_id=ANY($4::text[]) OR r.course_id=ANY($4::text[]))
+       AND COALESCE(l.data->>'scope','course')<>'foundation' AND COALESCE(r.data->>'scope','course')<>'foundation'
+     )
+     SELECT DISTINCT s.source,s.target,s.kind FROM (
+       SELECT source,target,'prerequisite' kind FROM prerequisite_links
+       UNION ALL
+       SELECT r.source,r.target,'related' FROM related_links r
+       WHERE NOT EXISTS (SELECT 1 FROM prerequisite_links p WHERE
+         (p.source,p.target) IN ((r.source,r.target),(r.target,r.source)))
      ) s WHERE s.source<>s.target AND
        (CASE WHEN $5::boolean THEN s.source=ANY($4::text[]) AND s.target=ANY($4::text[])
        ELSE s.source=ANY($4::text[]) OR s.target=ANY($4::text[]) END)
-     ORDER BY source,target LIMIT 100`,
+     ORDER BY source,target,kind LIMIT 100`,
         [ids, both],
       )
     ).map(mapEdge);

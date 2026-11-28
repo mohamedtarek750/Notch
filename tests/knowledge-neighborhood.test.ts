@@ -107,7 +107,11 @@ it("resolves reviewed dependencies when the dependent course is published first 
   );
   await publish("AR", ["Arabic Grammar"]);
   await publish("M1", [...prerequisites.slice(0, 2), "Integration"]);
-  await publish("ML", [...prerequisites.slice(2), "Reinforcement Learning"]);
+  await publish("ML", [
+    ...prerequisites.slice(2),
+    "Reinforcement Learning",
+    "Integration",
+  ]);
   const detail = await readKnowledgeGraph(
     ctx,
     new URLSearchParams({
@@ -135,6 +139,35 @@ it("resolves reviewed dependencies when the dependent course is published first 
     relations: [],
     node: { label: { ar: "النحو العربي" } },
   });
+  const course = (id: string) =>
+    readKnowledgeGraph(ctx, new URLSearchParams({ kind: "course", id }));
+  const courseRelation = (id: string, type: string) =>
+    expect.objectContaining({ node: expect.objectContaining({ id }), type });
+  expect(await course(courses.NN)).toMatchObject({
+    relations: expect.arrayContaining([
+      courseRelation(courses.ML, "PREREQUISITE_OF"),
+    ]),
+  });
+  expect(await course(courses.ML)).toMatchObject({
+    relations: expect.arrayContaining([
+      courseRelation(courses.M1, "RELATED_TO"),
+    ]),
+  });
+  expect(await course(courses.AR)).toMatchObject({ relations: [] });
+  await catalogAction(ctx, {
+    action: "set-related-courses",
+    courseId: courses.NN,
+    relatedCourses: [courses.AR],
+  });
+  expect(await course(courses.AR)).toMatchObject({
+    relations: [courseRelation(courses.NN, "RELATED_TO")],
+  });
+  await catalogAction(ctx, {
+    action: "set-related-courses",
+    courseId: courses.AR,
+    relatedCourses: [],
+  });
+  expect(await course(courses.AR)).toMatchObject({ relations: [] });
   await expect(
     publish(
       "M1",
