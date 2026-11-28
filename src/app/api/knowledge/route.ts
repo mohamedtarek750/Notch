@@ -1,4 +1,6 @@
 import { requireAuth } from "@/server/auth";
+import { after } from "next/server";
+import { drainCourse } from "@/server/build-jobs";
 import {
   editTeaching,
   generateTeaching,
@@ -165,6 +167,13 @@ export async function POST(req: Request) {
       return Response.json(await proposeKnowledge(ctx, undefined, body.scope));
     if (body.action === "publish") {
       const release = await publishKnowledge(ctx);
+      if (release.recheckCourses.length) after(async () => {
+        const deadline = Date.now() + 80000;
+        for (const id of release.recheckCourses) {
+          if (Date.now() >= deadline) break;
+          await drainCourse(ctx.tenantId,id).catch(error => console.error("Automatic knowledge recheck failed",error));
+        }
+      });
       // Best effort: the tutor also tops the index up on demand.
       const index = await indexEmbeddings(ctx, new GeminiGateway(), 200).catch(
         () => ({ indexed: 0 }),

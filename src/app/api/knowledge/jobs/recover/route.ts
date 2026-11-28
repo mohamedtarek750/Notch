@@ -22,7 +22,7 @@ export async function GET(req: Request) {
       const courses = await db
         .tenant(tenant.id)
         .query<{ course_id: string }>(
-          "SELECT DISTINCT course_id FROM km_build_jobs WHERE tenant_id=$1 AND status IN ('queued','processing') AND (lease_until IS NULL OR lease_until<now())",
+          "SELECT DISTINCT course_id FROM km_build_jobs WHERE tenant_id=$1 AND status IN ('queued','processing') AND next_attempt<=now() AND (lease_until IS NULL OR lease_until<now())",
           [tenant.id],
         );
       for (const c of courses.rows) {

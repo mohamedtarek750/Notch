@@ -381,6 +381,7 @@ export function KnowledgeBuildBatch({
                 {new Date(job.createdAt).toLocaleString(lang)}
               </time>
             </div>
+            {job.documents.some(d => d.automatic) && <p>{t("فحص تلقائي للعلاقات بين المقررات", "Automatic cross-course check")}</p>}
             <progress
               aria-label={t("معالجة الملفات", "Document processing")}
               max={job.documents.length || 1}

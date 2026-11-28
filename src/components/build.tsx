@@ -74,6 +74,12 @@ export function BuildStudio({
     [questionsBusy, setQuestionsBusy] = useState(false);
   const [resolutions, resolve] = useState<Record<string,string>>({});
   const [target, select] = useState("");
+  const [recheckCourses, setRecheckCourses] = useState<string[]>([]);
+  const openBuildCourse = (id: string) => {
+    select(id);
+    localStorage.setItem(storageKey,id);
+    setPhase("pick");
+  };
   const [uploading, setUploading] = useState(false);
   useEffect(() => { select(localStorage.getItem(storageKey) || ""); }, [storageKey]);
   useEffect(() => {
@@ -174,7 +180,8 @@ export function BuildStudio({
           },
           lang,
         );
-      await scopedRequest("/api/knowledge", { action: "publish" }, lang);
+      const release = await scopedRequest("/api/knowledge", { action: "publish" }, lang);
+      setRecheckCourses(release.recheckCourses ?? []);
       setTreeVersion((n) => n + 1);
       setPhase("done");
     } catch (e) {
@@ -209,7 +216,11 @@ export function BuildStudio({
             {t("ارفع محاضرات أخرى", "Upload more lectures")}
           </button>
         </div>
-        <HierarchicalKnowledgeMap key={treeVersion} lang={lang} t={t} onError={onError} go={go} courseId={courseId} onRecheck={() => setPhase("pick")} />
+        {!!recheckCourses.length && <div className="notice" role="status">
+          {t("بدأ فحص العلاقات تلقائيًا في المقررات التالية. افتح سجل المقرر لمراجعة الاقتراحات.", "Automatic cross-course checks were queued. Open a course to review suggestions in its build history.")}
+          <div className="row">{catalog?.courses.filter(c => recheckCourses.includes(c.id)).map(c => <Button key={c.id} onClick={() => openBuildCourse(c.id)}>{c.title[lang]}</Button>)}</div>
+        </div>}
+        <HierarchicalKnowledgeMap key={treeVersion} lang={lang} t={t} onError={onError} go={go} courseId={courseId} onRecheck={openBuildCourse} />
       </>,
       true,
     );

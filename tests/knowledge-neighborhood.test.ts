@@ -14,6 +14,7 @@ import {
   reviewPrerequisiteEdges,
 } from "../src/server/prerequisites";
 import { publishKnowledge } from "../src/server/knowledge";
+import { listJobs } from "../src/server/build-jobs";
 
 let ctx: AuthContext;
 const courses: Record<string, string> = {};
@@ -269,10 +270,38 @@ it("adds cited requirements from another course to a published lecture without a
     evidenceIds: [mlEvidence],
   };
   // The prerequisite is taught in ML, without a course-level dependency.
-  await publish("ML", ["Loss Function", "Mean Squared Error"], [], [mlEdge], {
-    "Loss Function": [mlEvidence],
-    "Mean Squared Error": [mlEvidence],
-  });
+  const mlGraph = {
+    concepts: ["Loss Function", "Mean Squared Error"].map((id) => ({
+      id,
+      label: { en: id, ar: id },
+      aliases: [],
+      scope: "course",
+      evidenceIds: [mlEvidence],
+    })),
+    edges: [mlEdge],
+  };
+  await db
+    .tenant(ml.tenantId)
+    .query(
+      "INSERT INTO records(tenant_id,course_id,id,kind,data) VALUES($1,$2,$3,'knowledge_proposal',$4)",
+      [
+        ml.tenantId,
+        ml.courseId,
+        crypto.randomUUID(),
+        JSON.stringify({ status: "approved", graph: mlGraph }),
+      ],
+    );
+  expect((await publishKnowledge(ml)).recheckCourses).toEqual([nn.courseId]);
+  expect(await listJobs(nn)).toMatchObject([
+    {
+      status: "queued",
+      documents: [
+        { versionId: upload.id, recheckPublished: true, automatic: true },
+      ],
+    },
+  ]);
+  expect((await publishKnowledge(ml)).recheckCourses).toEqual([]);
+  expect(await listJobs(nn)).toHaveLength(1);
   expect(await read()).toMatchObject({ requirements: [] });
   const proposal = await extractPrerequisites(
     nn,
@@ -319,7 +348,7 @@ it("adds cited requirements from another course to a published lecture without a
     id: proposal.id,
     accept: [{ from: "Loss Function", to: "Training" }],
   });
-  await publishKnowledge(nn);
+  expect((await publishKnowledge(nn)).recheckCourses).toEqual([]);
   expect(await read()).toMatchObject({
     requirements: [
       {
@@ -411,4 +440,20 @@ it("adds cited requirements from another course to a published lecture without a
   const mlConcept = mlMap.nodes.find((n) => n.id === "Loss Function");
   expect(mlConcept).toMatchObject({ external: false, courseId: ml.courseId });
   expect(mlConcept?.sourceCourse).toBeUndefined();
+  const reference = await importExtractedPages(ml, {
+    mode: "umbrella",
+    title: "Training companion",
+    rightsConfirmed: true,
+    rightsReference: "Synthetic fixture",
+    pages: [
+      {
+        page: 1,
+        text: "Training with a loss function gives a numerical objective for the model to minimize.",
+      },
+    ],
+  });
+  await approvePendingUmbrella(ml, reference.id);
+  expect((await publishKnowledge(ml)).recheckCourses).toEqual([nn.courseId]);
+  expect(await listJobs(nn)).toHaveLength(2);
+  expect((await publishKnowledge(ml)).recheckCourses).toEqual([]);
 });

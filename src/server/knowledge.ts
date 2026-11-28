@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { semanticTypes } from "../lib/knowledge-graph";
 import { db } from "./db";
+import { queueCrossCourseRechecks } from "./cross-course-rechecks";
 import {
   type AuthContext,
   authorizeCourse,
@@ -1060,12 +1061,19 @@ export async function publishKnowledge(ctx: AuthContext) {
         ],
       );
     }
-    await tx.query(
-      `UPDATE material_versions SET status='published' WHERE tenant_id=$1 AND course_id=$2 AND current_version=true AND id IN (SELECT version_id FROM evidence_chunks WHERE tenant_id=$1 AND status='approved')`,
+    const publishedMaterials = await tx.query<{ id: string; role: string }>(
+      `UPDATE material_versions SET status='published' WHERE tenant_id=$1 AND course_id=$2 AND current_version=true AND status<>'published'
+       AND id IN (SELECT version_id FROM evidence_chunks WHERE tenant_id=$1 AND status='approved') RETURNING id,role`,
       [ctx.tenantId, ctx.courseId],
     );
+    const previousTeaching = new Set((prior?.data.graph.concepts ?? [])
+      .filter(c => c.scope !== "foundation" && !c.importedFrom).map(c => c.id));
+    const newTeaching = graph.concepts.filter(c => c.scope !== "foundation" && !c.importedFrom && !previousTeaching.has(c.id));
+    const recheckCourses = await queueCrossCourseRechecks(tx,ctx,releaseId,newTeaching.map(c => c.id),
+      publishedMaterials.rows.filter(material => material.role === "umbrella").map(material => material.id));
     return {
       releaseId,
+      recheckCourses,
       concepts: graph.concepts.length,
       edges: graph.edges.length,
       publishedProposals: proposals.length,

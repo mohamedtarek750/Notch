@@ -86,7 +86,7 @@ export async function changeJob(ctx: AuthContext, raw: unknown) {
       );
       return (
         await tx.query<BuildJob>(
-          "UPDATE km_build_jobs SET status=$4,documents=$5,updated_at=now() WHERE tenant_id=$1 AND course_id=$2 AND id=$3 RETURNING " +
+          "UPDATE km_build_jobs SET status=$4,documents=$5,next_attempt=now(),failures=0,updated_at=now() WHERE tenant_id=$1 AND course_id=$2 AND id=$3 RETURNING " +
             columns,
           [
             ...scope,
@@ -186,10 +186,10 @@ export async function drainCourse(tenantId: string, courseId: string) {
         scope,
       );
       return (
-        await tx.query<BuildJob & { owner_id: string; locale: "en" | "ar" }>(
-          "UPDATE km_build_jobs SET status='processing',lease_token=$3,lease_until=now()+interval '6 minutes',updated_at=now() WHERE tenant_id=$1 AND course_id=$2 AND id=(SELECT id FROM km_build_jobs WHERE tenant_id=$1 AND course_id=$2 AND status IN ('queued','processing') ORDER BY created_at LIMIT 1) AND NOT EXISTS(SELECT 1 FROM km_build_jobs WHERE tenant_id=$1 AND course_id=$2 AND lease_until>now()) RETURNING " +
+        await tx.query<BuildJob & { owner_id: string; locale: "en" | "ar"; failures: number }>(
+          "UPDATE km_build_jobs SET status='processing',lease_token=$3,lease_until=now()+interval '6 minutes',updated_at=now() WHERE tenant_id=$1 AND course_id=$2 AND id=(SELECT id FROM km_build_jobs WHERE tenant_id=$1 AND course_id=$2 AND status IN ('queued','processing') AND next_attempt<=now() ORDER BY created_at LIMIT 1) AND NOT EXISTS(SELECT 1 FROM km_build_jobs WHERE tenant_id=$1 AND course_id=$2 AND lease_until>now()) RETURNING " +
             columns +
-            ",owner_id,locale",
+            ",owner_id,locale,failures",
           [...scope, token],
         )
       ).rows[0];
@@ -247,6 +247,13 @@ export async function drainCourse(tenantId: string, courseId: string) {
         d.completedSteps = 1;
       }
     } catch (e) {
+      if (d.automatic && e instanceof Error && e.message === "rate_limited" && job.failures < 3) {
+        await sql.query(
+          "UPDATE km_build_jobs SET status='queued',next_attempt=now()+interval '65 seconds',failures=failures+1,lease_until=NULL,lease_token=NULL,updated_at=now() WHERE tenant_id=$1 AND course_id=$2 AND id=$3 AND lease_token=$4 AND status='processing'",
+          [...scope, job.id, token],
+        );
+        return;
+      }
       d.status = "failed";
       d.error = e instanceof Error ? e.message : "processing_failed";
     }
