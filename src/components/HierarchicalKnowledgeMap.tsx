@@ -37,6 +37,8 @@ type Frame = {
   query: string;
   relation: KGRelation | "";
   scope: "" | "direct" | "external";
+  focusedConcept?: string;
+  returnCourse?: KGNode["label"];
 };
 const frameFor = (trail: KGNode[] = []): Frame => ({
   trail,
@@ -137,6 +139,7 @@ export function HierarchicalKnowledgeMap({
   if (major) params.set("majorId", major.id);
   if (course) params.set("courseId", course.id);
   if (lecture) params.set("lectureId", lecture.id);
+  if (frame.focusedConcept) params.set("focus", frame.focusedConcept);
   const pageUrl = endpoint + params;
   const pageKey = [pageUrl, lang, scopeId, version].join("|");
   useEffect(() => {
@@ -219,6 +222,40 @@ export function HierarchicalKnowledgeMap({
   async function openNode(node: KGNode) {
     const token = ++sequence.current;
     if (node.kind === "concept") {
+      const source = node.sourceCourse;
+      if (source && source.id !== scopeId) {
+        onError("");
+        try {
+          const [sourceCourse, sourceLecture] = await Promise.all([
+            readNode({ kind: "course", id: source.id }, lang),
+            readNode(
+              { kind: "lecture", id: source.lectureId, courseId: source.id },
+              lang,
+            ),
+          ]);
+          const sourceMajor = sourceCourse.parents.find(
+            (n) => n.kind === "major",
+          );
+          if (token !== sequence.current || !sourceMajor) return;
+          setHistory((h) => [...h.slice(-29), frame]);
+          setFrame({
+            ...frameFor([sourceMajor, sourceCourse.node, sourceLecture.node]),
+            selected: {
+              ...node,
+              courseId: source.id,
+              lectureId: source.lectureId,
+              external: false,
+              sourceCourse: undefined,
+            },
+            focusedConcept: node.id,
+            returnCourse: course?.label,
+          });
+          return;
+        } catch (e) {
+          if (token !== sequence.current) return;
+          onError((e as Error).message);
+        }
+      }
       patch({ selected: node });
       return;
     }
@@ -397,7 +434,9 @@ export function HierarchicalKnowledgeMap({
             {history.length > 0 && (
               <button className="kg-back" onClick={back}>
                 <ArrowLeft size={14} />
-                {t("رجوع", "Back")}
+                {frame.returnCourse
+                  ? `${t("رجوع إلى", "Back to")} ${frame.returnCourse[lang]}`
+                  : t("رجوع", "Back")}
               </button>
             )}
           </div>

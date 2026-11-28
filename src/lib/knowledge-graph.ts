@@ -13,7 +13,7 @@ export const semanticTypes = Object.keys(semanticRelations) as [
   keyof typeof semanticRelations, ...(keyof typeof semanticRelations)[],
 ];
 export type KGRelation = "CONTAINS" | (typeof semanticRelations)[keyof typeof semanticRelations];
-export type KGSourceCourse = { id: string; label: KGText; code?: string };
+export type KGSourceCourse = { id: string; label: KGText; code?: string; lectureId: string };
 export type KGNode = {
   kind: KGKind;
   id: string;

@@ -343,6 +343,7 @@ it("adds cited requirements from another course to a published lecture without a
     external: true,
     sourceCourse: {
       id: ml.courseId,
+      lectureId: mlUpload.sourceKey,
       code: "ML",
       label: { en: "Machine Learning" },
     },
@@ -351,6 +352,20 @@ it("adds cited requirements from another course to a published lecture without a
     from: "Loss Function",
     to: "Training",
     type: "PREREQUISITE_OF",
+  });
+  const focused = await readKnowledgeGraph(
+    ml,
+    new URLSearchParams({
+      level: "concept",
+      courseId: ml.courseId,
+      lectureId: mlUpload.sourceKey,
+      focus: "Mean Squared Error",
+    }),
+  );
+  if (!("nodes" in focused)) throw new Error("Expected source lecture graph");
+  expect(focused.nodes[1]).toMatchObject({
+    id: "Mean Squared Error",
+    external: false,
   });
 
   // A sibling can also teach this concept. ML's own published lecture still owns its local prerequisite.

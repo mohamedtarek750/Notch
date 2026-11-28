@@ -23,6 +23,7 @@ const input = z.object({
   majorId: key.optional(),
   courseId: key.optional(),
   lectureId: key.optional(),
+  focus: key.optional(),
   cursor: z.coerce.number().int().min(0).max(10_000_000).default(0),
 });
 const PAGE = 30;
@@ -163,14 +164,20 @@ async function graphReader(
   const lectureConcepts = async (course: string, lecture: string, offset = 0) =>
     (
       await rows<Row>(
-        `SELECT DISTINCT k.concept_id id,m.data->'label' label,k.course_id,a.major_id
+        `SELECT k.concept_id id,m.data->'label' label,k.course_id,a.major_id
      FROM km_memberships m JOIN (
        SELECT DISTINCT k.course_id,k.concept_id ${evidenceJoins} AND k.course_id=$4 AND v.course_id=$4
        AND v.role='instructor' AND ${lectureKey}=$5
      ) k ON k.course_id=m.course_id AND k.concept_id=m.concept_id
      JOIN visible a ON a.course_id=k.course_id WHERE m.tenant_id=$1 AND COALESCE(m.data->>'scope','course') <> 'foundation'
-     ORDER BY id LIMIT $6 OFFSET $7`,
-        [course, lecture, PAGE + 1, offset],
+     ORDER BY (k.concept_id IS NOT DISTINCT FROM $8::text) DESC,id LIMIT $6 OFFSET $7`,
+        [
+          course,
+          lecture,
+          PAGE + 1,
+          offset,
+          q.level === "concept" ? (q.focus ?? null) : null,
+        ],
       )
     ).map((r) => ({
       ...node("concept", r),
@@ -207,12 +214,14 @@ async function graphReader(
       course_id: string;
       label: KGText;
       code: string;
+      lecture_id: string;
     }>(
       `, taught AS (
-        SELECT DISTINCT k.course_id,k.concept_id ${evidenceJoins}
+        SELECT DISTINCT ON (k.course_id,k.concept_id) k.course_id,k.concept_id,${lectureKey} lecture_id ${evidenceJoins}
         AND v.role='instructor' AND v.course_id=k.course_id AND k.concept_id=ANY($5::text[])
+        ORDER BY k.course_id,k.concept_id,v.created_at,lecture_id
       ), candidates AS (
-        SELECT other_taught.concept_id,other.course_id,other.label,other.code,
+        SELECT other_taught.concept_id,other_taught.lecture_id,other.course_id,other.label,other.code,
           count(*) OVER (PARTITION BY other_taught.concept_id) matches
         FROM taught other_taught JOIN visible other ON other.course_id=other_taught.course_id
         JOIN visible current_course ON current_course.course_id=$4
@@ -226,13 +235,18 @@ async function graphReader(
             AND COALESCE(local.data->>'scope','course')<>'foundation')
           AND ($6::text[] IS NULL OR EXISTS (SELECT 1 FROM km_edges e WHERE e.tenant_id=$1 AND e.course_id=$4
             AND e.kind='prerequisite' AND e.source=local.concept_id AND e.target=ANY($6::text[])))
-      ) SELECT concept_id,course_id,label,code FROM candidates WHERE matches=1`,
+      ) SELECT concept_id,course_id,label,code,lecture_id FROM candidates WHERE matches=1`,
       [course, ids, targets ?? null],
     );
     return new Map(
       matches.map((r) => [
         r.concept_id,
-        { id: r.course_id, label: text(r.label, r.course_id), code: r.code },
+        {
+          id: r.course_id,
+          label: text(r.label, r.course_id),
+          code: r.code,
+          lectureId: r.lecture_id,
+        },
       ]),
     );
   };
@@ -441,11 +455,14 @@ async function graphReader(
     ]);
     detail.requirements = requirements
       .map((r) => ({
-        concept: node("concept", {
-          id: r.source,
-          label: r.source_label,
-          course_id: origins.get(r.source)?.id ?? q.courseId,
-        }),
+        concept: {
+          ...node("concept", {
+            id: r.source,
+            label: r.source_label,
+            course_id: origins.get(r.source)?.id ?? q.courseId,
+          }),
+          sourceCourse: origins.get(r.source),
+        },
         target: node("concept", {
           id: r.target,
           label: r.target_label,
