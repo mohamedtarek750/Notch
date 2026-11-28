@@ -37,6 +37,9 @@ export function KnowledgeBuildBatch({
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [jobs, setJobs] = useState<BuildJob[]>([]);
+  const [drafts, setDrafts] = useState<
+    { id: string; title: string; role: string; removed: boolean }[]
+  >([]);
   const [showHidden, setShowHidden] = useState(false);
   const [error, setError] = useState("");
   const [pollError, setPollError] = useState("");
@@ -44,6 +47,42 @@ export function KnowledgeBuildBatch({
   const [refresh, setRefresh] = useState(0);
   const sending = useRef(false);
   const previous = useRef(new Map<string, BuildJob["status"]>());
+  useEffect(() => {
+    let active = true;
+    request("/api/materials?build-drafts=1", undefined, lang, courseId)
+      .then((result) => {
+        if (active) setDrafts(result);
+      })
+      .catch((e) => {
+        if (active) setError(e.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [courseId, lang, refresh]);
+  const changeDraft = async (draft: (typeof drafts)[number]) => {
+    setBusy(true);
+    setError("");
+    try {
+      await request(
+        "/api/materials",
+        {
+          action: draft.removed ? "restore-build-draft" : "remove-build-draft",
+          id: draft.id,
+        },
+        lang,
+        courseId,
+      );
+      setRows((rows) =>
+        rows.filter((row) => !row.versionIds?.includes(draft.id)),
+      );
+      setRefresh((n) => n + 1);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -359,6 +398,38 @@ export function KnowledgeBuildBatch({
           </p>
         )}
       </Box>
+      {!!drafts.length && (
+        <Box>
+          <details>
+            <summary>
+              {t("الملفات المرفوعة غير المنشورة", "Unpublished uploads")}
+            </summary>
+            <ul className="build-files">
+              {drafts.map((draft) => (
+                <li key={draft.id}>
+                  <span>
+                    <bdi>{draft.title}</bdi>
+                    <small>
+                      {draft.role === "instructor"
+                        ? t("محاضرة", "Lecture")
+                        : t("مرجع", "Reference")}
+                      {draft.removed && ` · ${t("مُزال", "Removed")}`}
+                    </small>
+                  </span>
+                  <Button
+                    disabled={busy}
+                    onClick={() => void changeDraft(draft)}
+                  >
+                    {draft.removed
+                      ? t("استرجع الملف", "Restore file")
+                      : t("أزل الملف", "Remove file")}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </Box>
+      )}
       {pollError && <p role="alert">{pollError}</p>}
       <Box>
         <h2>{t("عمليات بناء المقرر", "Course build history")}</h2>
@@ -381,7 +452,14 @@ export function KnowledgeBuildBatch({
                 {new Date(job.createdAt).toLocaleString(lang)}
               </time>
             </div>
-            {job.documents.some(d => d.automatic) && <p>{t("فحص تلقائي للعلاقات بين المقررات", "Automatic cross-course check")}</p>}
+            {job.documents.some((d) => d.automatic) && (
+              <p>
+                {t(
+                  "فحص تلقائي للعلاقات بين المقررات",
+                  "Automatic cross-course check",
+                )}
+              </p>
+            )}
             <progress
               aria-label={t("معالجة الملفات", "Document processing")}
               max={job.documents.length || 1}

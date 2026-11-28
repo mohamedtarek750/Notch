@@ -13,7 +13,11 @@ import {
   extractPrerequisites,
   reviewPrerequisiteEdges,
 } from "../src/server/prerequisites";
-import { publishKnowledge } from "../src/server/knowledge";
+import {
+  publishKnowledge,
+  queueExistingKnowledge,
+} from "../src/server/knowledge";
+import { changeBuildDraft, listBuildDrafts } from "../src/server/sources";
 import { listJobs } from "../src/server/build-jobs";
 
 let ctx: AuthContext;
@@ -456,4 +460,52 @@ it("adds cited requirements from another course to a published lecture without a
   expect((await publishKnowledge(ml)).recheckCourses).toEqual([nn.courseId]);
   expect(await listJobs(nn)).toHaveLength(2);
   expect((await publishKnowledge(ml)).recheckCourses).toEqual([]);
+  expect(await queueExistingKnowledge(ml)).toEqual([nn.courseId]);
+  expect(await queueExistingKnowledge(ml)).toEqual([]);
+  const draft = await importExtractedPages(ml, {
+    mode: "lecture",
+    title: "Unpublished practice",
+    pages: [
+      {
+        page: 1,
+        text: "This new practice source provides a separate example for a future lecture.",
+      },
+    ],
+  });
+  expect(await listBuildDrafts(ml)).toMatchObject([
+    { id: draft.id, removed: false },
+  ]);
+  await changeBuildDraft(ml, draft.id, true);
+  expect(await listBuildDrafts(ml)).toMatchObject([
+    { id: draft.id, removed: true },
+  ]);
+  await changeBuildDraft(ml, draft.id, false);
+  expect(await listBuildDrafts(ml)).toMatchObject([
+    { id: draft.id, removed: false },
+  ]);
+  const draftRef = await importExtractedPages(ml, {
+    mode: "umbrella",
+    title: "Unpublished practice reference",
+    rightsConfirmed: true,
+    rightsReference: "Synthetic fixture",
+    pages: [
+      {
+        page: 1,
+        text: "A separate companion excerpt prepared for the next practice session.",
+      },
+    ],
+  });
+  await changeBuildDraft(ml, draftRef.id, true);
+  expect(await listBuildDrafts(ml)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: draftRef.id,
+        role: "umbrella",
+        removed: true,
+      }),
+    ]),
+  );
+  await expect(changeBuildDraft(ml, mlUpload.id, true)).rejects.toMatchObject({
+    code: "draft_in_use",
+  });
 });

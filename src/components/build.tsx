@@ -90,6 +90,16 @@ export function BuildStudio({
   }, [destination, storageKey]);
   const courseId = catalog?.courses.some(c => c.id === target) ? target : "";
   const scopedRequest = (url: string, body?: unknown, locale: Lang = lang) => request(url, body, locale, courseId);
+  const catchUp = async () => {
+    setBusy(true);
+    onError("");
+    try {
+      const result = await scopedRequest("/api/knowledge",{action:"catch-up-connections"});
+      setRecheckCourses(result.recheckCourses ?? []);
+      onNotice(result.recheckCourses?.length ? t("بدأت مراجعة العلاقات للمقررات المرتبطة.","Checks were queued for related courses.") : t("لا توجد فحوصات جديدة لهذا الإصدار.","There are no new checks for this release."));
+    } catch(e) {onError((e as Error).message);}
+    finally {setBusy(false);}
+  };
   useEffect(() => { onActive(uploading || questionsBusy); return () => onActive(false); }, [uploading, questionsBusy, onActive]);  // The question run keeps one fixed place among the children so its progress survives
   // every change of the screen around it.
   const frame = (before: ReactNode, after: ReactNode, show: boolean) => (
@@ -360,7 +370,11 @@ export function BuildStudio({
         {t("إضافة مقرر", "Add a course")}
       </Button>
     </Box>
-    {courseId && <KnowledgeBuildBatch key={courseId} courseId={courseId} lang={lang} t={t} onBusy={setUploading} onNotice={onNotice} onReview={reviewJob}/>}
+    {courseId && <>
+      <Button disabled={busy || uploading} onClick={()=>void catchUp()}>{t("ربط الملفات المنشورة سابقًا", "Connect existing published files")}</Button>
+      <div className="row">{catalog?.courses.filter(c=>recheckCourses.includes(c.id)).map(c=><Button key={c.id} onClick={()=>openBuildCourse(c.id)}>{c.title[lang]}</Button>)}</div>
+      <KnowledgeBuildBatch key={courseId} courseId={courseId} lang={lang} t={t} onBusy={setUploading} onNotice={onNotice} onReview={reviewJob}/>
+    </>}
   </>, Boolean(courseId));
 }
 type Draft = {

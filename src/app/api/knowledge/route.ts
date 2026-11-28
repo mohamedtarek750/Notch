@@ -8,6 +8,7 @@ import {
   proposeKnowledge,
   reviewProposal,
   publishKnowledge,
+  queueExistingKnowledge,
   editTree,
   saveTreeLayout,
   stageComprehensiveGraph,
@@ -38,6 +39,7 @@ const input = z.object({
     "propose",
     "review",
     "publish",
+    "catch-up-connections",
     "generate",
     "edit",
     "stage-comprehensive",
@@ -165,8 +167,9 @@ export async function POST(req: Request) {
       return Response.json(await generateTeaching(ctx));
     if (body.action === "propose")
       return Response.json(await proposeKnowledge(ctx, undefined, body.scope));
-    if (body.action === "publish") {
-      const release = await publishKnowledge(ctx);
+    if (body.action === "publish" || body.action === "catch-up-connections") {
+      const catchingUp = body.action === "catch-up-connections";
+      const release = catchingUp ? { recheckCourses: await queueExistingKnowledge(ctx) } : await publishKnowledge(ctx);
       if (release.recheckCourses.length) after(async () => {
         const deadline = Date.now() + 80000;
         for (const id of release.recheckCourses) {
@@ -174,6 +177,7 @@ export async function POST(req: Request) {
           await drainCourse(ctx.tenantId,id).catch(error => console.error("Automatic knowledge recheck failed",error));
         }
       });
+      if (catchingUp) return Response.json(release);
       // Best effort: the tutor also tops the index up on demand.
       const index = await indexEmbeddings(ctx, new GeminiGateway(), 200).catch(
         () => ({ indexed: 0 }),

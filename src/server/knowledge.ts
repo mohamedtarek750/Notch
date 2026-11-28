@@ -848,6 +848,21 @@ export async function editTree(ctx: AuthContext, raw: unknown) {
     return { graph };
   });
 }
+export async function queueExistingKnowledge(ctx: AuthContext) {
+  await staff(ctx, "publish");
+  return db.tenant(ctx.tenantId).transaction(async tx => {
+    await authorizeCourseInTransaction(ctx,ctx.courseId,"publish",tx);
+    const release = (await tx.query<{id:string;data:{graph:Graph}}>(
+      "SELECT id,data FROM records WHERE tenant_id=$1 AND course_id=$2 AND kind='graph_release' ORDER BY created_at DESC,id DESC LIMIT 1",
+      [ctx.tenantId,ctx.courseId],
+    )).rows[0];
+    if (!release) return [];
+    const refs = (await tx.query<{id:string}>("SELECT id FROM material_versions WHERE tenant_id=$1 AND course_id=$2 AND role='umbrella' AND current_version AND status='published'",[ctx.tenantId,ctx.courseId])).rows;
+    return queueCrossCourseRechecks(tx,ctx,"existing:"+release.id,
+      release.data.graph.concepts.filter(c=>c.scope!=="foundation"&&!c.importedFrom).map(c=>c.id),refs.map(r=>r.id));
+  });
+}
+
 export async function publishKnowledge(ctx: AuthContext) {
   await staff(ctx, "publish");
   return db.tenant(ctx.tenantId).transaction(async (tx) => {

@@ -51,7 +51,9 @@ export async function queueCrossCourseRechecks(
        SELECT $1,gen_random_uuid()::text,course_id,$3,$4,'queued','publication:' || $6,
        jsonb_agg(jsonb_build_object('versionId',id,'sourceKey',source_key,'title',title,'role','instructor',
          'cacheKey','publication:' || $6,'recheckPublished',true,'automatic',true,'status','queued','completedSteps',0,
-         'error',NULL,'proposalId',NULL) ORDER BY id) FROM matched GROUP BY course_id
+       'error',NULL,'proposalId',NULL) ORDER BY id) FROM matched m
+       WHERE NOT EXISTS (SELECT 1 FROM km_build_jobs j WHERE j.tenant_id=$1 AND j.course_id=m.course_id AND j.request_key='publication:' || $6)
+       GROUP BY course_id
        ON CONFLICT DO NOTHING RETURNING course_id`,
     [
       ctx.tenantId,

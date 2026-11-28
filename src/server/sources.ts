@@ -26,6 +26,8 @@ export class SourceError extends Error {
   }
 }
 export const sourceMessages: Record<string, [string, string]> = {
+  draft_in_use: ["الملف منشور أو قيد المعالجة أو مستخدم في نتائج معتمدة. أوقف البناء الجاري أولًا إن وُجد.", "This file is published, processing, or used by approved results. Cancel an active build before removing its files."],
+  draft_conflict: ["يوجد إصدار حالي لهذا الملف. لا يمكن استرجاع المسودة الآن.", "A current version exists for this file. The draft cannot be restored yet."],
   revision_required: ["يوجد إصدار بهذا العنوان. أكّد إضافة إصدار جديد.", "A version with this title exists. Confirm the revision before replacing it."],
   course_required: ["اختر المقرر أولاً.", "Select a course first."],
   file_size: [
@@ -572,6 +574,50 @@ export async function approvePendingUmbrella(
     return { versionId, approved: updated.rows.length };
   });
 }
+const draftFiles = `FROM material_versions v WHERE v.tenant_id=$1 AND v.course_id=$2 AND v.role IN ('instructor','umbrella')
+  AND (v.source_key LIKE 'LECTURE-%' OR v.source_key LIKE 'UMBRELLA-%') AND v.status<>'published'`;
+export async function listBuildDrafts(ctx: AuthContext) {
+  await staff(ctx);
+  return (await db.tenant(ctx.tenantId).query(`SELECT min(v.id) id,coalesce(v.metadata->>'originalFilename',v.title) title,v.role,
+      (v.metadata->>'removedFromBuild'='true') IS TRUE AS removed
+    ${draftFiles} AND (v.current_version OR v.metadata->>'removedFromBuild'='true')
+    GROUP BY COALESCE(v.metadata->>'documentHash',v.id),2,3,4 ORDER BY max(v.created_at) DESC`,[ctx.tenantId,ctx.courseId])).rows;
+}
+
+export async function changeBuildDraft(ctx: AuthContext, id: string, remove: boolean) {
+  await staff(ctx,"publish");
+  return db.tenant(ctx.tenantId).transaction(async tx => {
+    await authorizeCourseInTransaction(ctx,ctx.courseId,"publish",tx);
+    const scope = [ctx.tenantId,ctx.courseId] as const;
+    await tx.query("SELECT pg_advisory_xact_lock(hashtext($1))",[ctx.tenantId+":knowledge:"+ctx.courseId]);
+    await tx.query("SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))",[...scope]);
+    const versions = (await tx.query<{id:string;source_key:string}>(`SELECT v.id,v.source_key ${draftFiles}
+      AND (v.current_version OR v.metadata->>'removedFromBuild'='true') AND ((v.metadata->>'removedFromBuild'='true') IS TRUE) <> $4::boolean
+      AND EXISTS (SELECT 1 FROM material_versions original WHERE original.tenant_id=$1 AND original.course_id=$2 AND original.id=$3 AND original.role=v.role
+        AND COALESCE(original.metadata->>'documentHash',original.id)=COALESCE(v.metadata->>'documentHash',v.id)) FOR UPDATE`,[...scope,id,remove])).rows;
+    if (!versions.length) throw new SourceError("draft_in_use",409);
+    const ids=versions.map(v=>v.id);
+    if (remove) {
+      const usages=await tx.query(`SELECT 1 FROM km_build_jobs j CROSS JOIN LATERAL jsonb_array_elements(j.documents) doc
+          WHERE j.tenant_id=$1 AND j.course_id=$2 AND j.status IN ('queued','processing') AND doc->>'versionId'=ANY($3::text[])
+        UNION ALL SELECT 1 FROM evidence_chunks e WHERE e.tenant_id=$1 AND e.version_id=ANY($3::text[]) AND (
+          EXISTS (SELECT 1 FROM km_citations k WHERE k.tenant_id=e.tenant_id AND k.evidence_id=e.id)
+          OR EXISTS (SELECT 1 FROM km_edges k WHERE k.tenant_id=e.tenant_id AND k.evidence ? e.id)
+          OR EXISTS (SELECT 1 FROM records p WHERE p.tenant_id=e.tenant_id AND p.kind='knowledge_proposal'
+            AND p.data->>'status' IN ('approved','published') AND p.data->'evidenceIds' ? e.id)) LIMIT 1`,[...scope,ids]);
+      if(usages.rows.length) throw new SourceError("draft_in_use",409);
+      const revision = await tx.query("SELECT 1 FROM material_versions WHERE tenant_id=$1 AND course_id=$2 AND source_key=ANY($3::text[]) AND status='published' LIMIT 1",[...scope,versions.map(v=>v.source_key)]);
+      if (revision.rows.length) throw new SourceError("draft_in_use",409);
+    } else {
+      const conflict=await tx.query("SELECT 1 FROM material_versions WHERE tenant_id=$1 AND course_id=$2 AND current_version AND source_key=ANY($3::text[]) LIMIT 1",[...scope,versions.map(v=>v.source_key)]);
+      if(conflict.rows.length) throw new SourceError("draft_conflict",409);
+    }
+    await tx.query(`UPDATE material_versions SET current_version=NOT $4::boolean,metadata=CASE WHEN $4 THEN metadata || '{"removedFromBuild":true}'::jsonb ELSE metadata-'removedFromBuild' END
+      WHERE tenant_id=$1 AND course_id=$2 AND id=ANY($3::text[])`,[...scope,ids,remove]);
+    return {changed:ids.length};
+  });
+}
+
 export async function listMaterials(ctx: AuthContext) {
   await authorizeCourse(ctx, ctx.courseId, "read");
   const rows = (
@@ -584,8 +630,8 @@ export async function listMaterials(ctx: AuthContext) {
   ).rows;
   const umbrellaRows = rows.filter(
     (r) =>
-      (r.role === "umbrella" && r.source_key.startsWith(UMBRELLA_PREFIX)) ||
-      (r.role === "instructor" && r.source_key.startsWith(LECTURE_PREFIX)),
+      !r.metadata?.removedFromBuild && ((r.role === "umbrella" && r.source_key.startsWith(UMBRELLA_PREFIX)) ||
+      (r.role === "instructor" && r.source_key.startsWith(LECTURE_PREFIX))),
   );
   const counts = umbrellaRows.length
     ? (

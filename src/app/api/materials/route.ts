@@ -8,6 +8,8 @@ import {
   importExtractedPages,
   importCustomLecture,
   listMaterials,
+  listBuildDrafts,
+  changeBuildDraft,
   registerPack,
   sourceErrorResponse,
   MAX_FILE,
@@ -16,7 +18,8 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 export async function GET(req: Request) {
   try {
-    return Response.json(await listMaterials(await requireAuth(req, undefined, true)));
+    const ctx = await requireAuth(req, undefined, true);
+    return Response.json(new URL(req.url).searchParams.has("build-drafts") ? await listBuildDrafts(ctx) : await listMaterials(ctx));
   } catch (e) {
     return sourceErrorResponse(e, req.headers.get("accept-language") || "ar");
   }
@@ -67,6 +70,8 @@ export async function POST(req: Request) {
       );
     }
     const body = await req.json();
+    if (body.action === "remove-build-draft" || body.action === "restore-build-draft")
+      return Response.json(await changeBuildDraft(ctx,z.uuid().parse(body.id),body.action === "remove-build-draft"));
     if (body.action === "check-fingerprint")
       return Response.json(await checkFingerprint(ctx, body));
     if (body.action === "extracted-pages")
