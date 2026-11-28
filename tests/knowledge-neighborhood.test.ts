@@ -37,13 +37,14 @@ async function publish(
   terms: string[],
   external: string[] = [],
   edges: unknown[] = [],
+  evidenceByConcept: Record<string, string[]> = {},
 ) {
   const graph = {
     concepts: terms.map((id) => ({
       id,
       label: { ar: id === "Arabic Grammar" ? "النحو العربي" : id, en: id },
       scope: external.includes(id) ? "foundation" : "course",
-      evidenceIds: [],
+      evidenceIds: evidenceByConcept[id] ?? [],
       aliases: [],
     })),
     edges,
@@ -241,8 +242,37 @@ it("adds cited requirements from another course to a published lecture without a
         courseId: nn.courseId,
       }),
     );
-  // The published sibling concept already exists, with no study-plan dependency.
-  await publish("ML", ["Loss Function"]);
+  const ml = { ...ctx, courseId: courses.ML };
+  const mlUpload = await importExtractedPages(ml, {
+    mode: "lecture",
+    title: "Loss fixture",
+    pages: [
+      {
+        page: 1,
+        text: "A loss function measures prediction error. Mean squared error is a loss function that averages the squared differences between predictions and targets.",
+      },
+    ],
+  });
+  await approvePendingUmbrella(ml, mlUpload.id);
+  const mlEvidence = (
+    await db
+      .tenant(ml.tenantId)
+      .query<{ id: string }>(
+        "SELECT id FROM evidence_chunks WHERE tenant_id=$1 AND version_id=$2",
+        [ml.tenantId, mlUpload.id],
+      )
+  ).rows[0].id;
+  const mlEdge = {
+    from: "Loss Function",
+    to: "Mean Squared Error",
+    type: "prerequisite",
+    evidenceIds: [mlEvidence],
+  };
+  // The prerequisite is taught in ML, without a course-level dependency.
+  await publish("ML", ["Loss Function", "Mean Squared Error"], [], [mlEdge], {
+    "Loss Function": [mlEvidence],
+    "Mean Squared Error": [mlEvidence],
+  });
   expect(await read()).toMatchObject({ requirements: [] });
   const proposal = await extractPrerequisites(
     nn,
@@ -300,4 +330,70 @@ it("adds cited requirements from another course to a published lecture without a
       },
     ],
   });
+  const nnMap = await readKnowledgeGraph(
+    nn,
+    new URLSearchParams({
+      level: "concept",
+      courseId: nn.courseId,
+      lectureId: upload.sourceKey,
+    }),
+  );
+  if (!("nodes" in nnMap)) throw new Error("Expected lecture graph");
+  expect(nnMap.nodes.find((n) => n.id === "Loss Function")).toMatchObject({
+    external: true,
+    sourceCourse: {
+      id: ml.courseId,
+      code: "ML",
+      label: { en: "Machine Learning" },
+    },
+  });
+  expect(nnMap.edges).toContainEqual({
+    from: "Loss Function",
+    to: "Training",
+    type: "PREREQUISITE_OF",
+  });
+
+  // A sibling can also teach this concept. ML's own published lecture still owns its local prerequisite.
+  await publish(
+    "NN",
+    ["Loss Function", "Training"],
+    [],
+    [
+      {
+        from: "Loss Function",
+        to: "Training",
+        type: "prerequisite",
+        evidenceIds: [evidence],
+      },
+    ],
+    { "Loss Function": [evidence], Training: [evidence] },
+  );
+  const mlDetail = await readKnowledgeGraph(
+    ml,
+    new URLSearchParams({
+      kind: "lecture",
+      courseId: ml.courseId,
+      id: mlUpload.sourceKey,
+    }),
+  );
+  if (!("requirements" in mlDetail))
+    throw new Error("Expected lecture requirements");
+  expect(mlDetail.requirements).toHaveLength(1);
+  expect(mlDetail.requirements?.[0]).toMatchObject({
+    concept: { id: "Loss Function", courseId: ml.courseId },
+    target: { id: "Mean Squared Error" },
+  });
+  expect(mlDetail.requirements?.[0].course).toBeUndefined();
+  const mlMap = await readKnowledgeGraph(
+    ml,
+    new URLSearchParams({
+      level: "concept",
+      courseId: ml.courseId,
+      lectureId: mlUpload.sourceKey,
+    }),
+  );
+  if (!("nodes" in mlMap)) throw new Error("Expected lecture graph");
+  const mlConcept = mlMap.nodes.find((n) => n.id === "Loss Function");
+  expect(mlConcept).toMatchObject({ external: false, courseId: ml.courseId });
+  expect(mlConcept?.sourceCourse).toBeUndefined();
 });

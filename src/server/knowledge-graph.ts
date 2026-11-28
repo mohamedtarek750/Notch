@@ -9,6 +9,7 @@ import {
   type KGKind,
   type KGNode,
   type KGRequirement,
+  type KGSourceCourse,
   type KGText,
   type KGView,
 } from "../lib/knowledge-graph";
@@ -195,6 +196,46 @@ async function graphReader(
         [ids],
       )
     ).map(mapEdge);
+  const sourceCourses = async (
+    course: string,
+    ids: string[],
+    targets?: string[],
+  ) => {
+    if (!ids.length) return new Map<string, KGSourceCourse>();
+    const matches = await rows<{
+      concept_id: string;
+      course_id: string;
+      label: KGText;
+      code: string;
+    }>(
+      `, taught AS (
+        SELECT DISTINCT k.course_id,k.concept_id ${evidenceJoins}
+        AND v.role='instructor' AND v.course_id=k.course_id AND k.concept_id=ANY($5::text[])
+      ), candidates AS (
+        SELECT other_taught.concept_id,other.course_id,other.label,other.code,
+          count(*) OVER (PARTITION BY other_taught.concept_id) matches
+        FROM taught other_taught JOIN visible other ON other.course_id=other_taught.course_id
+        JOIN visible current_course ON current_course.course_id=$4
+        JOIN km_memberships local ON local.tenant_id=$1 AND local.course_id=$4 AND local.concept_id=other_taught.concept_id
+        JOIN km_memberships remote ON remote.tenant_id=$1 AND remote.course_id=other.course_id AND remote.concept_id=local.concept_id
+        WHERE other.course_id<>$4
+          AND COALESCE(remote.data->>'scope','course')<>'foundation'
+          AND (other.course_id=local.data->>'importedFrom' OR (local.data->>'importedFrom' IS NULL
+            AND current_course.major_id<>'~unassigned' AND other.major_id=current_course.major_id))
+          AND NOT EXISTS (SELECT 1 FROM taught own WHERE own.course_id=$4 AND own.concept_id=local.concept_id
+            AND COALESCE(local.data->>'scope','course')<>'foundation')
+          AND ($6::text[] IS NULL OR EXISTS (SELECT 1 FROM km_edges e WHERE e.tenant_id=$1 AND e.course_id=$4
+            AND e.kind='prerequisite' AND e.source=local.concept_id AND e.target=ANY($6::text[])))
+      ) SELECT concept_id,course_id,label,code FROM candidates WHERE matches=1`,
+      [course, ids, targets ?? null],
+    );
+    return new Map(
+      matches.map((r) => [
+        r.concept_id,
+        { id: r.course_id, label: text(r.label, r.course_id), code: r.code },
+      ]),
+    );
+  };
   const courseLinks = async (ids: string[], both: boolean) =>
     (
       await rows<StoredEdge>(
@@ -279,9 +320,17 @@ async function graphReader(
           ).map((r) => r.id),
         )
       : new Set<string>();
-    const neighbors = (
-      await conceptNodes(externalIds.slice(0, PAGE), course)
-    ).map((n) => ({ ...n, external: !alsoDirect.has(n.id) }));
+    const neighbors = await conceptNodes(externalIds.slice(0, PAGE), course);
+    const origins = await sourceCourses(
+      course,
+      neighbors.filter((n) => !alsoDirect.has(n.id)).map((n) => n.id),
+      direct,
+    );
+    for (const n of neighbors) {
+      n.external = !alsoDirect.has(n.id);
+      const origin = origins.get(n.id);
+      if (origin) n.sourceCourse = origin;
+    }
     data.nodes.push(...neighbors);
     data.edges.push(
       ...contains(
@@ -367,25 +416,13 @@ async function graphReader(
       source_label: KGText;
       target: string;
       target_label: KGText;
-      origin_id: string | null;
-      origin_label: KGText;
-      origin_code: string;
-      origin_major: string;
       evidence: KGRequirement["evidence"];
     }>(
       `SELECT edge.source,s.data->'label' source_label,edge.target,t.data->'label' target_label,
-      origin.course_id origin_id,origin.label origin_label,origin.code origin_code,origin.major_id origin_major,
       jsonb_build_object('id',ev.id,'courseId',ev.course_id,'title',ev.title,'page',ev.page) evidence
-      FROM km_edges edge JOIN visible current_course ON current_course.course_id=edge.course_id
+      FROM km_edges edge
       JOIN km_memberships s ON s.tenant_id=edge.tenant_id AND s.course_id=edge.course_id AND s.concept_id=edge.source
       JOIN km_memberships t ON t.tenant_id=edge.tenant_id AND t.course_id=edge.course_id AND t.concept_id=edge.target
-      LEFT JOIN LATERAL (
-        SELECT other.* FROM km_memberships m JOIN visible other ON other.course_id=m.course_id
-        WHERE m.tenant_id=edge.tenant_id AND m.concept_id=edge.source AND m.course_id<>edge.course_id
-          AND COALESCE(m.data->>'scope','course')<>'foundation' AND NOT (m.data ? 'importedFrom')
-          AND (m.course_id=s.data->>'importedFrom' OR (current_course.major_id<>'~unassigned' AND other.major_id=current_course.major_id))
-        ORDER BY (m.course_id IS DISTINCT FROM s.data->>'importedFrom'), m.course_id LIMIT 1
-      ) origin ON true
       JOIN LATERAL (
         SELECT v.id,v.course_id,v.title,c.page FROM jsonb_array_elements_text(edge.evidence) ids(id)
         JOIN evidence_chunks c ON c.tenant_id=edge.tenant_id AND c.id=ids.id AND c.status='approved'
@@ -396,33 +433,28 @@ async function graphReader(
       WHERE edge.tenant_id=$1 AND edge.course_id=$4 AND edge.kind='prerequisite'
       AND EXISTS (SELECT 1 ${evidenceJoins} AND k.course_id=edge.course_id AND k.concept_id=edge.target
         AND v.course_id=edge.course_id AND v.role='instructor' AND ${lectureKey}=$5)
-      ORDER BY (origin.course_id IS NULL),edge.source,edge.target LIMIT 100`,
+      ORDER BY edge.source,edge.target LIMIT 100`,
       [q.courseId, id],
     );
-    detail.requirements = requirements.map((r) => ({
-      concept: node("concept", {
-        id: r.source,
-        label: r.source_label,
-        course_id: r.origin_id ?? q.courseId,
-      }),
-      target: node("concept", {
-        id: r.target,
-        label: r.target_label,
-        course_id: q.courseId,
-      }),
-      ...(r.origin_id
-        ? {
-            course: node("course", {
-              id: r.origin_id,
-              course_id: r.origin_id,
-              label: r.origin_label,
-              code: r.origin_code,
-              major_id: r.origin_major,
-            }),
-          }
-        : {}),
-      evidence: r.evidence,
-    }));
+    const origins = await sourceCourses(q.courseId, [
+      ...new Set(requirements.map((r) => r.source)),
+    ]);
+    detail.requirements = requirements
+      .map((r) => ({
+        concept: node("concept", {
+          id: r.source,
+          label: r.source_label,
+          course_id: origins.get(r.source)?.id ?? q.courseId,
+        }),
+        target: node("concept", {
+          id: r.target,
+          label: r.target_label,
+          course_id: q.courseId,
+        }),
+        course: origins.get(r.source),
+        evidence: r.evidence,
+      }))
+      .sort((a, b) => Number(!a.course) - Number(!b.course));
     const direct = new Set(detail.children.map((n) => n.id));
     for (const e of data.edges.filter((e) => e.type !== "CONTAINS")) {
       const n = data.nodes.find(

@@ -272,6 +272,10 @@ export function GraphCanvas({
             const kind = node.external ? "external" : node.kind,
               Icon = nodeIcons[kind];
             const label = node.label[lang] || node.label.en || node.label.ar;
+            const origin = node.sourceCourse;
+            const originLabel = origin
+              ? `${t("من مقرر", "From")} ${origin.label[lang]}${origin.code ? ` (${origin.code})` : ""}`
+              : "";
             const active = node.id === chosen;
             return (
               <foreignObject
@@ -288,12 +292,15 @@ export function GraphCanvas({
                   dir={rtl ? "rtl" : "ltr"}
                   data-graph-node={node.kind}
                   data-node-id={node.id}
-                  className={`kg-node kg-${kind}${active ? " kg-chosen" : ""}`}
+                  className={`kg-node kg-${kind}${active ? " kg-chosen" : ""}${origin ? " kg-has-origin" : ""}`}
                   title={
-                    label + " · " + t(kindNames[kind][0], kindNames[kind][1])
+                    label +
+                    " · " +
+                    (originLabel || t(kindNames[kind][0], kindNames[kind][1]))
                   }
                   aria-pressed={active}
                   aria-label={label}
+                  aria-description={originLabel || undefined}
                   onMouseEnter={() => setHover(node.id)}
                   onMouseLeave={() => setHover("")}
                   onFocus={() => setHover(node.id)}
@@ -308,8 +315,10 @@ export function GraphCanvas({
                     <Icon size={21} strokeWidth={1.8} />
                   </span>
                   <span className="kg-node-name">
-                    <small>
-                      {node.code || t(kindNames[kind][0], kindNames[kind][1])}
+                    <small className={origin ? "kg-node-origin" : undefined}>
+                      {originLabel ||
+                        node.code ||
+                        t(kindNames[kind][0], kindNames[kind][1])}
                     </small>
                     <strong>{label}</strong>
                   </span>

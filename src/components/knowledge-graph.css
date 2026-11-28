@@ -145,6 +145,20 @@
 .kg-node-name small {
   font-size: 11px;
 }
+.kg-node.kg-has-origin {
+  padding-block: 5px;
+}
+.kg-has-origin .kg-node-name > * {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.kg-node-origin {
+  line-height: 1.1;
+  font-weight: 600;
+  unicode-bidi: plaintext;
+}
 .kg-chosen {
   outline: 2px solid var(--tone);
 }
